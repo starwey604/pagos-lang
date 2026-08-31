@@ -76,6 +76,11 @@ or Runtime control dependency, and the enclosing call.
 Resource-limit messages must report the configured limit and consumed amount.
 They must not present resource exhaustion as an internal compiler error.
 
+The current evaluator assigns `E4003` to unsupported recursion or an active
+specialization cycle, `E4004` to fuel exhaustion, `E4005` to recursion depth,
+and `E4006` to the specialization budget. The corresponding CLI controls are
+`--max-fuel`, `--max-recursion-depth`, and `--max-specializations`.
+
 ## Testing Rules
 
 Golden tests normalize only platform path separators and explicitly unstable

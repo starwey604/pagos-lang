@@ -1,0 +1,25 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc explain-stage %s | %FileCheck %s --check-prefix=EXPLAIN
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR
+
+fn factorial(value: u32) -> u32 {
+    if value == 0 {
+        1
+    } else {
+        value * factorial(value - 1)
+    }
+}
+
+let first = factorial(5);
+let second = factorial(5);
+
+// HIR: binding first: u32 [Static] = 120
+// HIR: binding second: u32 [Static] = 120
+
+// EXPLAIN: first: Static
+// EXPLAIN: second: Static
+// EXPLAIN: analysis: fuel={{[0-9]+}}, specializations=6, cache-hits=1, max-depth=6
+
+// IR-LABEL: define i32 @pagos_main()
+// IR: ret i32 120
+// IR-NOT: mul

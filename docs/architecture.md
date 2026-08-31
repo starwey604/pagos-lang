@@ -114,6 +114,11 @@ must not become the semantic reference implementation.
 The evaluator produces both concrete static values and residual operations.
 Static values crossing the boundary are checked for embeddability.
 
+The current evaluator supports bounded Static recursion and memoizes pure,
+fully Static results. `AnalysisLimits` controls fuel, recursion depth, and the
+number of specializations; `AnalysisStats` exposes consumption, cache hits, and
+maximum depth. Runtime recursion and memory accounting remain future work.
+
 ### 7. Residual SSA MIR
 
 MIR contains only target-runtime work. It should be small, typed, target-aware,

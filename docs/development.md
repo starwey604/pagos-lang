@@ -42,6 +42,18 @@ build/debug/pagosc emit-mir source.pgs
 build/debug/pagosc emit-llvm source.pgs
 ```
 
+Bound compile-time work with options placed anywhere before or after the
+command:
+
+```sh
+build/debug/pagosc --max-fuel=100000 check source.pgs
+build/debug/pagosc --max-recursion-depth=64 explain-stage source.pgs
+build/debug/pagosc --max-specializations=512 emit-mir source.pgs
+```
+
+`explain-stage` ends with deterministic analysis statistics for fuel,
+specializations, cache hits, and maximum recursion depth.
+
 `external_input()` is the temporary Milestone 1 runtime-source intrinsic. It
 returns `u32` and lowers to a declaration of `pagos_external_input` in LLVM IR.
 

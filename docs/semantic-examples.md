@@ -139,6 +139,12 @@ static let result = scaled;
 Expected error: the useful path is
 `sample -> scale.value -> scaled -> result`.
 
+Recursive calls with fully Static arguments are evaluated and memoized by
+function plus typed argument constants. A selected Static base case terminates
+normally; an active specialization that calls itself with the same key is an
+error. Fuel, recursion-depth, and specialization budgets fail with `E4xxx`
+resource diagnostics rather than exhausting the compiler process.
+
 ## Control flow
 
 ### 13. Static condition

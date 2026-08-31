@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <string>
 #include <utility>
@@ -32,8 +33,26 @@ std::uint32_t parse_u32(const std::string& spelling) {
 
 } // namespace
 
+std::size_t StageAnalyzer::SpecializationKeyHash::operator()(
+    const SpecializationKey& key) const noexcept {
+    auto hash = std::hash<const syntax::Function*>{}(key.function);
+    for (const auto& argument : key.arguments) {
+        const auto argument_hash = std::hash<hir::Constant>{}(argument);
+        hash ^= argument_hash + 0x9e3779b9U + (hash << 6U) + (hash >> 2U);
+    }
+    return hash;
+}
+
 std::unique_ptr<hir::Module>
 StageAnalyzer::analyze(const syntax::Module& module) {
+    stats_ = {};
+    functions_.clear();
+    scopes_.clear();
+    call_stack_.clear();
+    specialization_cache_.clear();
+    active_specializations_.clear();
+    fuel_exhausted_ = false;
+
     auto result = std::make_unique<hir::Module>();
     for (const auto& function : module.functions) {
         functions_.emplace(function->name, function.get());
@@ -145,6 +164,9 @@ hir::ExprPtr StageAnalyzer::analyze_binding(const syntax::BindingStmt& binding,
 }
 
 hir::ExprPtr StageAnalyzer::analyze_expression(const syntax::Expr& expression) {
+    if (!consume_fuel(expression.span)) {
+        return nullptr;
+    }
     switch (expression.kind) {
     case syntax::Expr::Kind::Integer: {
         const auto& integer =
@@ -268,16 +290,6 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
     if (function_iterator == functions_.end()) {
         return nullptr;
     }
-    if (std::ranges::find(call_stack_, expression.callee) !=
-        call_stack_.end()) {
-        diagnostics_.error("E4003",
-                           "recursive compile-time call to `" +
-                               expression.callee + "`",
-                           expression.span,
-                           "recursion limits are deferred beyond Milestone 1");
-        return nullptr;
-    }
-
     std::vector<hir::ExprPtr> arguments;
     arguments.reserve(expression.arguments.size());
     for (const auto& argument : expression.arguments) {
@@ -289,6 +301,72 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
     }
 
     const auto& function = *function_iterator->second;
+    auto key = specialization_key(function, arguments);
+    if (key) {
+        if (const auto cached = specialization_cache_.find(*key);
+            cached != specialization_cache_.end()) {
+            ++stats_.cache_hits;
+            return cached->second;
+        }
+        if (active_specializations_.contains(*key)) {
+            diagnostics_.report({
+                .severity = source::Severity::Error,
+                .code = "E4003",
+                .message = "recursive specialization cycle in `" +
+                           expression.callee + "`",
+                .primary = {.span = expression.span,
+                            .message = "the same Static arguments recur"},
+                .help = "change the recursive arguments or add a terminating "
+                        "Static branch",
+            });
+            return nullptr;
+        }
+        if (stats_.specializations >= limits_.specializations) {
+            diagnostics_.report({
+                .severity = source::Severity::Error,
+                .code = "E4006",
+                .message = "compile-time specialization limit of " +
+                           std::to_string(limits_.specializations) +
+                           " exceeded",
+                .primary = {.span = expression.span,
+                            .message = std::to_string(stats_.specializations) +
+                                       " specializations already created"},
+                .help = "increase --max-specializations or reduce distinct "
+                        "Static call arguments",
+            });
+            return nullptr;
+        }
+    } else if (std::ranges::find(call_stack_, expression.callee) !=
+               call_stack_.end()) {
+        diagnostics_.report({
+            .severity = source::Severity::Error,
+            .code = "E4003",
+            .message = "Runtime-recursive call cannot be specialized",
+            .primary = {.span = expression.span,
+                        .message = "recursive arguments are not all Static"},
+            .help = "make recursive control and arguments Static",
+        });
+        return nullptr;
+    }
+    if (call_stack_.size() >= limits_.recursion_depth) {
+        diagnostics_.report({
+            .severity = source::Severity::Error,
+            .code = "E4005",
+            .message = "compile-time recursion depth limit of " +
+                       std::to_string(limits_.recursion_depth) + " exceeded",
+            .primary = {.span = expression.span,
+                        .message = "depth " +
+                                   std::to_string(call_stack_.size()) +
+                                   " cannot enter `" + expression.callee + "`"},
+            .help = "increase --max-recursion-depth or reduce recursive depth",
+        });
+        return nullptr;
+    }
+
+    if (key) {
+        active_specializations_.insert(*key);
+        ++stats_.specializations;
+    }
     scopes_.emplace_back();
     for (std::size_t index = 0; index < function.parameters.size(); ++index) {
         auto value = arguments[index];
@@ -299,9 +377,17 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
         define(function.parameters[index].name, std::move(value));
     }
     call_stack_.push_back(function.name);
+    stats_.maximum_recursion_depth =
+        std::max(stats_.maximum_recursion_depth, call_stack_.size());
     auto result = analyze_block(*function.body).value;
     call_stack_.pop_back();
     scopes_.pop_back();
+    if (key) {
+        active_specializations_.erase(*key);
+        if (result && result->stage == hir::Stage::Static) {
+            specialization_cache_.emplace(std::move(*key), result);
+        }
+    }
     return result;
 }
 
@@ -381,6 +467,43 @@ syntax::TypeKind StageAnalyzer::type_of(const syntax::Expr& expression) const {
         return iterator->second;
     }
     return syntax::TypeKind::Error;
+}
+
+bool StageAnalyzer::consume_fuel(source::Span span) {
+    if (stats_.fuel_consumed < limits_.fuel) {
+        ++stats_.fuel_consumed;
+        return true;
+    }
+    if (!fuel_exhausted_) {
+        diagnostics_.report({
+            .severity = source::Severity::Error,
+            .code = "E4004",
+            .message = "compile-time evaluation fuel exhausted after " +
+                       std::to_string(stats_.fuel_consumed) + " steps",
+            .primary = {.span = span,
+                        .message = "configured limit is " +
+                                   std::to_string(limits_.fuel)},
+            .help = "increase --max-fuel or simplify compile-time evaluation",
+        });
+        fuel_exhausted_ = true;
+    }
+    return false;
+}
+
+std::optional<StageAnalyzer::SpecializationKey>
+StageAnalyzer::specialization_key(
+    const syntax::Function& function,
+    const std::vector<hir::ExprPtr>& arguments) const {
+    SpecializationKey key{.function = &function};
+    key.arguments.reserve(arguments.size());
+    for (const auto& argument : arguments) {
+        if (!argument || argument->stage != hir::Stage::Static ||
+            !argument->constant) {
+            return std::nullopt;
+        }
+        key.arguments.push_back(argument->constant.value());
+    }
+    return key;
 }
 
 } // namespace pagos::stage

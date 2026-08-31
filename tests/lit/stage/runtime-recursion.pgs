@@ -1,0 +1,12 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+
+fn recurse(value: u32) -> u32 {
+    recurse(value)
+}
+
+runtime let input = external_input();
+let result = recurse(input);
+
+// CHECK: error[E4003]: Runtime-recursive call cannot be specialized
+// CHECK: recursive arguments are not all Static
+// CHECK: help: make recursive control and arguments Static

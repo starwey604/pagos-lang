@@ -110,6 +110,15 @@ The compiler memoizes specializations by function identity, static arguments,
 target configuration, and relevant effect dependencies. It must enforce a
 specialization budget to prevent accidental code-size explosion.
 
+The current pure-expression implementation caches a call only when every
+argument and the result are Static. Its key contains function identity and the
+typed argument constants; target configuration and effect dependencies join
+the key when those features land. Static recursion is permitted when selected
+Static branches change the arguments and terminate within the configured fuel,
+depth, and specialization limits. Re-entering an active key is a recursive
+specialization cycle. Runtime recursion is not residualized yet and is rejected
+explicitly.
+
 ## 5. Control flow
 
 ### Static condition
@@ -217,7 +226,6 @@ Required tools and messages include:
 pagosc explain-stage source.pgs
 pagosc emit-hir source.pgs
 pagosc emit-mir source.pgs
-pagosc report-specialization source.pgs
 ```
 
 Example constraint failure:
@@ -248,6 +256,6 @@ constraint, the first Runtime source, and the shortest useful dependency path.
   embedded configuration library?
 - Can runtime aggregate fields remain independently staged in the type system,
   or is field sensitivity only an analysis property?
-- What are the exact rules for recursion and specialization limits?
+- What memory accounting and default resource limits should releases promise?
 - How are floating-point reproducibility and target-specific behavior exposed?
 - Which compile-time effects are stable enough to include in cache keys?

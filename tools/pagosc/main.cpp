@@ -9,17 +9,29 @@
 #include "pagos/syntax/lexer.h"
 #include "pagos/syntax/parser.h"
 
+#include <charconv>
+#include <expected>
 #include <iostream>
 #include <optional>
 #include <print>
+#include <string>
 #include <string_view>
+#include <utility>
 
 namespace {
 
 enum class Command { Check, EmitHir, EmitMir, EmitLlvm, ExplainStage };
 
+struct Options {
+    Command command;
+    std::string source_path;
+    pagos::stage::AnalysisLimits limits;
+};
+
 void print_usage() {
-    std::println(stderr, "usage: pagosc "
+    std::println(stderr, "usage: pagosc [--max-fuel=N] "
+                         "[--max-recursion-depth=N] "
+                         "[--max-specializations=N] "
                          "<check|emit-hir|emit-mir|emit-llvm|explain-stage> "
                          "<source.pgs>");
 }
@@ -43,21 +55,85 @@ std::optional<Command> parse_command(std::string_view name) {
     return std::nullopt;
 }
 
+std::expected<std::size_t, std::string> parse_limit(std::string_view option,
+                                                    std::string_view prefix) {
+    const auto spelling = option.substr(prefix.size());
+    std::size_t value{};
+    const auto result = std::from_chars(
+        spelling.data(), spelling.data() + spelling.size(), value);
+    if (spelling.empty() || result.ec != std::errc{} ||
+        result.ptr != spelling.data() + spelling.size()) {
+        return std::unexpected("invalid numeric option `" +
+                               std::string(option) + "`");
+    }
+    return value;
+}
+
+std::expected<Options, std::string> parse_options(int argument_count,
+                                                  char** arguments) {
+    std::optional<Command> command;
+    std::optional<std::string> source_path;
+    pagos::stage::AnalysisLimits limits;
+
+    for (int index = 1; index < argument_count; ++index) {
+        const std::string_view argument{arguments[index]};
+        constexpr std::string_view fuel_prefix = "--max-fuel=";
+        constexpr std::string_view depth_prefix = "--max-recursion-depth=";
+        constexpr std::string_view specialization_prefix =
+            "--max-specializations=";
+        if (argument.starts_with(fuel_prefix)) {
+            auto value = parse_limit(argument, fuel_prefix);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            limits.fuel = *value;
+        } else if (argument.starts_with(depth_prefix)) {
+            auto value = parse_limit(argument, depth_prefix);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            limits.recursion_depth = *value;
+        } else if (argument.starts_with(specialization_prefix)) {
+            auto value = parse_limit(argument, specialization_prefix);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            limits.specializations = *value;
+        } else if (argument.starts_with("--")) {
+            return std::unexpected("unknown option `" + std::string(argument) +
+                                   "`");
+        } else if (!command) {
+            command = parse_command(argument);
+            if (!command) {
+                return std::unexpected("unknown command `" +
+                                       std::string(argument) + "`");
+            }
+        } else if (!source_path) {
+            source_path = std::string(argument);
+        } else {
+            return std::unexpected("unexpected argument `" +
+                                   std::string(argument) + "`");
+        }
+    }
+    if (!command || !source_path) {
+        return std::unexpected("a command and source file are required");
+    }
+    return Options{.command = *command,
+                   .source_path = std::move(*source_path),
+                   .limits = limits};
+}
+
 } // namespace
 
 int main(int argument_count, char** arguments) {
-    if (argument_count != 3) {
-        print_usage();
-        return 2;
-    }
-    const auto command = parse_command(arguments[1]);
-    if (!command) {
-        std::println(stderr, "error: unknown command `{}`", arguments[1]);
+    const auto options = parse_options(argument_count, arguments);
+    if (!options) {
+        std::println(stderr, "error: {}", options.error());
         print_usage();
         return 2;
     }
 
-    auto source = pagos::source::SourceFile::load(arguments[2]);
+    auto source = pagos::source::SourceFile::load(options->source_path);
     if (!source) {
         std::println(stderr, "error: {}", source.error());
         return 1;
@@ -83,15 +159,15 @@ int main(int argument_count, char** arguments) {
         return 1;
     }
 
-    pagos::stage::StageAnalyzer stage_analyzer(diagnostics,
-                                               type_checker.types());
+    pagos::stage::StageAnalyzer stage_analyzer(
+        diagnostics, type_checker.types(), options->limits);
     auto hir_module = stage_analyzer.analyze(*syntax_module);
     if (diagnostics.has_error()) {
         diagnostics.render(std::cerr);
         return 1;
     }
 
-    switch (*command) {
+    switch (options->command) {
     case Command::Check:
         return 0;
     case Command::EmitHir:
@@ -99,6 +175,13 @@ int main(int argument_count, char** arguments) {
         return 0;
     case Command::ExplainStage:
         pagos::hir::explain_stages(*hir_module, std::cout);
+        std::println(std::cout,
+                     "analysis: fuel={}, specializations={}, cache-hits={}, "
+                     "max-depth={}",
+                     stage_analyzer.stats().fuel_consumed,
+                     stage_analyzer.stats().specializations,
+                     stage_analyzer.stats().cache_hits,
+                     stage_analyzer.stats().maximum_recursion_depth);
         return 0;
     case Command::EmitMir:
     case Command::EmitLlvm:
@@ -110,7 +193,7 @@ int main(int argument_count, char** arguments) {
         std::println(stderr, "error: {}", mir_module.error());
         return 1;
     }
-    if (*command == Command::EmitMir) {
+    if (options->command == Command::EmitMir) {
         pagos::mir::print(*mir_module, std::cout);
         return 0;
     }

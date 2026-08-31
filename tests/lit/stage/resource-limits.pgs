@@ -1,0 +1,25 @@
+// RUN: not %pagosc --max-recursion-depth=3 check %s 2>&1 | %FileCheck %s --check-prefix=DEPTH
+// RUN: not %pagosc --max-specializations=3 check %s 2>&1 | %FileCheck %s --check-prefix=SPECIALIZATIONS
+// RUN: not %pagosc --max-fuel=1 check %s 2>&1 | %FileCheck %s --check-prefix=FUEL
+
+fn countdown(value: u32) -> u32 {
+    if value == 0 {
+        0
+    } else {
+        countdown(value - 1)
+    }
+}
+
+let result = countdown(5);
+
+// DEPTH: error[E4005]: compile-time recursion depth limit of 3 exceeded
+// DEPTH: depth 3 cannot enter `countdown`
+// DEPTH: help: increase --max-recursion-depth or reduce recursive depth
+
+// SPECIALIZATIONS: error[E4006]: compile-time specialization limit of 3 exceeded
+// SPECIALIZATIONS: 3 specializations already created
+// SPECIALIZATIONS: help: increase --max-specializations
+
+// FUEL: error[E4004]: compile-time evaluation fuel exhausted after 1 steps
+// FUEL: configured limit is 1
+// FUEL: help: increase --max-fuel or simplify compile-time evaluation
