@@ -94,13 +94,20 @@ target_include_directories(pagos_stage PUBLIC include)
 target_link_libraries(pagos_stage
     PUBLIC Pagos::sema Pagos::hir Pagos::vm pagos_project_options)
 
+add_library(pagos_mir
+    lib/mir/lowering.cpp
+    lib/mir/mir.cpp)
+add_library(Pagos::mir ALIAS pagos_mir)
+target_include_directories(pagos_mir PUBLIC include)
+target_link_libraries(pagos_mir PUBLIC Pagos::hir pagos_project_options)
+
 add_library(pagos_codegen lib/codegen/llvm_codegen.cpp)
 add_library(Pagos::codegen ALIAS pagos_codegen)
 target_include_directories(pagos_codegen PUBLIC include)
 target_include_directories(pagos_codegen SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
 target_compile_options(pagos_codegen PRIVATE ${PAGOS_LLVM_DEFINITIONS})
 target_link_libraries(pagos_codegen
-    PUBLIC Pagos::hir pagos_project_options)
+    PUBLIC Pagos::mir pagos_project_options)
 
 if(TARGET LLVM AND LLVM_LINK_LLVM_DYLIB)
     target_link_libraries(pagos_codegen PRIVATE LLVM)
@@ -113,7 +120,7 @@ endif()
 
 add_executable(pagosc tools/pagosc/main.cpp)
 target_link_libraries(pagosc
-    PRIVATE Pagos::syntax Pagos::sema Pagos::stage Pagos::codegen
+    PRIVATE Pagos::syntax Pagos::sema Pagos::stage Pagos::mir Pagos::codegen
             pagos_project_options)
 
 include(CTest)

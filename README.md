@@ -105,6 +105,8 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
 Milestone 1 is complete. The C++26 reference compiler parses and type-checks the
 core language, infers stages, evaluates Static expressions, explains Runtime
 dependency paths, and emits verified residual LLVM IR for the host target.
+Milestone 2 is in progress; its first slice adds a typed, verified residual SSA
+MIR between partial evaluation and LLVM.
 
 ## Development
 

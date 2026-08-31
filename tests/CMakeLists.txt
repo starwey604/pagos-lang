@@ -3,9 +3,11 @@ find_package(GTest REQUIRED CONFIG)
 add_executable(pagos_unit_tests
     unit/evaluator_test.cpp
     unit/lexer_test.cpp
+    unit/mir_test.cpp
     unit/source_manager_test.cpp)
 target_link_libraries(pagos_unit_tests
-    PRIVATE Pagos::syntax Pagos::vm GTest::gtest_main pagos_project_options)
+    PRIVATE Pagos::syntax Pagos::vm Pagos::mir GTest::gtest_main
+            pagos_project_options)
 
 include(GoogleTest)
 gtest_discover_tests(pagos_unit_tests DISCOVERY_MODE PRE_TEST)

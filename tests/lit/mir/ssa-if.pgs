@@ -1,0 +1,21 @@
+// RUN: %pagosc emit-mir %s | %FileCheck %s
+
+runtime let condition = external_input() == 0;
+let result = if condition { 10 } else { 20 };
+
+// CHECK-LABEL: func @pagos_main() -> u32 {
+// CHECK: bb0:
+// CHECK-NEXT: %0: u32 = external_input
+// CHECK-NEXT: %1: u32 = const 0
+// CHECK-NEXT: %2: bool = eq %0, %1
+// CHECK-NEXT: condbr %2, bb1, bb2
+// CHECK: bb1:
+// CHECK-NEXT: %3: u32 = const 10
+// CHECK-NEXT: br bb3
+// CHECK: bb2:
+// CHECK-NEXT: %4: u32 = const 20
+// CHECK-NEXT: br bb3
+// CHECK: bb3:
+// CHECK-NEXT: %5: u32 = phi [bb1: %3], [bb2: %4]
+// CHECK-NEXT: return %5
+// CHECK-NEXT: }

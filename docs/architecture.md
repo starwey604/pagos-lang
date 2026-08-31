@@ -1,6 +1,7 @@
 # Compiler Architecture
 
-Status: Milestone 1 implemented; later components remain proposed.
+Status: Milestone 1 implemented. Milestone 2 is in progress with the residual
+SSA MIR boundary implemented; later Milestone 2 components remain proposed.
 
 ## Design boundary
 
@@ -18,10 +19,10 @@ HIR, stage analysis, the compile-time evaluator, and LLVM code generation are
 separate libraries. The AST contains syntax and spans only; an independent type
 table feeds stage analysis.
 
-Milestone 1 lowers residual typed HIR directly to LLVM IR as a deliberate
-vertical-slice shortcut. Milestone 2 inserts the residual SSA MIR boundary
-shown below. No LLVM values or APIs appear in the AST, type checker, stage
-analyzer, or evaluator.
+Milestone 1 initially lowered residual typed HIR directly to LLVM IR as a
+vertical-slice shortcut. The first Milestone 2 slice replaces that shortcut
+with the residual SSA MIR boundary shown below. No LLVM values or APIs appear
+in the AST, type checker, stage analyzer, evaluator, or MIR lowering layer.
 
 ```mermaid
 flowchart TB
@@ -117,6 +118,12 @@ Static values crossing the boundary are checked for embeddability.
 
 MIR contains only target-runtime work. It should be small, typed, target-aware,
 and convenient to verify and lower.
+
+The current MIR has explicit basic blocks, SSA values, typed operations,
+conditional and unconditional branches, phi nodes, checked division and
+remainder, and returns. Its verifier rejects invalid types, undefined values,
+unreachable blocks, incomplete phi inputs, and non-dominating uses before LLVM
+lowering. `pagosc emit-mir` provides a stable textual form for golden tests.
 
 Initial operations should cover:
 

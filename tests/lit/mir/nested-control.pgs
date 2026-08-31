@@ -1,0 +1,18 @@
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR
+
+runtime let first = external_input() == 0;
+runtime let second = external_input() == 1;
+let result = if first {
+    if second { 10 } else { 20 }
+} else {
+    30 / external_input()
+};
+
+// MIR: udiv.checked
+// MIR-COUNT-2: = phi
+// MIR: return
+
+// IR-COUNT-2: phi i32
+// IR: ret i32
+// IR: call void @llvm.trap()

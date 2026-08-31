@@ -1,5 +1,7 @@
 #include "pagos/codegen/llvm_codegen.h"
 #include "pagos/hir/hir.h"
+#include "pagos/mir/lowering.h"
+#include "pagos/mir/mir.h"
 #include "pagos/sema/type_checker.h"
 #include "pagos/source/diagnostic.h"
 #include "pagos/source/source_manager.h"
@@ -14,12 +16,12 @@
 
 namespace {
 
-enum class Command { Check, EmitHir, EmitLlvm, ExplainStage };
+enum class Command { Check, EmitHir, EmitMir, EmitLlvm, ExplainStage };
 
 void print_usage() {
-    std::println(stderr,
-                 "usage: pagosc <check|emit-hir|emit-llvm|explain-stage> "
-                 "<source.pgs>");
+    std::println(stderr, "usage: pagosc "
+                         "<check|emit-hir|emit-mir|emit-llvm|explain-stage> "
+                         "<source.pgs>");
 }
 
 std::optional<Command> parse_command(std::string_view name) {
@@ -28,6 +30,9 @@ std::optional<Command> parse_command(std::string_view name) {
     }
     if (name == "emit-hir") {
         return Command::EmitHir;
+    }
+    if (name == "emit-mir") {
+        return Command::EmitMir;
     }
     if (name == "emit-llvm") {
         return Command::EmitLlvm;
@@ -88,22 +93,33 @@ int main(int argument_count, char** arguments) {
 
     switch (*command) {
     case Command::Check:
-        break;
+        return 0;
     case Command::EmitHir:
         pagos::hir::print(*hir_module, std::cout);
-        break;
+        return 0;
     case Command::ExplainStage:
         pagos::hir::explain_stages(*hir_module, std::cout);
-        break;
-    case Command::EmitLlvm: {
-        auto llvm_ir = pagos::codegen::LLVMCodegen::emit(*hir_module);
-        if (!llvm_ir) {
-            std::println(stderr, "error: {}", llvm_ir.error());
-            return 1;
-        }
-        std::cout << *llvm_ir;
+        return 0;
+    case Command::EmitMir:
+    case Command::EmitLlvm:
         break;
     }
+
+    auto mir_module = pagos::mir::lower(*hir_module);
+    if (!mir_module) {
+        std::println(stderr, "error: {}", mir_module.error());
+        return 1;
     }
+    if (*command == Command::EmitMir) {
+        pagos::mir::print(*mir_module, std::cout);
+        return 0;
+    }
+
+    auto llvm_ir = pagos::codegen::LLVMCodegen::emit(*mir_module);
+    if (!llvm_ir) {
+        std::println(stderr, "error: {}", llvm_ir.error());
+        return 1;
+    }
+    std::cout << *llvm_ir;
     return 0;
 }

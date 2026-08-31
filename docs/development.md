@@ -38,6 +38,7 @@ builds, and `asan` for AddressSanitizer plus UndefinedBehaviorSanitizer.
 build/debug/pagosc check source.pgs
 build/debug/pagosc emit-hir source.pgs
 build/debug/pagosc explain-stage source.pgs
+build/debug/pagosc emit-mir source.pgs
 build/debug/pagosc emit-llvm source.pgs
 ```
 
@@ -54,8 +55,9 @@ clang-format --dry-run --Werror $(rg --files -g '*.h' -g '*.cpp')
 clang-tidy --quiet -p build/debug $(rg --files lib tools -g '*.cpp')
 ```
 
-GoogleTest covers C++ units such as lexing, source locations, and evaluator
-arithmetic. `lit` and `FileCheck` cover complete `.pgs` programs, stable
-diagnostics, typed HIR, and residual LLVM IR. When a restricted environment
-cannot run LeakSanitizer, pass `ASAN_OPTIONS=detect_leaks=0` only for that run;
-do not disable leak checks in normal CI.
+GoogleTest covers C++ units such as lexing, source locations, evaluator
+arithmetic, and MIR verification. `lit` and `FileCheck` cover complete `.pgs`
+programs, stable diagnostics, typed HIR, residual SSA MIR, and LLVM IR. When a
+restricted environment cannot run LeakSanitizer, pass
+`ASAN_OPTIONS=detect_leaks=0` only for that run; do not disable leak checks in
+normal CI.

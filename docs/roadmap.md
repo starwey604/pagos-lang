@@ -63,6 +63,10 @@ Acceptance criteria:
 
 ## Milestone 2: Explainable partial evaluation
 
+Status: in progress. The first slice introduces typed residual SSA MIR,
+verification, stable `emit-mir` output, and MIR-only LLVM lowering. Loop,
+aggregate, cross-stage embedding, caching, and resource-limit work remains.
+
 Add:
 
 - stage-polymorphic calls and specialization caching;

@@ -5,8 +5,8 @@
 `README.md` is the entry point and `docs/` contains the language specification,
 architecture, roadmap, and development guide. Public C++ headers live under
 `include/pagos/`; matching implementations live in `lib/`, grouped by compiler
-phase (`syntax`, `sema`, `hir`, `stage`, `vm`, and `codegen`). The `pagosc`
-driver is in `tools/pagosc/`. Keep GoogleTest units in `tests/unit/` and
+phase (`syntax`, `sema`, `hir`, `stage`, `vm`, `mir`, and `codegen`). The
+`pagosc` driver is in `tools/pagosc/`. Keep GoogleTest units in `tests/unit/` and
 end-to-end `.pgs` fixtures in phase-specific directories under `tests/lit/`.
 
 ## Build, Test, and Development Commands
@@ -29,7 +29,8 @@ The project requires C++26, four-space indentation, and no compiler extensions.
 Format C++ with `.clang-format` and check it with `clang-format --dry-run
 --Werror`. Use `snake_case` for files/functions, `PascalCase` for types, and
 parallel public/implementation paths. Keep syntax nodes free of inferred types
-and LLVM details; store semantic facts in side tables and lower through HIR.
+and LLVM details; store semantic facts in side tables and lower through HIR and
+verified SSA MIR.
 
 Write Markdown with ATX headings, tagged fences, and lines near 80 characters.
 Use **Pagos**, `pagosc`, and `.pgs`. Prefer the formal terms `Static`, `Runtime`,
@@ -38,8 +39,8 @@ binding-time analysis, and residual program.
 ## Testing Guidelines
 
 Use GoogleTest for isolated library behavior and lit plus FileCheck for CLI,
-diagnostic, HIR, and LLVM IR golden tests. Name unit files `<area>_test.cpp` and
-fixtures after behavior, for example `tests/lit/stage/mixed-call.pgs`. Every
+diagnostic, HIR, MIR, and LLVM IR golden tests. Name unit files `<area>_test.cpp`
+and fixtures after behavior, for example `tests/lit/stage/mixed-call.pgs`. Every
 semantic change needs focused positive and negative cases. Assert dependency
 paths for staging failures and verify successful residual output.
 
