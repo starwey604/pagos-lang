@@ -1,0 +1,14 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR
+
+fn double(value: u32) -> u32 {
+    return value * 2;
+}
+
+let result = double(6);
+
+// HIR: binding result: u32 [Static] = 12
+// IR-LABEL: define i32 @pagos_main()
+// IR-NEXT: entry:
+// IR-NEXT: ret i32 12
+// IR-NOT: mul

@@ -68,6 +68,13 @@ and `||` require `bool`. An `if` condition must be `bool`, and a range's bounds
 must be `u32`. Initializers and return expressions must match their declared or
 inferred type. There are no implicit conversions in the core language.
 
+## Milestone 1 Runtime Intrinsic
+
+`external_input()` is a temporary, zero-argument runtime-source intrinsic with
+result type `u32`. It exists to make the first residual program executable and
+explainable before effectful target APIs and foreign declarations are designed.
+User code cannot redefine it.
+
 ## Precedence and Evaluation Order
 
 The productions above run from lowest to highest precedence. Binary operators

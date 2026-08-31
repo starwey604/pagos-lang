@@ -1,0 +1,510 @@
+#include "pagos/syntax/parser.h"
+
+#include <string>
+#include <utility>
+
+namespace pagos::syntax {
+
+const Token& Parser::current() const noexcept { return tokens_[index_]; }
+
+const Token& Parser::previous() const noexcept { return tokens_[index_ - 1]; }
+
+bool Parser::at_end() const noexcept { return check(TokenKind::End); }
+
+bool Parser::check(TokenKind kind) const noexcept {
+    return current().kind == kind;
+}
+
+bool Parser::match(TokenKind kind) noexcept {
+    if (!check(kind)) {
+        return false;
+    }
+    ++index_;
+    return true;
+}
+
+const Token* Parser::consume(TokenKind kind, std::string message) {
+    if (check(kind)) {
+        ++index_;
+        return &previous();
+    }
+    diagnostics_.error("E1002", std::move(message), current().span,
+                       "found " + std::string(token_kind_name(current().kind)));
+    return nullptr;
+}
+
+void Parser::synchronize() {
+    while (!at_end()) {
+        if (index_ > 0 && previous().kind == TokenKind::Semicolon) {
+            return;
+        }
+        switch (current().kind) {
+        case TokenKind::KwFn:
+        case TokenKind::KwLet:
+        case TokenKind::KwStatic:
+        case TokenKind::KwRuntime:
+        case TokenKind::KwReturn:
+        case TokenKind::KwFor:
+        case TokenKind::RightBrace:
+            return;
+        default:
+            ++index_;
+            break;
+        }
+    }
+}
+
+std::unique_ptr<Module> Parser::parse_module() {
+    auto module = std::make_unique<Module>();
+    while (!at_end()) {
+        const auto before = index_;
+        if (check(TokenKind::KwFn)) {
+            if (auto function = parse_function()) {
+                module->functions.push_back(std::move(function));
+            }
+        } else if (auto statement = parse_statement()) {
+            module->statements.push_back(std::move(statement));
+        }
+
+        if (index_ == before) {
+            ++index_;
+        }
+        if (diagnostics_.has_error()) {
+            synchronize();
+        }
+    }
+    return module;
+}
+
+std::optional<TypeKind> Parser::parse_type() {
+    if (match(TokenKind::KwBool)) {
+        return TypeKind::Bool;
+    }
+    if (match(TokenKind::KwU32)) {
+        return TypeKind::U32;
+    }
+    diagnostics_.error("E1002", "expected type", current().span,
+                       "the core language supports `bool` and `u32`");
+    return std::nullopt;
+}
+
+std::unique_ptr<Function> Parser::parse_function() {
+    const auto* start = consume(TokenKind::KwFn, "expected `fn`");
+    const auto* name =
+        consume(TokenKind::Identifier, "expected function name after `fn`");
+    if (!start || !name ||
+        !consume(TokenKind::LeftParen, "expected `(` after function name")) {
+        return nullptr;
+    }
+
+    std::vector<Parameter> parameters;
+    if (!check(TokenKind::RightParen)) {
+        do {
+            const auto* parameter_name =
+                consume(TokenKind::Identifier, "expected parameter name");
+            if (!parameter_name ||
+                !consume(TokenKind::Colon,
+                         "expected `:` after parameter name")) {
+                return nullptr;
+            }
+            const auto type = parse_type();
+            if (!type) {
+                return nullptr;
+            }
+            parameters.push_back({.name = std::string(parameter_name->lexeme),
+                                  .name_span = parameter_name->span,
+                                  .type = *type});
+        } while (match(TokenKind::Comma));
+    }
+
+    if (!consume(TokenKind::RightParen, "expected `)` after parameters") ||
+        !consume(TokenKind::Arrow, "expected `->` before function result")) {
+        return nullptr;
+    }
+    const auto result = parse_type();
+    if (!result) {
+        return nullptr;
+    }
+    auto body = parse_block();
+    if (!body) {
+        return nullptr;
+    }
+    const auto span =
+        source::Span{.begin = start->span.begin, .end = body->span.end};
+    return std::make_unique<Function>(
+        Function{.name = std::string(name->lexeme),
+                 .name_span = name->span,
+                 .parameters = std::move(parameters),
+                 .result = *result,
+                 .body = std::move(body),
+                 .span = span});
+}
+
+std::unique_ptr<Block> Parser::parse_block() {
+    const auto* left_brace =
+        consume(TokenKind::LeftBrace, "expected `{` to start block");
+    if (!left_brace) {
+        return nullptr;
+    }
+
+    auto block = std::make_unique<Block>();
+    while (!check(TokenKind::RightBrace) && !at_end()) {
+        if (check(TokenKind::KwLet) || check(TokenKind::KwStatic) ||
+            check(TokenKind::KwRuntime) || check(TokenKind::KwReturn) ||
+            check(TokenKind::KwFor)) {
+            if (auto statement = parse_statement()) {
+                block->statements.push_back(std::move(statement));
+            } else {
+                synchronize();
+            }
+            continue;
+        }
+
+        auto expression = parse_expression();
+        if (!expression) {
+            synchronize();
+            continue;
+        }
+        if (match(TokenKind::Semicolon)) {
+            const auto span = source::Span{.begin = expression->span.begin,
+                                           .end = previous().span.end};
+            block->statements.push_back(
+                std::make_unique<ExpressionStmt>(std::move(expression), span));
+            continue;
+        }
+        block->tail = std::move(expression);
+        break;
+    }
+
+    const auto* right_brace =
+        consume(TokenKind::RightBrace, "expected `}` after block");
+    if (!right_brace) {
+        return nullptr;
+    }
+    block->span = {.begin = left_brace->span.begin,
+                   .end = right_brace->span.end};
+    return block;
+}
+
+std::unique_ptr<Stmt> Parser::parse_statement() {
+    if (match(TokenKind::KwStatic)) {
+        const auto start = previous().span;
+        if (!consume(TokenKind::KwLet, "expected `let` after `static`")) {
+            return nullptr;
+        }
+        return parse_binding(BindingKind::Static, start);
+    }
+    if (match(TokenKind::KwRuntime)) {
+        const auto start = previous().span;
+        if (!consume(TokenKind::KwLet, "expected `let` after `runtime`")) {
+            return nullptr;
+        }
+        return parse_binding(BindingKind::Runtime, start);
+    }
+    if (match(TokenKind::KwLet)) {
+        return parse_binding(BindingKind::Inferred, previous().span);
+    }
+    if (match(TokenKind::KwReturn)) {
+        return parse_return();
+    }
+    if (match(TokenKind::KwFor)) {
+        return parse_for();
+    }
+
+    auto expression = parse_expression();
+    if (!expression) {
+        return nullptr;
+    }
+    const auto* semicolon =
+        consume(TokenKind::Semicolon, "expected `;` after expression");
+    if (!semicolon) {
+        return nullptr;
+    }
+    const auto span = source::Span{.begin = expression->span.begin,
+                                   .end = semicolon->span.end};
+    return std::make_unique<ExpressionStmt>(std::move(expression), span);
+}
+
+std::unique_ptr<Stmt> Parser::parse_binding(BindingKind kind,
+                                            source::Span start_span) {
+    const auto* name = consume(TokenKind::Identifier, "expected binding name");
+    if (!name) {
+        return nullptr;
+    }
+    std::optional<TypeKind> annotation;
+    if (match(TokenKind::Colon)) {
+        annotation = parse_type();
+        if (!annotation) {
+            return nullptr;
+        }
+    }
+    if (!consume(TokenKind::Equal, "expected `=` in binding")) {
+        return nullptr;
+    }
+    auto initializer = parse_expression();
+    if (!initializer) {
+        return nullptr;
+    }
+    const auto* semicolon =
+        consume(TokenKind::Semicolon, "expected `;` after binding");
+    if (!semicolon) {
+        return nullptr;
+    }
+    const auto span =
+        source::Span{.begin = start_span.begin, .end = semicolon->span.end};
+    return std::make_unique<BindingStmt>(kind, std::string(name->lexeme),
+                                         name->span, annotation,
+                                         std::move(initializer), span);
+}
+
+std::unique_ptr<Stmt> Parser::parse_return() {
+    const auto start = previous().span;
+    auto value = parse_expression();
+    if (!value) {
+        return nullptr;
+    }
+    const auto* semicolon =
+        consume(TokenKind::Semicolon, "expected `;` after return value");
+    if (!semicolon) {
+        return nullptr;
+    }
+    return std::make_unique<ReturnStmt>(
+        std::move(value),
+        source::Span{.begin = start.begin, .end = semicolon->span.end});
+}
+
+std::unique_ptr<Stmt> Parser::parse_for() {
+    const auto start = previous().span;
+    const auto* variable =
+        consume(TokenKind::Identifier, "expected loop variable");
+    if (!variable || !consume(TokenKind::KwIn, "expected `in` in range loop")) {
+        return nullptr;
+    }
+    auto begin = parse_expression();
+    if (!begin || !consume(TokenKind::Range, "expected `..` in range loop")) {
+        return nullptr;
+    }
+    auto end = parse_expression();
+    auto body = parse_block();
+    if (!end || !body) {
+        return nullptr;
+    }
+    const auto span = source::Span{.begin = start.begin, .end = body->span.end};
+    return std::make_unique<ForStmt>(std::string(variable->lexeme),
+                                     variable->span, std::move(begin),
+                                     std::move(end), std::move(body), span);
+}
+
+std::unique_ptr<Expr> Parser::parse_expression() {
+    if (check(TokenKind::KwIf)) {
+        return parse_if();
+    }
+    return parse_logical_or();
+}
+
+std::unique_ptr<Expr> Parser::parse_if() {
+    const auto* keyword = consume(TokenKind::KwIf, "expected `if`");
+    auto condition = parse_expression();
+    auto then_block = parse_block();
+    if (!keyword || !condition || !then_block ||
+        !consume(TokenKind::KwElse, "an `if` expression requires `else`")) {
+        return nullptr;
+    }
+
+    std::unique_ptr<Block> else_block;
+    if (check(TokenKind::KwIf)) {
+        auto nested = parse_if();
+        if (!nested) {
+            return nullptr;
+        }
+        else_block = std::make_unique<Block>();
+        else_block->span = nested->span;
+        else_block->tail = std::move(nested);
+    } else {
+        else_block = parse_block();
+    }
+    if (!else_block) {
+        return nullptr;
+    }
+
+    const auto span =
+        source::Span{.begin = keyword->span.begin, .end = else_block->span.end};
+    return std::make_unique<IfExpr>(std::move(condition), std::move(then_block),
+                                    std::move(else_block), span);
+}
+
+std::unique_ptr<Expr> Parser::parse_binary(std::unique_ptr<Expr> left,
+                                           BinaryOperator operation,
+                                           std::unique_ptr<Expr> right) {
+    if (!left || !right) {
+        return nullptr;
+    }
+    const auto span = source::merge(left->span, right->span);
+    return std::make_unique<BinaryExpr>(operation, std::move(left),
+                                        std::move(right), span);
+}
+
+std::unique_ptr<Expr> Parser::parse_logical_or() {
+    auto expression = parse_logical_and();
+    while (match(TokenKind::OrOr)) {
+        expression =
+            parse_binary(std::move(expression), BinaryOperator::LogicalOr,
+                         parse_logical_and());
+    }
+    return expression;
+}
+
+std::unique_ptr<Expr> Parser::parse_logical_and() {
+    auto expression = parse_equality();
+    while (match(TokenKind::AndAnd)) {
+        expression = parse_binary(std::move(expression),
+                                  BinaryOperator::LogicalAnd, parse_equality());
+    }
+    return expression;
+}
+
+std::unique_ptr<Expr> Parser::parse_equality() {
+    auto expression = parse_comparison();
+    while (check(TokenKind::EqualEqual) || check(TokenKind::BangEqual)) {
+        const auto kind = current().kind;
+        ++index_;
+        const auto operation = kind == TokenKind::EqualEqual
+                                   ? BinaryOperator::Equal
+                                   : BinaryOperator::NotEqual;
+        expression =
+            parse_binary(std::move(expression), operation, parse_comparison());
+    }
+    return expression;
+}
+
+std::unique_ptr<Expr> Parser::parse_comparison() {
+    auto expression = parse_additive();
+    while (check(TokenKind::Less) || check(TokenKind::LessEqual) ||
+           check(TokenKind::Greater) || check(TokenKind::GreaterEqual)) {
+        const auto kind = current().kind;
+        ++index_;
+        BinaryOperator operation = BinaryOperator::Less;
+        if (kind == TokenKind::LessEqual) {
+            operation = BinaryOperator::LessEqual;
+        } else if (kind == TokenKind::Greater) {
+            operation = BinaryOperator::Greater;
+        } else if (kind == TokenKind::GreaterEqual) {
+            operation = BinaryOperator::GreaterEqual;
+        }
+        expression =
+            parse_binary(std::move(expression), operation, parse_additive());
+    }
+    return expression;
+}
+
+std::unique_ptr<Expr> Parser::parse_additive() {
+    auto expression = parse_multiplicative();
+    while (check(TokenKind::Plus) || check(TokenKind::Minus)) {
+        const auto kind = current().kind;
+        ++index_;
+        expression =
+            parse_binary(std::move(expression),
+                         kind == TokenKind::Plus ? BinaryOperator::Add
+                                                 : BinaryOperator::Subtract,
+                         parse_multiplicative());
+    }
+    return expression;
+}
+
+std::unique_ptr<Expr> Parser::parse_multiplicative() {
+    auto expression = parse_unary();
+    while (check(TokenKind::Star) || check(TokenKind::Slash) ||
+           check(TokenKind::Percent)) {
+        const auto kind = current().kind;
+        ++index_;
+        BinaryOperator operation = BinaryOperator::Multiply;
+        if (kind == TokenKind::Slash) {
+            operation = BinaryOperator::Divide;
+        } else if (kind == TokenKind::Percent) {
+            operation = BinaryOperator::Remainder;
+        }
+        expression =
+            parse_binary(std::move(expression), operation, parse_unary());
+    }
+    return expression;
+}
+
+std::unique_ptr<Expr> Parser::parse_unary() {
+    if (match(TokenKind::Bang)) {
+        const auto start = previous().span;
+        auto operand = parse_unary();
+        if (!operand) {
+            return nullptr;
+        }
+        const auto span =
+            source::Span{.begin = start.begin, .end = operand->span.end};
+        return std::make_unique<UnaryExpr>(UnaryOperator::Not,
+                                           std::move(operand), span);
+    }
+    return parse_call();
+}
+
+std::unique_ptr<Expr> Parser::parse_call() {
+    auto expression = parse_primary();
+    while (expression && match(TokenKind::LeftParen)) {
+        auto* name = dynamic_cast<NameExpr*>(expression.get());
+        if (!name) {
+            diagnostics_.error("E1002", "only named functions can be called",
+                               expression->span);
+            return nullptr;
+        }
+        std::vector<std::unique_ptr<Expr>> arguments;
+        if (!check(TokenKind::RightParen)) {
+            do {
+                auto argument = parse_expression();
+                if (!argument) {
+                    return nullptr;
+                }
+                arguments.push_back(std::move(argument));
+            } while (match(TokenKind::Comma));
+        }
+        const auto* right =
+            consume(TokenKind::RightParen, "expected `)` after arguments");
+        if (!right) {
+            return nullptr;
+        }
+        const auto span = source::Span{.begin = expression->span.begin,
+                                       .end = right->span.end};
+        auto callee = name->name;
+        const auto callee_span = name->span;
+        expression = std::make_unique<CallExpr>(std::move(callee), callee_span,
+                                                std::move(arguments), span);
+    }
+    return expression;
+}
+
+std::unique_ptr<Expr> Parser::parse_primary() {
+    if (match(TokenKind::Integer)) {
+        return std::make_unique<IntegerExpr>(std::string(previous().lexeme),
+                                             previous().span);
+    }
+    if (match(TokenKind::KwTrue)) {
+        return std::make_unique<BooleanExpr>(true, previous().span);
+    }
+    if (match(TokenKind::KwFalse)) {
+        return std::make_unique<BooleanExpr>(false, previous().span);
+    }
+    if (match(TokenKind::Identifier)) {
+        return std::make_unique<NameExpr>(std::string(previous().lexeme),
+                                          previous().span);
+    }
+    if (match(TokenKind::LeftParen)) {
+        auto expression = parse_expression();
+        if (!consume(TokenKind::RightParen,
+                     "expected `)` after parenthesized expression")) {
+            return nullptr;
+        }
+        return expression;
+    }
+
+    diagnostics_.error("E1002", "expected expression", current().span,
+                       "found " + std::string(token_kind_name(current().kind)));
+    return nullptr;
+}
+
+} // namespace pagos::syntax

@@ -1,0 +1,5 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s
+
+let wrapped: u32 = 4_294_967_295 + 1;
+
+// CHECK: binding wrapped: u32 [Static] = 0

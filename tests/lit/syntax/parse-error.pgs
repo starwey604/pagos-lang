@@ -1,0 +1,6 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+
+let missing_semicolon = 1
+
+// CHECK: error[E1002]: expected `;` after binding
+// CHECK: found end of file

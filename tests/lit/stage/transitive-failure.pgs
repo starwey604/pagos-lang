@@ -1,0 +1,12 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+
+fn scale(factor: u32, value: u32) -> u32 {
+    return factor * value;
+}
+
+runtime let sample = external_input();
+let scaled = scale(4, sample);
+static let result = scaled;
+
+// CHECK: error[E2001]: static binding `result` was thawed
+// CHECK: dependency path: sample -> scale.value -> scaled -> result

@@ -1,0 +1,22 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR
+
+fn choose(condition: bool) -> u32 {
+    if condition {
+        return 10;
+    } else {
+        return 20;
+    }
+}
+
+runtime let input = external_input();
+let output = choose(input == 0);
+
+// HIR: fn choose(bool) -> u32
+// HIR: binding output: u32 [Runtime] = if(eq(runtime(external_input()), 0), 10, 20)
+
+// IR-LABEL: define i32 @pagos_main()
+// IR: call i32 @pagos_external_input()
+// IR: icmp eq i32
+// IR: phi i32 [ 10,
+// IR-SAME: [ 20,

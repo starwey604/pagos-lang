@@ -302,7 +302,9 @@ though the condition is Static.
 
 ## Acceptance Use
 
-Milestone 1 should turn each numbered example into a fixture. Successful cases
-need stage/HIR snapshots; Runtime cases additionally need residual MIR or LLVM
-checks; failing cases need stable diagnostic snapshots. Changing an expected
-result requires updating the normative semantics in the same review.
+Each example becomes a fixture when its feature enters an implementation
+milestone. Milestone 1 covers the core expression, call, stage, type, and LLVM
+subset; loop, effect, and richer target cases follow in their scheduled
+milestones. Successful cases need stage/HIR snapshots, Runtime cases need
+residual IR checks, and failures need stable diagnostic snapshots. Changing an
+expected result requires updating the normative semantics in the same review.

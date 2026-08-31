@@ -1,0 +1,11 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+
+runtime let input = external_input();
+static let output = input + 1;
+
+// CHECK: error[E2001]: static binding `output` was thawed
+// CHECK: requires a Static value
+// CHECK: runtime source introduced here:
+// CHECK: Runtime source `input`
+// CHECK: dependency path: input -> output
+// CHECK: help: remove `static` or remove the Runtime dependency

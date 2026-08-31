@@ -1,0 +1,15 @@
+// RUN: %pagosc emit-llvm %s | %FileCheck %s
+
+runtime let divisor = external_input();
+let quotient = 10 / divisor;
+
+// CHECK-LABEL: define i32 @pagos_main()
+// CHECK: %[[DIVISOR:.*]] = call i32 @pagos_external_input()
+// CHECK: %[[ZERO:.*]] = icmp eq i32 %[[DIVISOR]], 0
+// CHECK: br i1 %[[ZERO]], label %div.zero, label %div.cont
+// CHECK: div.zero:
+// CHECK: call void @llvm.trap()
+// CHECK: unreachable
+// CHECK: div.cont:
+// CHECK: %[[RESULT:.*]] = udiv i32 10, %[[DIVISOR]]
+// CHECK: ret i32 %[[RESULT]]

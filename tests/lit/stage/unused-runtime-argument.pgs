@@ -1,0 +1,11 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s
+
+fn first(first_value: u32, unused: u32) -> u32 {
+    return first_value;
+}
+
+runtime let input = external_input();
+let result = first(5, input);
+
+// CHECK: binding input: u32 [Runtime]
+// CHECK: binding result: u32 [Static] = 5

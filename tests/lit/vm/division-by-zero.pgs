@@ -1,0 +1,5 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+
+let invalid = 10 / 0;
+
+// CHECK: error[E4001]: division by zero

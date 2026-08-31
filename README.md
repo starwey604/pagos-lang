@@ -12,8 +12,9 @@ firmly set, and by extension frost or ice. The language uses freezing and
 thawing as an explanatory metaphor for static and runtime values; the formal
 model uses binding-time analysis and partial evaluation.
 
-Pagos is currently a research project. The syntax and semantics below are a
-design sketch, not a working compiler or a stability promise.
+Pagos is currently a research compiler. The first executable vertical slice is
+implemented, but the language remains experimental and makes no stability
+promise.
 
 ## Core idea
 
@@ -23,13 +24,12 @@ fn uart_divisor(clock_hz: u32, baud: u32) -> u32 {
 }
 
 let clock_hz = 80_000_000;              // inferred Static
-runtime let baud = uart.read_baud();     // explicit Runtime source
+runtime let baud = external_input();     // explicit Runtime source
 
 let divisor = uart_divisor(clock_hz, baud);
                                            // Runtime residual code;
                                            // clock_hz is still folded in
 
-static let crc_table = make_crc_table(); // must remain Static
 ```
 
 The intended rules are:
@@ -94,24 +94,31 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
   expected stages, residual work, and errors
 - [Diagnostic conventions](docs/diagnostics.md): stable structure for stage and
   evaluation failures
+- [Development guide](docs/development.md): C++26 toolchain, build presets,
+  compiler commands, and tests
 - [Compiler architecture](docs/architecture.md): the LLVM-based implementation
   plan
 - [Roadmap](docs/roadmap.md): incremental milestones and acceptance criteria
 
 ## Status
 
-Pagos is at the specification stage. The Milestone 0 semantic baseline is
-complete; the next deliverable is a small vertical slice proving that explicit
-runtime sources can produce correct and explainable residual LLVM IR.
+Milestone 1 is complete. The C++26 reference compiler parses and type-checks the
+core language, infers stages, evaluates Static expressions, explains Runtime
+dependency paths, and emits verified residual LLVM IR for the host target.
 
 ## Development
 
-The repository does not contain a compiler yet. Validate documentation and
-local links with the dependency-free check used by CI:
+Configure, build, and test the default Clang 22 development preset:
 
 ```sh
+cmake --preset debug
+cmake --build --preset debug
+ctest --preset debug
 python3 scripts/check_docs.py
 ```
+
+See the [development guide](docs/development.md) for GCC, sanitizer, compiler,
+formatting, and analysis commands.
 
 ## License
 

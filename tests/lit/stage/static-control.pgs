@@ -1,0 +1,13 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR
+
+let branch = if true { 1 } else { external_input() };
+let short_circuit = false && (10 / 0 == 1);
+
+// CHECK: binding branch: u32 [Static] = 1
+// CHECK: binding short_circuit: bool [Static] = false
+// IR-LABEL: define i32 @pagos_main()
+// IR-NEXT: entry:
+// IR-NEXT: ret i32 0
+// IR-NOT: external_input
+// IR-NOT: llvm.trap

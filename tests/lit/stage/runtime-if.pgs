@@ -1,0 +1,13 @@
+// RUN: %pagosc emit-llvm %s | %FileCheck %s
+
+runtime let condition = true;
+let result = if condition { 1 } else { 2 };
+
+// CHECK-LABEL: define i32 @pagos_main()
+// CHECK: br i1 true, label %if.then, label %if.else
+// CHECK: if.then:
+// CHECK: br label %if.merge
+// CHECK: if.else:
+// CHECK: br label %if.merge
+// CHECK: if.merge:
+// CHECK: %if.result = phi i32 [ 1, %if.then ], [ 2, %if.else ]

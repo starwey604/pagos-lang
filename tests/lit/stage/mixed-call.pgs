@@ -1,0 +1,23 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR
+
+fn scale(factor: u32, value: u32) -> u32 {
+    return factor * value;
+}
+
+let factor = 4;
+runtime let input = external_input();
+let output = scale(factor, input);
+
+// HIR: fn scale(u32, u32) -> u32
+// HIR: binding factor: u32 [Static] = 4
+// HIR: binding input: u32 [Runtime] = runtime(external_input())
+// HIR: binding output: u32 [Runtime] = mul(4, runtime(external_input()))
+
+// IR-LABEL: define i32 @pagos_main()
+// IR: %[[INPUT:.*]] = call i32 @pagos_external_input()
+// IR: %[[OUTPUT:.*]] = mul i32 4, %[[INPUT]]
+// IR: ret i32 %[[OUTPUT]]
+// IR: declare i32 @pagos_external_input()
+// IR-NOT: evaluator
+// IR-NOT: scale

@@ -1,0 +1,6 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+
+let invalid = if true { 1 } else { false };
+
+// CHECK: error[E1008]: type mismatch in `if` arm
+// CHECK: expected `u32`, found `bool`

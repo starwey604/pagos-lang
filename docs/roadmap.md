@@ -26,6 +26,10 @@ Acceptance criteria:
 
 ## Milestone 1: First residual program
 
+Status: baseline complete. The C++26 compiler implements the vertical slice
+below with typed HIR, explainable stage paths, pure static evaluation, verified
+host LLVM IR, and GoogleTest plus `lit`/`FileCheck` coverage.
+
 Implement a host compiler in C++ with:
 
 - source manager and diagnostics;
@@ -66,7 +70,7 @@ Add:
 - aggregates with field-sensitive staging;
 - cross-stage embedding for scalars, arrays, and records;
 - SSA residual MIR;
-- `emit-hir`, `emit-mir`, and `explain-stage` commands;
+- residual `emit-mir` plus richer `emit-hir` and `explain-stage` reports;
 - compile-time fuel, recursion, memory, and specialization limits.
 
 Acceptance criteria:

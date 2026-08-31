@@ -2,52 +2,46 @@
 
 ## Project Structure & Module Organization
 
-Pagos is currently a specification-stage language project. `README.md` is the
-entry point; design material lives in `docs/`. The dependency-free documentation
-checker is `scripts/check_docs.py`, and CI runs it from `.github/workflows/`.
-Keep normative semantic rules in `docs/staging-semantics.md` and implementation
-plans in `docs/architecture.md`.
-
-The proposed implementation is a C++ compiler with CMake. As code is added,
-follow the documented layout: public headers under `include/pagos/`, matching
-implementations under `lib/`, the `pagosc` driver under `tools/pagosc/`, and
-tests grouped by compiler phase under `tests/`, such as `tests/stage/`. Do not
-create empty directories ahead of their milestone.
+`README.md` is the entry point and `docs/` contains the language specification,
+architecture, roadmap, and development guide. Public C++ headers live under
+`include/pagos/`; matching implementations live in `lib/`, grouped by compiler
+phase (`syntax`, `sema`, `hir`, `stage`, `vm`, and `codegen`). The `pagosc`
+driver is in `tools/pagosc/`. Keep GoogleTest units in `tests/unit/` and
+end-to-end `.pgs` fixtures in phase-specific directories under `tests/lit/`.
 
 ## Build, Test, and Development Commands
 
-There is no buildable compiler or language test suite yet. For documentation
-changes, use:
-
 ```sh
-python3 scripts/check_docs.py         # validate Markdown and local links
-git diff --check                      # catch whitespace and patch errors
-git diff -- README.md docs AGENTS.md  # review documentation changes
+cmake --preset debug          # configure Clang, LLVM 22, and tests
+cmake --build --preset debug  # build libraries, pagosc, and unit tests
+ctest --preset debug          # run GoogleTest and lit/FileCheck tests
+python3 scripts/check_docs.py # validate Markdown and local links
+git diff --check              # catch whitespace and patch errors
 ```
 
-When the planned CMake project lands, document the exact configure, build, and
-test commands here rather than assuming conventional defaults.
+Use `gcc-debug` for the GCC compatibility build and `asan` for AddressSanitizer
+plus UndefinedBehaviorSanitizer. See `docs/development.md` for prerequisites and
+individual CLI examples.
 
 ## Coding Style & Naming Conventions
 
-Write concise Markdown with ATX headings, fenced code blocks with language
-tags, and lines wrapped near 80 characters. Use **Pagos** (never `PagOS`),
-`pagosc` for the proposed compiler, and `.pgs` for source examples. Formal text
-should prefer `Static`, `Runtime`, binding-time analysis, and residual program;
-reserve “frozen” and “thawed” for explanatory prose and diagnostics.
+The project requires C++26, four-space indentation, and no compiler extensions.
+Format C++ with `.clang-format` and check it with `clang-format --dry-run
+--Werror`. Use `snake_case` for files/functions, `PascalCase` for types, and
+parallel public/implementation paths. Keep syntax nodes free of inferred types
+and LLVM details; store semantic facts in side tables and lower through HIR.
 
-For future C++, keep public and implementation paths parallel and name modules
-by compiler responsibility (`syntax`, `sema`, `hir`, `stage`, `vm`, `mir`,
-`codegen`). Introduce formatter or linter rules with the relevant code.
+Write Markdown with ATX headings, tagged fences, and lines near 80 characters.
+Use **Pagos**, `pagosc`, and `.pgs`. Prefer the formal terms `Static`, `Runtime`,
+binding-time analysis, and residual program.
 
 ## Testing Guidelines
 
-Every semantic change should include small positive and negative `.pgs`
-examples with unambiguous expected stages or diagnostics. The roadmap requires
-snapshot/golden coverage for stage inference and errors; keep fixtures in
-`tests/<phase>/`. Test dependency paths and successful residual output. Until a
-harness exists, cross-check examples against the staging lattice and record
-unresolved behavior explicitly.
+Use GoogleTest for isolated library behavior and lit plus FileCheck for CLI,
+diagnostic, HIR, and LLVM IR golden tests. Name unit files `<area>_test.cpp` and
+fixtures after behavior, for example `tests/lit/stage/mixed-call.pgs`. Every
+semantic change needs focused positive and negative cases. Assert dependency
+paths for staging failures and verify successful residual output.
 
 ## Commit & Pull Request Guidelines
 

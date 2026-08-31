@@ -1,0 +1,13 @@
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-exception-escape,
+  -bugprone-unchecked-optional-access,
+  clang-analyzer-*,
+  -clang-analyzer-security.ArrayBound,
+  performance-*,
+  -performance-enum-size
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*/(include|lib|tools|tests)/'
+CheckOptions:
+  bugprone-easily-swappable-parameters.MinimumLength: '4'

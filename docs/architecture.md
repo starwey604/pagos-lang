@@ -1,6 +1,6 @@
 # Compiler Architecture
 
-Status: proposed architecture for the first implementation.
+Status: Milestone 1 implemented; later components remain proposed.
 
 ## Design boundary
 
@@ -9,6 +9,19 @@ It is not responsible for Pagos binding-time inference, effect checking,
 compile-time execution, or stage diagnostics.
 
 Pagos-specific semantics must be resolved before lowering to LLVM IR.
+
+## Milestone 1 implementation baseline
+
+The reference compiler uses C++26, CMake, and LLVM 22. Its populated modules
+mirror the repository layout: source management, syntax, semantic typing, typed
+HIR, stage analysis, the compile-time evaluator, and LLVM code generation are
+separate libraries. The AST contains syntax and spans only; an independent type
+table feeds stage analysis.
+
+Milestone 1 lowers residual typed HIR directly to LLVM IR as a deliberate
+vertical-slice shortcut. Milestone 2 inserts the residual SSA MIR boundary
+shown below. No LLVM values or APIs appear in the AST, type checker, stage
+analyzer, or evaluator.
 
 ```mermaid
 flowchart TB
