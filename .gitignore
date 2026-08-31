@@ -1,0 +1,13 @@
+# CMake and compiler output
+/build/
+/cmake-build-*/
+/compile_commands.json
+
+# Local caches and Python bytecode
+/.cache/
+__pycache__/
+*.py[cod]
+
+# Editor and operating-system files
+*.swp
+.DS_Store

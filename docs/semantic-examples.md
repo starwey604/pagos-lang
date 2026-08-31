@@ -1,0 +1,308 @@
+# Core Semantic Examples
+
+Status: Milestone 0 acceptance corpus. These examples are the source of truth
+for future stage and diagnostic golden tests.
+
+Unless stated otherwise, each snippet is an independent `.pgs` source file.
+The illustrative prelude provides `read_u32() -> u32` with effect `target.io`
+and `build_u32() -> u32` with effect `build.fs`. A declared `build.fs`
+capability is assumed except where an example tests its absence.
+
+## Static inference
+
+### 1. Literal binding
+
+```pagos
+let answer = 42;
+```
+
+Expected: `answer: u32` is Static; no residual operation is emitted.
+
+### 2. Pure arithmetic
+
+```pagos
+let divisor = 80_000_000 / 115_200;
+```
+
+Expected: `divisor` is the Static `u32` value `694`.
+
+### 3. Static comparison
+
+```pagos
+let enabled = 3 < 5;
+```
+
+Expected: `enabled: bool` is Static `true`.
+
+### 4. Satisfied static constraint
+
+```pagos
+static let table_size = 16 * 4;
+```
+
+Expected: `table_size` is Static `64`; the constraint succeeds.
+
+## Runtime roots and propagation
+
+### 5. Explicit runtime root
+
+```pagos
+runtime let input = 7;
+```
+
+Expected: `input` is Runtime even though its initializer is Static. Residual
+storage is not required, and a backend may still fold the constant.
+
+### 6. Direct propagation
+
+```pagos
+runtime let input = 7;
+let output = input + 1;
+```
+
+Expected: `output` is Runtime; residual code contains addition by `1` before
+backend optimization.
+
+### 7. Failed static constraint
+
+```pagos
+runtime let input = 7;
+static let output = input + 1;
+```
+
+Expected error: `output` requires Static. The dependency path is
+`input -> output`, rooted at the `runtime let`.
+
+### 8. Target effect
+
+```pagos
+let sample = read_u32();
+```
+
+Expected: `sample` is Runtime because `target.io` can execute only on the
+target; the read remains in residual code.
+
+## Calls and specialization
+
+### 9. Fully static call
+
+```pagos
+fn double(value: u32) -> u32 {
+    return value * 2;
+}
+
+let result = double(6);
+```
+
+Expected: `result` is Static `12`; no call is residualized.
+
+### 10. Mixed-stage call
+
+```pagos
+fn scale(factor: u32, value: u32) -> u32 {
+    return factor * value;
+}
+
+runtime let sample = 3;
+let result = scale(4, sample);
+```
+
+Expected: `factor` specializes to `4`; `result` and the multiply are Runtime.
+The compile-time evaluator itself never appears in residual code.
+
+### 11. Unused runtime argument
+
+```pagos
+fn first(first_value: u32, unused: u32) -> u32 {
+    return first_value;
+}
+
+runtime let input = 9;
+let result = first(5, input);
+```
+
+Expected: `result` is Static `5`; stages propagate through actual data use,
+not by blindly joining every argument.
+
+### 12. Transitive failure path
+
+```pagos
+fn scale(factor: u32, value: u32) -> u32 {
+    return factor * value;
+}
+
+runtime let sample = 3;
+let scaled = scale(4, sample);
+static let result = scaled;
+```
+
+Expected error: the useful path is
+`sample -> scale.value -> scaled -> result`.
+
+## Control flow
+
+### 13. Static condition
+
+```pagos
+runtime let fallback = 9;
+let result = if true { 1 } else { fallback };
+```
+
+Expected: `result` is Static `1`. The unselected arm is type-checked but does
+not thaw the result or produce residual code.
+
+### 14. Runtime condition
+
+```pagos
+runtime let select_first = true;
+let result = if select_first { 1 } else { 2 };
+```
+
+Expected: `result` is Runtime and the conditional is residualized.
+
+### 15. Equal arms under runtime control
+
+```pagos
+runtime let condition = true;
+let result = if condition { 1 } else { 1 };
+```
+
+Expected: `result` is Runtime by language staging rules. LLVM may later fold
+the residual conditional without changing what compile-time code may observe.
+
+### 16. Static short-circuit
+
+```pagos
+runtime let flag = true;
+let result = false && flag;
+```
+
+Expected: `result` is Static `false`; the right operand is not observed.
+
+### 17. Runtime short-circuit
+
+```pagos
+runtime let flag = true;
+let result = true && flag;
+```
+
+Expected: `result` is Runtime because the right operand is required.
+
+### 18. Static range loop
+
+```pagos
+for index in 0..4 {
+    index;
+}
+```
+
+Expected: the loop executes four times during compilation. Each `index` is a
+Static `u32`; the expression leaves no residual work.
+
+### 19. Runtime range loop
+
+```pagos
+runtime let end = 4;
+for index in 0..end {
+    index;
+}
+```
+
+Expected: the loop and `index` are Runtime and are emitted to residual control
+flow.
+
+## Effects
+
+### 20. Build effect under static control
+
+```pagos
+let value = if true { build_u32() } else { 0 };
+```
+
+Expected: with a declared `build.fs` capability, the selected call runs once
+during compilation and `value` is Static. The input dependency is recorded.
+
+### 21. Build effect under runtime branch
+
+```pagos
+runtime let condition = true;
+let value = if condition { build_u32() } else { 0 };
+```
+
+Expected error: `build.fs` cannot execute under Runtime control. The diagnostic
+points to `condition`, the `if`, and the effectful call.
+
+### 22. Build effect under runtime loop
+
+```pagos
+runtime let end = 4;
+for index in 0..end {
+    build_u32();
+}
+```
+
+Expected error: a compile-time effect cannot be conditionally repeated by a
+Runtime loop.
+
+### 23. Missing capability
+
+```pagos
+let value = build_u32();
+```
+
+Expected without a declared `build.fs` capability: compilation fails at the
+call and names the missing capability. Stage inference does not bypass effect
+checking.
+
+## Integer and type rules
+
+### 24. Unsigned overflow
+
+```pagos
+let wrapped: u32 = 4_294_967_295 + 1;
+```
+
+Expected: `wrapped` is Static `0`, using arithmetic modulo 2^32.
+
+### 25. Literal outside `u32`
+
+```pagos
+let too_large: u32 = 4_294_967_296;
+```
+
+Expected error: the literal cannot be represented as `u32`; no truncation is
+performed.
+
+### 26. Static division by zero
+
+```pagos
+let invalid = 10 / 0;
+```
+
+Expected error: compile-time evaluation reports division by zero at `/`.
+
+### 27. Possible runtime division by zero
+
+```pagos
+runtime let divisor = 2;
+let quotient = 10 / divisor;
+```
+
+Expected: `quotient` is Runtime. Residual code preserves the defined
+division-by-zero trap unless analysis proves the divisor nonzero.
+
+### 28. Branch type mismatch
+
+```pagos
+let invalid = if true { 1 } else { false };
+```
+
+Expected error: the `if` arms have incompatible types `u32` and `bool`, even
+though the condition is Static.
+
+## Acceptance Use
+
+Milestone 1 should turn each numbered example into a fixture. Successful cases
+need stage/HIR snapshots; Runtime cases additionally need residual MIR or LLVM
+checks; failing cases need stable diagnostic snapshots. Changing an expected
+result requires updating the normative semantics in the same review.
