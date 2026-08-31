@@ -84,6 +84,7 @@ Important HIR concepts include:
 - typed aggregate fields;
 - function calls before specialization;
 - explicit runtime roots;
+- structured Runtime ranges and residual sequencing;
 - compile-time capability operations.
 
 ### 5. Binding-time analysis
@@ -125,10 +126,11 @@ MIR contains only target-runtime work. It should be small, typed, target-aware,
 and convenient to verify and lower.
 
 The current MIR has explicit basic blocks, SSA values, typed operations,
-conditional and unconditional branches, phi nodes, checked division and
-remainder, and returns. Its verifier rejects invalid types, undefined values,
-unreachable blocks, incomplete phi inputs, and non-dominating uses before LLVM
-lowering. `pagosc emit-mir` provides a stable textual form for golden tests.
+conditional and unconditional branches, phi nodes, range-loop backedges,
+checked division and remainder, and returns. Its verifier rejects invalid
+types, undefined values, unreachable blocks, incomplete phi inputs, and
+non-dominating uses before LLVM lowering. `pagosc emit-mir` provides a stable
+textual form for golden tests.
 
 Initial operations should cover:
 

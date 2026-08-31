@@ -1,0 +1,14 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+
+fn first(end: u32) -> u32 {
+    for index in 0..end {
+        return index;
+    }
+    return 0;
+}
+
+runtime let end = external_input();
+let result = first(end);
+
+// CHECK: error[E5001]: return from a Runtime loop is not implemented yet
+// CHECK: help: move the return after the loop or make both bounds Static

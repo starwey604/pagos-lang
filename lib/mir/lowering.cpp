@@ -142,6 +142,14 @@ class Lowerer {
         case hir::Expr::Kind::If:
             result = lower_if(expression);
             break;
+        case hir::Expr::Kind::Sequence:
+            result = lower_sequence(expression);
+            break;
+        case hir::Expr::Kind::LoopIndex:
+            return std::unexpected("HIR loop index used outside its loop");
+        case hir::Expr::Kind::RangeLoop:
+            result = lower_range_loop(expression);
+            break;
         }
         if (result) {
             cache(expression.get(), *result);
@@ -234,6 +242,84 @@ class Lowerer {
                                  {.block = else_exit, .value = *else_value},
                              }},
             expression->span);
+    }
+
+    std::expected<ValueId, std::string>
+    lower_sequence(const hir::ExprPtr& expression) {
+        if (expression->operands.empty()) {
+            return std::unexpected("HIR sequence has no operands");
+        }
+        std::expected<ValueId, std::string> result =
+            std::unexpected("HIR sequence has no result");
+        for (const auto& operand : expression->operands) {
+            result = lower_expression(operand);
+            if (!result) {
+                return result;
+            }
+        }
+        return result;
+    }
+
+    std::expected<ValueId, std::string>
+    lower_range_loop(const hir::ExprPtr& expression) {
+        if (expression->operands.size() < 3 ||
+            expression->operands[2]->kind != hir::Expr::Kind::LoopIndex) {
+            return std::unexpected("malformed range-loop HIR expression");
+        }
+        auto begin = lower_expression(expression->operands[0]);
+        if (!begin) {
+            return begin;
+        }
+        auto end = lower_expression(expression->operands[1]);
+        if (!end) {
+            return end;
+        }
+
+        const auto preheader = current_block_;
+        const auto header = create_block("loop.header", preheader);
+        const auto body = create_block("loop.body", header);
+        const auto exit = create_block("loop.exit", header);
+        block(preheader).terminator = Branch{.target = header};
+
+        current_block_ = header;
+        const auto index = emit(
+            Type::U32,
+            PhiOperation{.incoming = {{.block = preheader, .value = *begin}}},
+            expression->operands[2]->span);
+        cache(expression->operands[2].get(), index);
+        const auto condition =
+            emit(Type::Bool,
+                 BinaryOperation{.operation = BinaryOperator::Less,
+                                 .left = index,
+                                 .right = *end},
+                 expression->span);
+        block(header).terminator = ConditionalBranch{
+            .condition = condition, .then_target = body, .else_target = exit};
+
+        current_block_ = body;
+        for (std::size_t operand = 3; operand < expression->operands.size();
+             ++operand) {
+            if (auto lowered = lower_expression(expression->operands[operand]);
+                !lowered) {
+                return lowered;
+            }
+        }
+        const auto one =
+            emit(Type::U32, ConstantOperation{.value = std::uint32_t{1}},
+                 expression->span);
+        const auto next = emit(Type::U32,
+                               BinaryOperation{.operation = BinaryOperator::Add,
+                                               .left = index,
+                                               .right = one},
+                               expression->span);
+        const auto body_exit = current_block_;
+        block(body_exit).terminator = Branch{.target = header};
+        auto& phi = std::get<PhiOperation>(
+            block(header).instructions.front().operation);
+        phi.incoming.push_back({.block = body_exit, .value = next});
+
+        current_block_ = exit;
+        return *begin;
     }
 
     static Type type_of(syntax::TypeKind type) {

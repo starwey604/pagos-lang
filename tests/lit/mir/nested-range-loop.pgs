@@ -1,0 +1,21 @@
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR
+
+fn nested(end: u32) -> u32 {
+    for outer in 0..end {
+        for inner in 0..outer {
+        }
+    }
+    return 5;
+}
+
+runtime let end = external_input();
+let result = nested(end);
+
+// MIR-DAG: u32 = phi
+// MIR-DAG: u32 = phi
+// MIR-DAG: return %{{[0-9]+}}
+
+// IR-DAG: phi i32
+// IR-DAG: phi i32
+// IR-DAG: ret i32 5

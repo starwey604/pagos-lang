@@ -83,6 +83,36 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
         print_expression(expression->operands.at(2), output);
         output << ')';
         break;
+    case Expr::Kind::Sequence:
+        output << "sequence(";
+        for (std::size_t index = 0; index < expression->operands.size();
+             ++index) {
+            if (index != 0) {
+                output << ", ";
+            }
+            print_expression(expression->operands[index], output);
+        }
+        output << ')';
+        break;
+    case Expr::Kind::LoopIndex:
+        output << expression->variable_name.value_or("index");
+        break;
+    case Expr::Kind::RangeLoop:
+        output << "for(" << expression->variable_name.value_or("index")
+               << " in ";
+        print_expression(expression->operands.at(0), output);
+        output << "..";
+        print_expression(expression->operands.at(1), output);
+        output << ") {";
+        for (std::size_t index = 3; index < expression->operands.size();
+             ++index) {
+            if (index != 3) {
+                output << ", ";
+            }
+            print_expression(expression->operands[index], output);
+        }
+        output << '}';
+        break;
     }
 }
 

@@ -5,10 +5,10 @@ extend it, but should not silently change accepted programs.
 
 ## Scope
 
-The first compiler slice supports `bool`, `u32`, immutable bindings, functions,
-calls, `if` expressions, and explicit stage constraints. A range-based `for`
-form is specified so loop staging has a concrete model, but implementation is
-deferred until after Milestone 1.
+The compiler supports `bool`, `u32`, immutable bindings, functions, calls, `if`
+expressions, explicit stage constraints, and range-based `for` statements.
+Static ranges execute during analysis; Runtime ranges residualize as target
+control flow. Returning directly from a Runtime loop remains reserved.
 
 Source files use UTF-8. Keywords and identifiers are case-sensitive. An
 identifier starts with an ASCII letter or `_` and continues with ASCII letters,

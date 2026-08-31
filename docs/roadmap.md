@@ -63,11 +63,12 @@ Acceptance criteria:
 
 ## Milestone 2: Explainable partial evaluation
 
-Status: in progress. The first slice introduces typed residual SSA MIR,
-verification, stable `emit-mir` output, and MIR-only LLVM lowering. The second
-adds bounded Static recursion, pure Static specialization caching, and fuel,
-depth, and specialization controls. Loops, aggregates, cross-stage embedding,
-effect-aware keys, and memory accounting remain.
+Status: in progress. The first slice introduced typed residual SSA MIR and
+MIR-only LLVM lowering. The second added bounded Static recursion,
+specialization caching, and resource controls. The current loop slice evaluates
+Static ranges during analysis and lowers Runtime ranges to verified MIR loops.
+Aggregates, cross-stage embedding, effect-aware keys, and memory accounting
+remain.
 
 Add:
 

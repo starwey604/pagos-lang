@@ -34,6 +34,9 @@ struct Expr {
         Unary,
         Binary,
         If,
+        Sequence,
+        LoopIndex,
+        RangeLoop,
     };
 
     Kind kind{Kind::Constant};
@@ -44,6 +47,7 @@ struct Expr {
     std::optional<Constant> constant;
     std::optional<syntax::UnaryOperator> unary_operation;
     std::optional<syntax::BinaryOperator> binary_operation;
+    std::optional<std::string> variable_name;
     std::vector<ExprPtr> operands;
 };
 

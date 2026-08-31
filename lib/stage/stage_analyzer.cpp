@@ -31,6 +31,16 @@ std::uint32_t parse_u32(const std::string& spelling) {
     return value;
 }
 
+bool has_residual_control(const hir::ExprPtr& expression) {
+    if (!expression) {
+        return false;
+    }
+    if (expression->kind == hir::Expr::Kind::RangeLoop) {
+        return true;
+    }
+    return std::ranges::any_of(expression->operands, has_residual_control);
+}
+
 } // namespace
 
 std::size_t StageAnalyzer::SpecializationKeyHash::operator()(
@@ -65,30 +75,47 @@ StageAnalyzer::analyze(const syntax::Module& module) {
     }
 
     scopes_.emplace_back();
+    std::vector<hir::ExprPtr> effects;
     for (const auto& statement : module.statements) {
-        const auto statement_result =
-            analyze_statement(*statement, result.get());
+        auto statement_result = analyze_statement(*statement, result.get());
+        std::ranges::move(statement_result.effects,
+                          std::back_inserter(effects));
         if (statement_result.value) {
             result->result = statement_result.value;
         }
     }
     scopes_.pop_back();
+    if (!effects.empty()) {
+        auto value = result->result;
+        if (!value) {
+            value =
+                hir::make_constant(std::uint32_t{0}, syntax::TypeKind::U32, {});
+        }
+        const auto span = value->span;
+        result->result =
+            make_sequence(std::move(effects), std::move(value), span);
+    }
     return result;
 }
 
 StageAnalyzer::BlockResult
 StageAnalyzer::analyze_block(const syntax::Block& block) {
     scopes_.emplace_back();
+    std::vector<hir::ExprPtr> effects;
     for (const auto& statement : block.statements) {
         auto result = analyze_statement(*statement, nullptr);
+        std::ranges::move(result.effects, std::back_inserter(effects));
         if (result.returned) {
             scopes_.pop_back();
+            result.effects = std::move(effects);
             return result;
         }
     }
     auto value = block.tail ? analyze_expression(*block.tail) : nullptr;
     scopes_.pop_back();
-    return {.value = std::move(value), .returned = false};
+    return {.value = std::move(value),
+            .returned = false,
+            .effects = std::move(effects)};
 }
 
 StageAnalyzer::BlockResult
@@ -113,12 +140,87 @@ StageAnalyzer::analyze_statement(const syntax::Stmt& statement,
                 .returned = false};
     }
     case syntax::Stmt::Kind::For:
-        diagnostics_.error(
-            "E5001", "range-loop residualization is not implemented yet",
-            statement.span, "range loops are scheduled after Milestone 1");
-        return {};
+        return analyze_for(static_cast<const syntax::ForStmt&>(statement));
     }
     return {};
+}
+
+StageAnalyzer::BlockResult
+StageAnalyzer::analyze_for(const syntax::ForStmt& loop_statement) {
+    const auto begin = analyze_expression(*loop_statement.begin);
+    const auto end = analyze_expression(*loop_statement.end);
+    if (!begin || !end) {
+        return {};
+    }
+    if (begin->stage == hir::Stage::Static &&
+        end->stage == hir::Stage::Static) {
+        const auto begin_value =
+            std::get<std::uint32_t>(begin->constant.value());
+        const auto end_value = std::get<std::uint32_t>(end->constant.value());
+        std::vector<hir::ExprPtr> effects;
+        if (has_residual_control(begin)) {
+            effects.push_back(begin);
+        }
+        if (has_residual_control(end)) {
+            effects.push_back(end);
+        }
+        for (std::uint32_t index = begin_value; index < end_value; ++index) {
+            if (!consume_fuel(loop_statement.span)) {
+                return {};
+            }
+            scopes_.emplace_back();
+            define(loop_statement.variable,
+                   hir::make_constant(index, syntax::TypeKind::U32,
+                                      loop_statement.variable_span));
+            auto body_result = analyze_block(*loop_statement.body);
+            scopes_.pop_back();
+            std::ranges::move(body_result.effects, std::back_inserter(effects));
+            if (body_result.returned) {
+                body_result.effects = std::move(effects);
+                return body_result;
+            }
+        }
+        return {.effects = std::move(effects)};
+    }
+
+    auto trace = begin->stage == hir::Stage::Runtime ? begin->trace.value()
+                                                     : end->trace.value();
+    trace.path.push_back(loop_statement.variable);
+    auto index = std::make_shared<hir::Expr>();
+    index->kind = hir::Expr::Kind::LoopIndex;
+    index->type = syntax::TypeKind::U32;
+    index->stage = hir::Stage::Runtime;
+    index->span = loop_statement.variable_span;
+    index->trace = trace;
+    index->variable_name = loop_statement.variable;
+
+    scopes_.emplace_back();
+    define(loop_statement.variable, index);
+    auto body_result = analyze_block(*loop_statement.body);
+    scopes_.pop_back();
+    if (body_result.returned) {
+        diagnostics_.report({
+            .severity = source::Severity::Error,
+            .code = "E5001",
+            .message = "return from a Runtime loop is not implemented yet",
+            .primary = {.span = loop_statement.span,
+                        .message = "the loop trip count is Runtime"},
+            .help = "move the return after the loop or make both bounds "
+                    "Static",
+        });
+        return {};
+    }
+
+    auto loop = std::make_shared<hir::Expr>();
+    loop->kind = hir::Expr::Kind::RangeLoop;
+    loop->type = syntax::TypeKind::Void;
+    loop->stage = hir::Stage::Runtime;
+    loop->span = loop_statement.span;
+    loop->trace = std::move(trace);
+    loop->variable_name = loop_statement.variable;
+    loop->operands = {begin, end, std::move(index)};
+    std::ranges::move(body_result.effects, std::back_inserter(loop->operands));
+    return {.effects = {std::move(loop)}};
 }
 
 hir::ExprPtr StageAnalyzer::analyze_binding(const syntax::BindingStmt& binding,
@@ -210,8 +312,13 @@ hir::ExprPtr StageAnalyzer::analyze_unary(const syntax::UnaryExpr& expression) {
                                expression.span);
             return nullptr;
         }
-        return hir::make_constant(*result, type_of(expression),
-                                  expression.span);
+        auto value =
+            hir::make_constant(*result, type_of(expression), expression.span);
+        if (has_residual_control(operand)) {
+            return make_sequence({std::move(operand)}, std::move(value),
+                                 expression.span);
+        }
+        return value;
     }
     return make_runtime(hir::Expr::Kind::Unary, type_of(expression),
                         expression.span, {operand}, operand->trace.value(),
@@ -232,8 +339,13 @@ StageAnalyzer::analyze_binary(const syntax::BinaryExpr& expression) {
         const auto left_value = std::get<bool>(left->constant.value());
         if ((expression.operation == LogicalAnd && !left_value) ||
             (expression.operation == LogicalOr && left_value)) {
-            return hir::make_constant(left_value, syntax::TypeKind::Bool,
-                                      expression.span);
+            auto value = hir::make_constant(left_value, syntax::TypeKind::Bool,
+                                            expression.span);
+            if (has_residual_control(left)) {
+                return make_sequence({std::move(left)}, std::move(value),
+                                     expression.span);
+            }
+            return value;
         }
     }
 
@@ -251,8 +363,17 @@ StageAnalyzer::analyze_binary(const syntax::BinaryExpr& expression) {
                                expression.span);
             return nullptr;
         }
-        return hir::make_constant(*result, type_of(expression),
-                                  expression.span);
+        auto value =
+            hir::make_constant(*result, type_of(expression), expression.span);
+        std::vector<hir::ExprPtr> effects;
+        if (has_residual_control(left)) {
+            effects.push_back(std::move(left));
+        }
+        if (has_residual_control(right)) {
+            effects.push_back(std::move(right));
+        }
+        return make_sequence(std::move(effects), std::move(value),
+                             expression.span);
     }
 
     if (expression.operation == LogicalAnd ||
@@ -379,12 +500,16 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
     call_stack_.push_back(function.name);
     stats_.maximum_recursion_depth =
         std::max(stats_.maximum_recursion_depth, call_stack_.size());
-    auto result = analyze_block(*function.body).value;
+    auto block_result = analyze_block(*function.body);
+    auto result =
+        make_sequence(std::move(block_result.effects),
+                      std::move(block_result.value), function.body->span);
     call_stack_.pop_back();
     scopes_.pop_back();
     if (key) {
         active_specializations_.erase(*key);
-        if (result && result->stage == hir::Stage::Static) {
+        if (result && result->stage == hir::Stage::Static &&
+            !has_residual_control(result)) {
             specialization_cache_.emplace(std::move(*key), result);
         }
     }
@@ -400,11 +525,23 @@ hir::ExprPtr StageAnalyzer::analyze_if(const syntax::IfExpr& expression) {
         const auto selected = std::get<bool>(condition->constant.value())
                                   ? expression.then_block.get()
                                   : expression.else_block.get();
-        return analyze_block(*selected).value;
+        auto selected_result = analyze_block(*selected);
+        if (has_residual_control(condition)) {
+            selected_result.effects.insert(selected_result.effects.begin(),
+                                           std::move(condition));
+        }
+        return make_sequence(std::move(selected_result.effects),
+                             std::move(selected_result.value), expression.span);
     }
 
-    auto then_value = analyze_block(*expression.then_block).value;
-    auto else_value = analyze_block(*expression.else_block).value;
+    auto then_result = analyze_block(*expression.then_block);
+    auto else_result = analyze_block(*expression.else_block);
+    auto then_value = make_sequence(std::move(then_result.effects),
+                                    std::move(then_result.value),
+                                    expression.then_block->span);
+    auto else_value = make_sequence(std::move(else_result.effects),
+                                    std::move(else_result.value),
+                                    expression.else_block->span);
     if (!then_value || !else_value) {
         return nullptr;
     }
@@ -442,6 +579,24 @@ hir::ExprPtr StageAnalyzer::make_runtime(
     expression->binary_operation = binary;
     expression->operands = std::move(operands);
     return expression;
+}
+
+hir::ExprPtr StageAnalyzer::make_sequence(std::vector<hir::ExprPtr> effects,
+                                          hir::ExprPtr value,
+                                          source::Span span) const {
+    if (effects.empty() || !value) {
+        return value;
+    }
+    auto sequence = std::make_shared<hir::Expr>();
+    sequence->kind = hir::Expr::Kind::Sequence;
+    sequence->type = value->type;
+    sequence->stage = value->stage;
+    sequence->span = span;
+    sequence->trace = value->trace;
+    sequence->constant = value->constant;
+    sequence->operands = std::move(effects);
+    sequence->operands.push_back(std::move(value));
+    return sequence;
 }
 
 void StageAnalyzer::report_static_failure(const syntax::BindingStmt& binding,

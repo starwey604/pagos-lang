@@ -1,0 +1,37 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR
+
+fn runtime_loop(end: u32) -> u32 {
+    for index in 0..end {
+    }
+    return 9;
+}
+
+runtime let end = external_input();
+let result = runtime_loop(end);
+
+// HIR: binding result: u32 [Static] = sequence(for(index in 0..runtime(external_input())) {}, 9)
+
+// MIR-LABEL: func @pagos_main() -> u32 {
+// MIR: bb0:
+// MIR: br bb1
+// MIR: bb1:
+// MIR: %{{[0-9]+}}: u32 = phi [bb0: %{{[0-9]+}}], [bb2: %{{[0-9]+}}]
+// MIR-NEXT: %{{[0-9]+}}: bool = lt %{{[0-9]+}}, %{{[0-9]+}}
+// MIR-NEXT: condbr %{{[0-9]+}}, bb2, bb3
+// MIR: bb2:
+// MIR: br bb1
+// MIR: bb3:
+// MIR: return %{{[0-9]+}}
+
+// IR-LABEL: define i32 @pagos_main()
+// IR: loop.header:
+// IR: phi i32
+// IR: icmp ult i32
+// IR: br i1 {{.*}}, label %loop.body, label %loop.exit
+// IR: loop.body:
+// IR: add i32
+// IR: br label %loop.header
+// IR: loop.exit:
+// IR: ret i32 9

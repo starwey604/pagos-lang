@@ -42,6 +42,7 @@ class StageAnalyzer {
     struct BlockResult {
         hir::ExprPtr value;
         bool returned{};
+        std::vector<hir::ExprPtr> effects;
     };
 
     using Scope = std::unordered_map<std::string, hir::ExprPtr>;
@@ -62,6 +63,7 @@ class StageAnalyzer {
                                   hir::Module* output_module);
     hir::ExprPtr analyze_binding(const syntax::BindingStmt& binding,
                                  hir::Module* output_module);
+    BlockResult analyze_for(const syntax::ForStmt& loop_statement);
     hir::ExprPtr analyze_expression(const syntax::Expr& expression);
     hir::ExprPtr analyze_unary(const syntax::UnaryExpr& expression);
     hir::ExprPtr analyze_binary(const syntax::BinaryExpr& expression);
@@ -75,6 +77,9 @@ class StageAnalyzer {
         std::vector<hir::ExprPtr> operands, hir::RuntimeTrace trace,
         std::optional<syntax::UnaryOperator> unary = std::nullopt,
         std::optional<syntax::BinaryOperator> binary = std::nullopt) const;
+    [[nodiscard]] hir::ExprPtr make_sequence(std::vector<hir::ExprPtr> effects,
+                                             hir::ExprPtr value,
+                                             source::Span span) const;
     void report_static_failure(const syntax::BindingStmt& binding,
                                const hir::RuntimeTrace& trace);
     [[nodiscard]] syntax::TypeKind

@@ -1,0 +1,11 @@
+// RUN: not %pagosc --max-fuel=4 check %s 2>&1 | %FileCheck %s --check-prefix=FUEL
+
+fn loop_limit() -> u32 {
+    for index in 0..5 {
+    }
+    return 0;
+}
+
+let result = loop_limit();
+
+// FUEL: error[E4004]: compile-time evaluation fuel exhausted after 4 steps

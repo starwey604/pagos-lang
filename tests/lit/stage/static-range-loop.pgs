@@ -1,0 +1,24 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR
+
+fn early_return() -> u32 {
+    for index in 0..1 {
+        return 11;
+    }
+    return 22;
+}
+
+fn empty_loop() -> u32 {
+    for index in 3..3 {
+        return 11;
+    }
+    return 7;
+}
+
+let early = early_return();
+let empty = empty_loop();
+
+// HIR: binding early: u32 [Static] = 11
+// HIR: binding empty: u32 [Static] = 7
+// IR-LABEL: define i32 @pagos_main()
+// IR: ret i32 7

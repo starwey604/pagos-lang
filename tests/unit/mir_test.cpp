@@ -114,4 +114,85 @@ TEST(MirVerifier, RejectsValuesThatDoNotDominateTheirUse) {
     EXPECT_EQ(result.error(), "MIR value `%1` does not dominate its use");
 }
 
+TEST(MirVerifier, AcceptsLoopBackedgeAndIndexPhi) {
+    using namespace pagos::mir;
+    const Module
+        module{.functions =
+                   {
+                       {
+                           .name = "pagos_main",
+                           .result_type = Type::U32,
+                           .entry = 0,
+                           .blocks =
+                               {
+                                   {.id = 0,
+                                    .name = "entry",
+                                    .instructions =
+                                        {{.result = 0,
+                                          .type = Type::U32,
+                                          .operation =
+                                              ConstantOperation{
+                                                  .value = std::uint32_t{0}},
+                                          .span = {}},
+                                         {.result = 1,
+                                          .type = Type::U32,
+                                          .operation =
+                                              ConstantOperation{
+                                                  .value = std::uint32_t{4}},
+                                          .span = {}}},
+                                    .terminator = Branch{.target = 1}},
+                                   {.id = 1,
+                                    .name = "loop.header",
+                                    .instructions = {{.result = 2,
+                                                      .type = Type::U32,
+                                                      .operation =
+                                                          PhiOperation{
+                                                              .incoming = {{.block =
+                                                                                0,
+                                                                            .value = 0},
+                                                                           {.block =
+                                                                                2,
+                                                                            .value =
+                                                                                5}}},
+                                                      .span = {}},
+                                                     {.result = 3,
+                                                      .type = Type::Bool,
+                                                      .operation =
+                                                          BinaryOperation{
+                                                              .operation = BinaryOperator::Less, .left = 2, .right = 1},
+                                                      .span = {}}},
+                                    .terminator =
+                                        ConditionalBranch{.condition = 3,
+                                                          .then_target = 2,
+                                                          .else_target = 3}},
+                                   {.id = 2,
+                                    .name = "loop.body",
+                                    .instructions = {{.result = 4,
+                                                      .type = Type::U32,
+                                                      .operation =
+                                                          ConstantOperation{
+                                                              .value =
+                                                                  std::uint32_t{1}},
+                                                      .span = {}},
+                                                     {.result = 5,
+                                                      .type = Type::U32,
+                                                      .operation =
+                                                          BinaryOperation{.operation =
+                                                                              BinaryOperator::Add,
+                                                                          .left =
+                                                                              2,
+                                                                          .right =
+                                                                              4},
+                                                      .span = {}}},
+                                    .terminator = Branch{.target = 1}},
+                                   {.id = 3,
+                                    .name = "loop.exit",
+                                    .instructions = {},
+                                    .terminator = Return{.value = 1}},
+                               },
+                       }}};
+
+    EXPECT_TRUE(verify(module).has_value());
+}
+
 } // namespace
