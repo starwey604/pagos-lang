@@ -163,6 +163,25 @@ limits deliberately. AST, HIR, cache copies, and LLVM memory are not counted.
 
 ## Test and Check
 
+### Compiler performance baseline
+
+Build `release`, then run:
+
+```sh
+python3 scripts/benchmark.py --output build/benchmarks/baseline.json
+```
+
+The Linux measurement script uses Python and GNU `/usr/bin/time`. It measures
+five bounded workloads across `check`, `emit-mir`, and `emit-llvm`, with two
+warmups and seven samples each. JSON records median/range, per-process peak
+RSS, output sizes, stage counters, input/binary hashes, budgets, machine, and
+tool versions. Wall time includes process startup and the measurement wrapper;
+differences between commands are not precise phase timings. Avoid concurrent
+builds/tests and compare repeated runs on the same machine. Reports stay under
+ignored `build/`; keep only concise conclusions in the preparation plan.
+
+### Regression commands
+
 Inspect the [minimal record example](records.md) with:
 
 ```sh

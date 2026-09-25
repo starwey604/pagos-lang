@@ -1,0 +1,3 @@
+fn square(value: u32) -> u32 { value * value }
+static let table = [for i in 0..1024 { square(i) }];
+let result = table[external_input()];

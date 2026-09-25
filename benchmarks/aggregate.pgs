@@ -1,0 +1,2 @@
+static let table = [for i in 0..8192 { (i * 37) ^ (i >> 3) }];
+let result = table[external_input()];
