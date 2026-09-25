@@ -32,6 +32,116 @@ TEST(MirVerifier, AcceptsTypedConstantFunction) {
     EXPECT_TRUE(result.has_value());
 }
 
+pagos::mir::Module record_module() {
+    using namespace pagos::mir;
+    auto module = constant_module();
+    Type record{Type::Record};
+    record.record_name = "Config";
+    record.fields = {Type::U32, Type::Bool};
+    auto& block = module.functions[0].blocks[0];
+    block.instructions.push_back({.result = 1,
+                                  .type = Type::Bool,
+                                  .operation = ConstantOperation{.value = true},
+                                  .span = {}});
+    block.instructions.push_back(
+        {.result = 2,
+         .type = record,
+         .operation = RecordOperation{.fields = {0, 1}},
+         .span = {}});
+    block.instructions.push_back(
+        {.result = 3,
+         .type = Type::U32,
+         .operation = FieldOperation{.record = 2, .index = 0},
+         .span = {}});
+    block.terminator = Return{.value = 3};
+    return module;
+}
+
+TEST(MirVerifier, AcceptsRecordConstructionProjectionAndConstants) {
+    using namespace pagos::mir;
+    auto module = record_module();
+    EXPECT_TRUE(verify(module).has_value());
+    module.functions[0].blocks[0].instructions[2].operation = ConstantOperation{
+        .value = pagos::RecordConstant{.name = "Config",
+                                       .fields = {std::uint32_t{42}, true}}};
+    EXPECT_TRUE(verify(module).has_value());
+}
+
+TEST(MirVerifier, RejectsMalformedRecordConstruction) {
+    using namespace pagos::mir;
+    for (const auto& fields :
+         {std::vector<ValueId>{0}, std::vector<ValueId>{1, 0},
+          std::vector<ValueId>{0, 99}, std::vector<ValueId>{3, 1}}) {
+        auto module = record_module();
+        module.functions[0].blocks[0].instructions[2].operation =
+            RecordOperation{.fields = fields};
+        EXPECT_FALSE(verify(module).has_value());
+    }
+}
+
+TEST(MirVerifier, RejectsMalformedRecordConstants) {
+    using namespace pagos::mir;
+    for (const auto& value :
+         {pagos::RecordConstant{.name = "Other",
+                                .fields = {std::uint32_t{42}, true}},
+          pagos::RecordConstant{.name = "Config",
+                                .fields = {std::uint32_t{42}}},
+          pagos::RecordConstant{.name = "Config",
+                                .fields = {true, std::uint32_t{42}}}}) {
+        auto module = record_module();
+        module.functions[0].blocks[0].instructions[2].operation =
+            ConstantOperation{.value = value};
+        EXPECT_FALSE(verify(module).has_value());
+    }
+}
+
+TEST(MirVerifier, RejectsMalformedFieldAccess) {
+    using namespace pagos::mir;
+    for (const auto field : {FieldOperation{.record = 2, .index = 2},
+                             FieldOperation{.record = 2, .index = 1},
+                             FieldOperation{.record = 0, .index = 0},
+                             FieldOperation{.record = 99, .index = 0}}) {
+        auto module = record_module();
+        module.functions[0].blocks[0].instructions[3].operation = field;
+        EXPECT_FALSE(verify(module).has_value());
+    }
+}
+
+TEST(MirVerifier, RejectsInconsistentRecordDefinitionsAndEquality) {
+    using namespace pagos::mir;
+    auto module = record_module();
+    auto& block = module.functions[0].blocks[0];
+    auto duplicate = block.instructions[2];
+    duplicate.result = 4;
+    duplicate.type.fields = {Type::Bool, Type::U32};
+    block.instructions.push_back(duplicate);
+    const auto result = verify(module);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error(), "inconsistent MIR record definition");
+    block.instructions.back() = {
+        .result = 4,
+        .type = Type::Bool,
+        .operation = BinaryOperation{.operation = BinaryOperator::Equal,
+                                     .left = 2,
+                                     .right = 2},
+        .span = {}};
+    EXPECT_FALSE(verify(module).has_value());
+}
+
+TEST(MirVerifier, RecordTypesRejectEmptyAndNonscalarFields) {
+    using namespace pagos::mir;
+    Type type{Type::Record};
+    EXPECT_FALSE(type.valid());
+    type.record_name = "Config";
+    EXPECT_FALSE(type.valid());
+    type.fields = {Type::ArrayU32};
+    EXPECT_FALSE(type.valid());
+    type.fields = {Type::U32};
+    EXPECT_TRUE(type.valid());
+    type.length = 1;
+    EXPECT_FALSE(type.valid());
+}
+
 TEST(MirVerifier, BitwiseUnaryRequiresU32) {
     using namespace pagos::mir;
     auto module = constant_module();

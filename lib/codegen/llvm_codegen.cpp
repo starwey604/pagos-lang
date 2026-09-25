@@ -20,6 +20,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -159,7 +160,15 @@ class Generator {
                                                    postorder.rend());
     }
 
-    llvm::Type* llvm_type(mir::Type type) {
+    llvm::Type* llvm_type(const mir::Type& type) {
+        if (type.is_record()) {
+            std::vector<llvm::Type*> fields;
+            fields.reserve(type.fields.size());
+            for (const auto field : type.fields) {
+                fields.push_back(llvm_type(field));
+            }
+            return llvm::StructType::get(context_, fields);
+        }
         if (type.is_array()) {
             return llvm::ArrayType::get(llvm_type(type.element_type()),
                                         type.length);
@@ -177,6 +186,25 @@ class Generator {
             }
             if (std::holds_alternative<bool>(constant->value)) {
                 return builder_.getInt1(std::get<bool>(constant->value));
+            }
+            if (const auto* record =
+                    std::get_if<RecordConstant>(&constant->value)) {
+                std::vector<llvm::Constant*> fields;
+                for (const auto& field : record->fields) {
+                    std::visit(
+                        [&](auto value) {
+                            if constexpr (std::is_same_v<decltype(value),
+                                                         bool>) {
+                                fields.push_back(builder_.getInt1(value));
+                            } else {
+                                fields.push_back(builder_.getInt32(value));
+                            }
+                        },
+                        field);
+                }
+                return llvm::ConstantStruct::get(
+                    llvm::cast<llvm::StructType>(llvm_type(instruction.type)),
+                    fields);
             }
             std::vector<llvm::Constant*> elements;
             elements.reserve(instruction.type.length);
@@ -227,6 +255,23 @@ class Generator {
                     {static_cast<unsigned>(index)}, "array");
             }
             return value;
+        }
+        if (const auto* record =
+                std::get_if<mir::RecordOperation>(&instruction.operation)) {
+            llvm::Value* value =
+                llvm::PoisonValue::get(llvm_type(instruction.type));
+            for (std::size_t index = 0; index < record->fields.size();
+                 ++index) {
+                value = builder_.CreateInsertValue(
+                    value, values_.at(record->fields[index]),
+                    {static_cast<unsigned>(index)}, "record");
+            }
+            return value;
+        }
+        if (const auto* field =
+                std::get_if<mir::FieldOperation>(&instruction.operation)) {
+            return builder_.CreateExtractValue(values_.at(field->record),
+                                               {field->index}, "field");
         }
         if (const auto* index =
                 std::get_if<mir::IndexOperation>(&instruction.operation)) {

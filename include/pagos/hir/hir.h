@@ -2,6 +2,7 @@
 
 #include "pagos/source/span.h"
 #include "pagos/syntax/ast.h"
+#include "pagos/value.h"
 
 #include <cstdint>
 #include <iosfwd>
@@ -15,8 +16,7 @@
 namespace pagos::hir {
 
 enum class Stage { Static, Runtime };
-using Constant = std::variant<std::uint32_t, bool, std::vector<std::uint32_t>,
-                              std::vector<bool>>;
+using Constant = pagos::Constant;
 
 struct RuntimeTrace {
     source::Span origin_span;
@@ -43,6 +43,8 @@ struct Expr {
         ReturnScope, // Inline call boundary; returns target this scope.
         Array,
         Index,
+        Record,
+        Field,
     };
 
     Kind kind{Kind::Constant};
@@ -56,6 +58,7 @@ struct Expr {
     std::optional<syntax::UnaryOperator> unary_operation;
     std::optional<syntax::BinaryOperator> binary_operation;
     std::optional<std::string> variable_name;
+    std::uint32_t field_index{};
     std::vector<ExprPtr> operands;
 };
 
@@ -75,6 +78,12 @@ struct FunctionSummary {
 };
 
 struct Module {
+    struct RecordType {
+        std::string name;
+        std::vector<std::string> names;
+        std::vector<syntax::Type> fields;
+    };
+    std::vector<RecordType> records;
     std::vector<FunctionSummary> functions;
     std::vector<Binding> bindings;
     ExprPtr result;

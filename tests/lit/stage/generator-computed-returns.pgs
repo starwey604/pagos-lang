@@ -1,0 +1,11 @@
+// RUN: %run_residual %s 7 20
+// RUN: %run_optimized %s 7 20
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+fn choose() -> u32 {
+    let table = [for i in if true { external_input(); 0 } else { 1 }..
+        if true { return 7; } else { 3 } { 1 / 0 }];
+    1 / 0
+}
+let result = choose();
+// CHECK: result: Static
+// CHECK: array-elements=0, array-bytes=0

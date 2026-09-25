@@ -1,0 +1,13 @@
+// RUN: %run_residual %s 22 5 6
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+record Config { value: u32 }
+record Pair { value: u32, other: u32 }
+// Cached pure body ignores its argument, whose initializer work still runs.
+fn read(config: Config) -> u32 { 11 }
+let a = Config(value: Pair(other: external_input(), value: 11).value);
+let b = Config(value: Pair(other: external_input(), value: 11).value);
+let result = read(a) + read(b);
+// CHECK: a: Static
+// CHECK: b: Static
+// CHECK: result: Static
+// CHECK: specializations=1, cache-hits=1

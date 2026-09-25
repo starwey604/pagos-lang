@@ -63,30 +63,15 @@ Acceptance criteria:
 
 ## Milestone 2: Explainable partial evaluation
 
-Status: in progress. The first slice introduced typed residual SSA MIR and
-MIR-only LLVM lowering. The second added bounded Static recursion,
-specialization caching, and resource controls. The current loop slice evaluates
-Static ranges during analysis and lowers Runtime ranges to verified MIR loops.
-Residual sequencing now preserves unused computations and argument evaluation
-on cache hits; diagnostic references preserve loop-index identity. Host
-execution tests cover ordering, read counts, and traps. Runtime-loop early
-returns now merge at per-call exits, including nested loops and conditional
-returns; result-completeness checks account for empty loops. Fixed-length
-`u32`/`bool` arrays now support Static construction and indexing, content-based
-specialization keys, Runtime aggregate values, and checked residual indexing
-into deduplicated read-only tables. Static-index reads now retain individual
-element stages through aliases and direct calls, without discarding residual
-array evaluation or crossing explicit Runtime/control boundaries. Literal-range
-array generators now build bulk lookup tables under fuel and cumulative array
-construction quotas, checked before expansion. Strict `u32` bitwise operations
-and checked shifts now close the representative CRC-32 case: a generated
-256-entry table, a folded standard check vector, and a nine-byte Runtime
-checksum agree with zlib, including external Clang `-O0`/`-O2` execution.
-The representative case is complete, not the entire milestone. Records,
-computed generator lengths, effect-aware keys, and full host-memory accounting
-remain; arbitrary-length streaming CRC also needs additional language support.
+Status: core baseline complete, 2026-09-26. The
+[baseline summary](milestone-2.md) records implemented capabilities, deferred
+work, and regression evidence. Total compiler-memory limits from the original
+scope are explicitly deferred for validation with larger system-build workloads.
+Cumulative aggregate construction quotas do not satisfy that original memory
+requirement. Nested aggregates and dependency-aware effect caching also remain
+future work; this baseline does not imply a stable language or systems ABI.
 
-Add:
+Delivered:
 
 - stage-polymorphic calls and specialization caching;
 - static and runtime loops;
@@ -94,14 +79,16 @@ Add:
 - cross-stage embedding for scalars, arrays, and records;
 - SSA residual MIR;
 - residual `emit-mir` plus richer `emit-hir` and `explain-stage` reports;
-- compile-time fuel, recursion, memory, and specialization limits.
+- compile-time fuel, recursion, specialization, and aggregate construction
+  limits; total compiler-memory limits remain deferred.
 
 Acceptance criteria:
 
 - CRC/lookup tables can be generated entirely at compile time;
 - a runtime index can access a static embedded table;
 - reports show which operations remain and why;
-- specialization limits fail predictably instead of exhausting the host.
+- exceeding the configured Static specialization count reports a deterministic
+  diagnostic; this is not a guarantee against host-memory exhaustion.
 
 ## Milestone 3: Bare-metal systems slice
 

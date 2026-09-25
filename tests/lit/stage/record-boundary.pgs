@@ -1,0 +1,6 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+record Config { value: u32 }
+runtime let config = Config(value: 11);
+static let result = config.value;
+// CHECK: error[E2001]
+// CHECK: dependency path: config -> field access value -> result

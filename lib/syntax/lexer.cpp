@@ -10,6 +10,7 @@ namespace pagos::syntax {
 namespace {
 
 constexpr std::array keywords{
+    std::pair<std::string_view, TokenKind>{"record", TokenKind::KwRecord},
     std::pair<std::string_view, TokenKind>{"fn", TokenKind::KwFn},
     std::pair<std::string_view, TokenKind>{"let", TokenKind::KwLet},
     std::pair<std::string_view, TokenKind>{"static", TokenKind::KwStatic},
@@ -209,8 +210,7 @@ std::vector<Token> Lexer::tokenize() {
             if (match('.')) {
                 add(tokens, TokenKind::Range, begin, offset_);
             } else {
-                diagnostics_.error("E1001", "unexpected character `.`",
-                                   {.begin = begin, .end = offset_});
+                add(tokens, TokenKind::Dot, begin, offset_);
             }
             break;
         default:

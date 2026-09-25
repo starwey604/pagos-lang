@@ -1,0 +1,7 @@
+// RUN: %run_residual %s 11 7
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+record Pair { known: u32, other: u32 }
+let pair = if true { Pair(known: 11, other: external_input()) }
+           else { Pair(known: 22, other: 1 / 0) };
+static let result = pair.known;
+// CHECK: result: Static

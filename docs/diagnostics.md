@@ -90,16 +90,42 @@ invalid literal lengths use `E1005`.
 evaluation. Its label includes the requested element count, bytes per element,
 reserved totals, and configured `--max-array-elements` / `--max-array-bytes`
 limits. Only the first exhausted reservation is reported. Quotas count logical
-construction data, not peak host memory. Generator bound/range errors use
-`E1005` (or `E1002` for nonliteral bounds); invalid generator body types use
-`E1008`. Generator iterations also participate in existing fuel limits.
+construction data, not peak host memory. Out-of-range bound literals and analyzed
+empty/reversed generator ranges use `E1005`; range labels include start and end.
+Invalid bound/body types use `E1008`. Computed array shape mismatches also use
+`E1008`, with concrete expected and actual lengths at bindings, arguments,
+returns, function tails, or Runtime joins. Generator bounds and iterations
+participate in existing fuel limits.
+
+`E2002` reports an analyzed generator start/end that is not Static. It identifies
+the bound expression, labels its Runtime source, and appends `array generator
+start` or `array generator end` to the dependency path. Making a generated
+array Runtime does not relax this fixed-shape requirement. Bound evaluation
+failures precede outer-array reservation, so its counters are unchanged;
+constructors evaluated inside a bound keep their own reservations.
 
 `E4009` reports an analyzed Static shift count of 32 or more, with the count
 expression as its primary span. This also applies with a Runtime left operand.
 Runtime counts instead trap before shifting. Bitwise operand-type errors use
 `E1008`; unselected Static branches do not produce evaluation failures.
 
+`E4010` reports shared aggregate construction quota exhaustion before member
+allocation or initializer evaluation. The primary label gives requested `bool`
+and `u32` member counts, reserved members/bytes, and both configured shared
+limits. Diagnostic arithmetic never needs an unchecked count sum or byte
+product. Arrays first check their legacy quotas (`E4008`); failed reservations
+change neither counter set. Only the first construction-budget failure is
+reported across arrays and records. Increase `--max-aggregate-members` and/or
+`--max-aggregate-bytes` deliberately; these are not host-memory limits.
+
 ## Testing Rules
+
+Minimal records use `E1003` for unknown record types, `E1004` for duplicate
+declarations/fields/initializers or record/function name collisions, and
+`E1008` for field/type/shape errors and unsupported record equality. Field
+projection failures use `E2001` and trace the selected field's Runtime source,
+not the first unrelated Runtime field. Explicit Runtime/control boundaries
+instead remain the source of the opaque record's projection.
 
 Golden tests normalize only platform path separators and explicitly unstable
 temporary paths. They do not normalize wording, source positions, dependency

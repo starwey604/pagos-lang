@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pagos/source/span.h"
+#include "pagos/value.h"
 
 #include <cstdint>
 #include <expected>
@@ -16,12 +17,15 @@ using ValueId = std::uint32_t;
 using BlockId = std::uint32_t;
 
 struct Type {
-    enum Kind { Bool, U32, ArrayBool, ArrayU32 };
+    enum Kind { Bool, U32, ArrayBool, ArrayU32, Record };
     Kind kind{U32};
     std::uint32_t length{};
+    std::string record_name;
+    std::vector<Kind> fields;
     Type() = default;
     Type(Kind kind, std::uint32_t length = 0) : kind(kind), length(length) {}
     bool operator==(const Type&) const = default;
+    [[nodiscard]] bool is_record() const noexcept { return kind == Record; }
     [[nodiscard]] bool is_array() const noexcept {
         return kind == ArrayBool || kind == ArrayU32;
     }
@@ -29,6 +33,20 @@ struct Type {
         return kind == ArrayBool ? Bool : U32;
     }
     [[nodiscard]] bool valid() const noexcept {
+        if (is_record()) {
+            if (record_name.empty() || fields.empty() || length != 0) {
+                return false;
+            }
+            for (const auto field : fields) {
+                if (field != Bool && field != U32) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (!record_name.empty() || !fields.empty()) {
+            return false;
+        }
         return is_array() ? length > 0
                           : (kind == Bool || kind == U32) && length == 0;
     }
@@ -54,8 +72,7 @@ enum class BinaryOperator {
     GreaterEqual,
 };
 
-using Constant = std::variant<std::uint32_t, bool, std::vector<std::uint32_t>,
-                              std::vector<bool>>;
+using Constant = pagos::Constant;
 
 struct ConstantOperation {
     Constant value;
@@ -71,6 +88,15 @@ struct IndexOperation {
     // Unsigned bounds check before element access; an invalid index traps.
     ValueId array;
     ValueId index;
+};
+
+struct RecordOperation {
+    std::vector<ValueId> fields;
+};
+
+struct FieldOperation {
+    ValueId record;
+    std::uint32_t index;
 };
 
 struct UnaryOperation {
@@ -97,10 +123,10 @@ struct PhiOperation {
     std::vector<PhiIncoming> incoming;
 };
 
-using Operation =
-    std::variant<ConstantOperation, ExternalInputOperation, UnaryOperation,
-                 BinaryOperation, BoolToU32Operation, PhiOperation,
-                 ArrayOperation, IndexOperation>;
+using Operation = std::variant<ConstantOperation, ExternalInputOperation,
+                               UnaryOperation, BinaryOperation,
+                               BoolToU32Operation, PhiOperation, ArrayOperation,
+                               IndexOperation, RecordOperation, FieldOperation>;
 
 struct Instruction {
     ValueId result;
@@ -144,7 +170,7 @@ struct Module {
     std::vector<Function> functions;
 };
 
-[[nodiscard]] std::string type_name(Type type);
+[[nodiscard]] std::string type_name(const Type& type);
 [[nodiscard]] std::string_view binary_name(BinaryOperator operation) noexcept;
 [[nodiscard]] std::expected<void, std::string> verify(const Module& module);
 void print(const Module& module, std::ostream& output);

@@ -1,0 +1,15 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+record A { value: u32 }
+record B { value: u32 }
+fn read(value: A) -> u32 { value.value }
+fn bad() -> A { B(value: 1) }
+let a: A = B(value: 1);
+let b = read(B(value: 1));
+let c = if true { A(value: 1) } else { B(value: 1) };
+let d = A(value: 1) == A(value: 1);
+// CHECK: type mismatch in function tail expression
+// CHECK: expected `A`, found `B`
+// CHECK: type mismatch in initializer for `a`
+// CHECK: type mismatch in argument for `value`
+// CHECK: type mismatch in `if` arm
+// CHECK: record equality is not supported

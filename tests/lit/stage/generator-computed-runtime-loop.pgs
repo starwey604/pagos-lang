@@ -1,0 +1,6 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+for n in 0..external_input() {
+    let table = [for i in 0..n + 1 { i }];
+}
+// CHECK: error[E2002]: array generator end must be Static
+// CHECK: dependency path: external_input -> n -> array generator end

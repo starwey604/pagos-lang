@@ -1,0 +1,11 @@
+// RUN: not %pagosc --max-array-elements=3 check %s 2>&1 | %FileCheck %s --check-prefix=ARRAY
+// RUN: not %pagosc --max-aggregate-members=3 check %s 2>&1 | %FileCheck %s --check-prefix=AGGREGATE
+// RUN: not %pagosc --max-fuel=3 check %s 2>&1 | %FileCheck %s --check-prefix=FUEL
+fn size() -> u32 { 2 * 2 }
+let table = [for i in 0..size() { 1 / 0 }];
+// ARRAY: error[E4008]: array construction budget exceeded
+// ARRAY-NOT: error[E4001]
+// AGGREGATE: error[E4010]: aggregate construction budget exceeded
+// AGGREGATE-NOT: error[E4001]
+// FUEL: error[E4004]
+// FUEL-NOT: error[E4001]

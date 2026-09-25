@@ -1,0 +1,11 @@
+// RUN: %run_residual %s 2 10 20
+// RUN: %run_optimized %s 2 10 20
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+fn probe(n: u32) -> u32 { external_input(); n }
+fn size(n: u32) -> u32 { n }
+let primed = size(2);
+let a = [for i in 0..size(probe(2)) { i }];
+let b = [for i in 0..size(probe(2)) { i }];
+let result = a[1] + b[1];
+// CHECK: cache-hits=2
+// CHECK-SAME: array-elements=4, array-bytes=16

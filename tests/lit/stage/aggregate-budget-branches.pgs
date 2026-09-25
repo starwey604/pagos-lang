@@ -1,0 +1,10 @@
+// RUN: %pagosc --max-aggregate-members=4 explain-stage %s | %FileCheck %s --check-prefix=OK
+// RUN: not %pagosc --max-aggregate-members=3 check %s 2>&1 | %FileCheck %s --check-prefix=FAIL
+// RUN: %run_residual %s 1 1
+// RUN: %run_residual %s 2 0
+record R { value: u32, flag: bool }
+let r = if external_input() != 0 { R(value: 1, flag: true) }
+        else { R(value: 2, flag: false) };
+let result = r.value;
+// OK: aggregate-constructions=2, aggregate-members=4, aggregate-bytes=10
+// FAIL: error[E4010]

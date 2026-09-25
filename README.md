@@ -105,20 +105,30 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
 Milestone 1 is complete. The C++26 reference compiler parses and type-checks the
 core language, infers stages, evaluates Static expressions, explains Runtime
 dependency paths, and emits verified residual LLVM IR for the host target.
-Milestone 2 is in progress; its first slice adds a typed, verified residual SSA
-MIR between partial evaluation and LLVM. Static recursion and pure Static
+The [Milestone 2 core baseline](docs/milestone-2.md) is complete, with total
+compiler-memory limits explicitly deferred. Typed, verified residual SSA MIR
+sits between partial evaluation and LLVM. Static recursion and pure Static
 specializations are memoized under explicit evaluation limits.
 Static and Runtime loops, per-call early returns, and immutable fixed-length
 arrays are supported. Static lookup tables embed as read-only constants, with
 bounds-checked Runtime indexing.
 Static-index reads of mixed arrays retain the selected element's stage while
 preserving evaluation of the entire array.
-Bulk generation uses `[for i in 0..256 { i * i }]`, with fuel and cumulative
-array-construction quotas checked before expansion.
+Bulk generation uses `[for i in 0..256 { i * i }]`; bounds can also be Static
+expressions such as `0..1 << bits`, with concrete lengths per specialization.
+Fuel and cumulative construction quotas bound expansion. See the
+[computed-bound example](tests/lit/stage/generator-computed.pgs) and
+[shape rules](docs/grammar.md#bulk-array-generation).
 `u32` bitwise operations and checked shifts support the representative
 [CRC-32 example](tests/lit/stage/crc32.pgs): compile-time table generation and
 Runtime checksums verified against zlib. See the
 [CRC walkthrough](docs/crc32.md) for commands and current limitations.
+Minimal named records support immutable scalar fields, field-sensitive staging,
+and residual aggregate values. The [record walkthrough](docs/records.md)
+demonstrates mixed Static/Runtime configuration without a stable-layout promise.
+Arrays and records share cumulative member/data-byte construction budgets;
+the [resource budget guide](docs/resource-budgets.md) defines accounting,
+legacy array limits, and the distinction from host-memory limits.
 
 ## Development
 

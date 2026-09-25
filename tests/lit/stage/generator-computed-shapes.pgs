@@ -1,0 +1,19 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s
+// RUN: %pagosc emit-mir %s > %t
+// RUN: %run_residual %s 12 1
+// RUN: %run_optimized %s 12 1
+fn make(n: u32) -> [u32; 3] { [for i in 0..n { i + 10 }] }
+fn returned(n: u32) -> [u32; 3] { return [for i in 0..n { i }]; }
+fn read(table: [u32; 3], index: u32) -> u32 { table[index] }
+let count = 3;
+let generated: [u32; 3] = make(count);
+let alias = generated;
+runtime let boundary = [for i in 0..count { i }];
+let selected = if external_input() == 1 {
+    [for i in 0..count { i }]
+} else { returned(count) };
+let result = read(alias, 1) + selected[1] + boundary[0];
+// CHECK: binding generated: [u32; 3] [Static]
+// CHECK: binding alias: [u32; 3] [Static]
+// CHECK: binding boundary: [u32; 3] [Runtime]
+// CHECK: binding selected: [u32; 3] [Runtime]

@@ -41,13 +41,14 @@ bool has_residual_work(const hir::ExprPtr& expression) {
     return std::ranges::any_of(expression->operands, has_residual_work);
 }
 
-struct ArrayProjection {
+struct AggregateProjection {
     std::optional<hir::Constant> constant;
     std::optional<hir::RuntimeTrace> trace;
 };
 
-std::optional<ArrayProjection> project_array_element(hir::ExprPtr array,
-                                                     std::uint32_t offset) {
+std::optional<AggregateProjection>
+project_aggregate_member(hir::ExprPtr array, std::uint32_t offset,
+                         const std::string& field = {}) {
     std::vector<std::string> uses;
     // Only diagnostic aliases and ordered evaluation wrappers are transparent.
     // RuntimeBoundary, If, and ReturnScope deliberately stop projection.
@@ -57,17 +58,20 @@ std::optional<ArrayProjection> project_array_element(hir::ExprPtr array,
             array = array->operands.front();
         } else if (array->kind == hir::Expr::Kind::Sequence) {
             array = array->operands.back();
-        } else if (array->kind == hir::Expr::Kind::Array) {
+        } else if (array->kind == hir::Expr::Kind::Array ||
+                   array->kind == hir::Expr::Kind::Record) {
             const auto& element = array->operands.at(offset);
             if (element->stage == hir::Stage::Static) {
-                return ArrayProjection{.constant = element->constant};
+                return AggregateProjection{.constant = element->constant};
             }
             auto trace = element->trace;
-            trace->path.push_back("array element " + std::to_string(offset));
+            trace->path.push_back(field.empty() ? "array element " +
+                                                      std::to_string(offset)
+                                                : "field " + field);
             for (auto use = uses.rbegin(); use != uses.rend(); ++use) {
                 trace->path.push_back(*use);
             }
-            return ArrayProjection{.trace = std::move(trace)};
+            return AggregateProjection{.trace = std::move(trace)};
         } else {
             break;
         }
@@ -111,7 +115,18 @@ std::size_t StageAnalyzer::SpecializationKeyHash::operator()(
                                      (argument_hash << 6U) +
                                      (argument_hash >> 2U);
                 };
-                if constexpr (requires { value.size(); }) {
+                if constexpr (requires { value.fields; }) {
+                    mix(std::hash<std::string>{}(value.name));
+                    mix(value.fields.size());
+                    for (const auto& field : value.fields) {
+                        mix(field.index());
+                        std::visit(
+                            [&](auto scalar) {
+                                mix(static_cast<std::size_t>(scalar));
+                            },
+                            field);
+                    }
+                } else if constexpr (requires { value.size(); }) {
                     mix(value.size());
                     for (auto element : value) {
                         mix(static_cast<std::size_t>(element));
@@ -130,14 +145,24 @@ std::unique_ptr<hir::Module>
 StageAnalyzer::analyze(const syntax::Module& module) {
     stats_ = {};
     functions_.clear();
+    records_.clear();
     scopes_.clear();
     call_stack_.clear();
     specialization_cache_.clear();
     active_specializations_.clear();
     fuel_exhausted_ = false;
-    array_budget_exhausted_ = false;
+    construction_budget_exhausted_ = false;
 
     auto result = std::make_unique<hir::Module>();
+    for (const auto& record : module.records) {
+        records_.emplace(record.name, &record);
+        hir::Module::RecordType type{.name = record.name};
+        for (const auto& field : record.fields) {
+            type.names.push_back(field.name);
+            type.fields.push_back(field.type);
+        }
+        result->records.push_back(std::move(type));
+    }
     for (const auto& function : module.functions) {
         functions_.emplace(function->name, function.get());
         hir::FunctionSummary summary{.name = function->name,
@@ -211,6 +236,12 @@ StageAnalyzer::analyze_statement(const syntax::Stmt& statement,
         auto value = analyze_expression(*return_statement.value);
         if (!value || !value->falls_through) {
             return {.value = value, .returned = true};
+        }
+        if (!call_stack_.empty() &&
+            !check_resolved_type(functions_.at(call_stack_.back())->result,
+                                 value, return_statement.value->span,
+                                 "return expression")) {
+            return {.returned = true};
         }
         auto result = std::make_shared<hir::Expr>();
         result->kind = hir::Expr::Kind::Return;
@@ -329,10 +360,17 @@ hir::ExprPtr StageAnalyzer::analyze_binding(const syntax::BindingStmt& binding,
         return value;
     }
 
+    if (binding.annotation &&
+        !check_resolved_type(*binding.annotation, value,
+                             binding.initializer->span,
+                             "initializer for `" + binding.name + "`")) {
+        return nullptr;
+    }
+
     if (binding.binding_kind == syntax::BindingKind::Runtime) {
         auto runtime = std::make_shared<hir::Expr>();
         runtime->kind = hir::Expr::Kind::RuntimeBoundary;
-        runtime->type = type_of(*binding.initializer);
+        runtime->type = value->type;
         runtime->stage = hir::Stage::Runtime;
         runtime->may_return = value->may_return;
         runtime->span = binding.span;
@@ -354,13 +392,12 @@ hir::ExprPtr StageAnalyzer::analyze_binding(const syntax::BindingStmt& binding,
 
     define(binding.name, value);
     if (output_module) {
-        output_module->bindings.push_back(
-            {.name = binding.name,
-             .name_span = binding.name_span,
-             .type = type_of(*binding.initializer),
-             .stage = value->stage,
-             .value = value,
-             .trace = value->trace});
+        output_module->bindings.push_back({.name = binding.name,
+                                           .name_span = binding.name_span,
+                                           .type = value->type,
+                                           .stage = value->stage,
+                                           .value = value,
+                                           .trace = value->trace});
     }
     return value;
 }
@@ -402,8 +439,111 @@ hir::ExprPtr StageAnalyzer::analyze_expression(const syntax::Expr& expression) {
             static_cast<const syntax::ArrayGeneratorExpr&>(expression));
     case syntax::Expr::Kind::Index:
         return analyze_index(static_cast<const syntax::IndexExpr&>(expression));
+    case syntax::Expr::Kind::Record:
+        return analyze_record(
+            static_cast<const syntax::RecordExpr&>(expression));
+    case syntax::Expr::Kind::Field:
+        return analyze_field(static_cast<const syntax::FieldExpr&>(expression));
     }
     return nullptr;
+}
+
+hir::ExprPtr
+StageAnalyzer::analyze_record(const syntax::RecordExpr& expression) {
+    const auto& declaration = *records_.at(expression.name);
+    const auto bool_members = static_cast<std::size_t>(
+        std::ranges::count_if(declaration.fields, [](const auto& field) {
+            return field.type == syntax::TypeKind::Bool;
+        }));
+    if (!reserve_aggregate(bool_members,
+                           declaration.fields.size() - bool_members,
+                           expression.span)) {
+        return nullptr;
+    }
+    std::vector<hir::ExprPtr> fields(declaration.fields.size());
+    std::vector<hir::ExprPtr> effects;
+    std::optional<hir::RuntimeTrace> trace;
+    for (const auto& field : expression.fields) {
+        auto value = analyze_expression(*field.value);
+        if (!value) {
+            return nullptr;
+        }
+        if (!value->falls_through) {
+            return make_sequence(std::move(effects), value, expression.span);
+        }
+        if (!trace && value->stage == hir::Stage::Runtime) {
+            trace = value->trace;
+            trace->path.push_back("field " + field.name);
+        }
+        if (has_residual_work(value)) {
+            effects.push_back(value);
+        }
+        const auto found = std::ranges::find(declaration.fields, field.name,
+                                             &syntax::Parameter::name);
+        fields[static_cast<std::size_t>(found - declaration.fields.begin())] =
+            std::move(value);
+    }
+    hir::ExprPtr result;
+    if (trace) {
+        result =
+            make_runtime(hir::Expr::Kind::Record, type_of(expression),
+                         expression.span, std::move(fields), std::move(*trace));
+    } else {
+        RecordConstant constant{.name = expression.name};
+        for (const auto& value : fields) {
+            if (value->type == syntax::TypeKind::Bool) {
+                constant.fields.emplace_back(std::get<bool>(*value->constant));
+            } else {
+                constant.fields.emplace_back(
+                    std::get<std::uint32_t>(*value->constant));
+            }
+        }
+        result = hir::make_constant(std::move(constant), type_of(expression),
+                                    expression.span);
+    }
+    // Preserve source-order initializers before canonical declaration-order
+    // construction. Shared HIR identities prevent re-evaluation in lowering.
+    return make_sequence(std::move(effects), std::move(result),
+                         expression.span);
+}
+
+hir::ExprPtr StageAnalyzer::analyze_field(const syntax::FieldExpr& expression) {
+    auto record = analyze_expression(*expression.record);
+    if (!record || !record->falls_through) {
+        return record;
+    }
+    const auto& fields = records_.at(record->type.record_name)->fields;
+    const auto found =
+        std::ranges::find(fields, expression.name, &syntax::Parameter::name);
+    const auto offset = static_cast<std::uint32_t>(found - fields.begin());
+    std::optional<hir::Constant> constant;
+    std::optional<hir::RuntimeTrace> trace;
+    if (record->stage == hir::Stage::Static) {
+        std::visit(
+            [&](auto value) { constant = value; },
+            std::get<RecordConstant>(*record->constant).fields.at(offset));
+    } else if (const auto projected =
+                   project_aggregate_member(record, offset, expression.name)) {
+        constant = projected->constant;
+        trace = projected->trace;
+    }
+    if (constant) {
+        auto value = hir::make_constant(std::move(*constant),
+                                        type_of(expression), expression.span);
+        return has_residual_work(record)
+                   ? make_sequence({record}, value, expression.span)
+                   : value;
+    }
+    if (!trace) {
+        trace = record->trace;
+    }
+    trace->path.push_back("field access " + expression.name);
+    auto result = std::make_shared<hir::Expr>(
+        *make_runtime(hir::Expr::Kind::Field, type_of(expression),
+                      expression.span, {record}, std::move(*trace)));
+    result->field_index = offset;
+    result->variable_name = expression.name;
+    return result;
 }
 
 hir::ExprPtr StageAnalyzer::analyze_array(const syntax::ArrayExpr& expression) {
@@ -427,9 +567,9 @@ hir::ExprPtr StageAnalyzer::analyze_array(const syntax::ArrayExpr& expression) {
                         expression.span);
 }
 
-bool StageAnalyzer::reserve_array(std::size_t count, syntax::Type type,
+bool StageAnalyzer::reserve_array(std::size_t count, const syntax::Type& type,
                                   source::Span span) {
-    if (array_budget_exhausted_) {
+    if (construction_budget_exhausted_) {
         return false;
     }
     const std::size_t width =
@@ -438,7 +578,7 @@ bool StageAnalyzer::reserve_array(std::size_t count, syntax::Type type,
         limits_.array_elements - stats_.array_elements_reserved;
     const auto byte_room = limits_.array_bytes - stats_.array_bytes_reserved;
     if (count > element_room || count > byte_room / width) {
-        array_budget_exhausted_ = true;
+        construction_budget_exhausted_ = true;
         diagnostics_.report({
             .severity = source::Severity::Error,
             .code = "E4008",
@@ -459,21 +599,127 @@ bool StageAnalyzer::reserve_array(std::size_t count, syntax::Type type,
         });
         return false;
     }
+    if (!reserve_aggregate(width == 1 ? count : 0, width == 4 ? count : 0,
+                           span)) {
+        return false;
+    }
     stats_.array_elements_reserved += count;
     stats_.array_bytes_reserved += count * width;
     return true;
 }
 
+bool StageAnalyzer::reserve_aggregate(std::size_t bool_members,
+                                      std::size_t u32_members,
+                                      source::Span span) {
+    if (construction_budget_exhausted_) {
+        return false;
+    }
+    const auto member_room =
+        limits_.aggregate_members - stats_.aggregate_members_reserved;
+    const auto byte_room =
+        limits_.aggregate_bytes - stats_.aggregate_bytes_reserved;
+    // Check remaining capacity before sums/products, including at SIZE_MAX.
+    if (bool_members > member_room ||
+        u32_members > member_room - bool_members || bool_members > byte_room ||
+        u32_members > (byte_room - bool_members) / 4) {
+        construction_budget_exhausted_ = true;
+        diagnostics_.report({
+            .severity = source::Severity::Error,
+            .code = "E4010",
+            .message = "aggregate construction budget exceeded",
+            .primary = {.span = span,
+                        .message =
+                            "request " + std::to_string(bool_members) +
+                            " bool members and " + std::to_string(u32_members) +
+                            " u32 members; reserved " +
+                            std::to_string(stats_.aggregate_members_reserved) +
+                            "/" + std::to_string(limits_.aggregate_members) +
+                            " members, " +
+                            std::to_string(stats_.aggregate_bytes_reserved) +
+                            "/" + std::to_string(limits_.aggregate_bytes) +
+                            " bytes"},
+            .help =
+                "reduce aggregate construction or increase "
+                "--max-aggregate-members "
+                "and --max-aggregate-bytes; these are cumulative construction "
+                "quotas, not host-memory limits",
+        });
+        return false;
+    }
+    ++stats_.aggregate_constructions;
+    stats_.aggregate_members_reserved += bool_members + u32_members;
+    stats_.aggregate_bytes_reserved += bool_members + u32_members * 4;
+    return true;
+}
+
 hir::ExprPtr StageAnalyzer::analyze_array_generator(
     const syntax::ArrayGeneratorExpr& expression) {
-    const auto type = type_of(expression);
-    const auto count = expression.end - expression.begin;
+    auto begin = analyze_expression(*expression.begin);
+    if (!begin || !begin->falls_through) {
+        return begin;
+    }
+    auto end = analyze_expression(*expression.end);
+    if (!end) {
+        return nullptr;
+    }
+    std::vector<hir::ExprPtr> bound_work;
+    if (has_residual_work(begin)) {
+        bound_work.push_back(begin);
+    }
+    if (!end->falls_through) {
+        return make_sequence(std::move(bound_work), end, expression.span);
+    }
+    const auto require_static = [&](const hir::ExprPtr& value,
+                                    source::Span span,
+                                    const std::string& position) {
+        if (value->stage == hir::Stage::Static) {
+            return true;
+        }
+        const auto& trace = *value->trace;
+        auto path = trace.path;
+        path.push_back("array generator " + position);
+        diagnostics_.report({
+            .severity = source::Severity::Error,
+            .code = "E2002",
+            .message = "array generator " + position + " must be Static",
+            .primary = {.span = span,
+                        .message = "determines a fixed array length"},
+            .related = {{.span = trace.origin_span,
+                         .message =
+                             "Runtime source `" + trace.origin_name + "`",
+                         .heading = "runtime source introduced here"}},
+            .help = "remove the Runtime dependency from the generator bound",
+            .dependency_path = std::move(path),
+        });
+        return false;
+    };
+    if (!require_static(begin, expression.begin->span, "start") ||
+        !require_static(end, expression.end->span, "end")) {
+        return nullptr;
+    }
+    const auto first = std::get<std::uint32_t>(*begin->constant);
+    const auto last = std::get<std::uint32_t>(*end->constant);
+    if (last <= first) {
+        diagnostics_.error(
+            "E1005", "array generator range must be nonempty and increasing",
+            expression.span,
+            "start " + std::to_string(first) + ", end " + std::to_string(last));
+        return nullptr;
+    }
+    if (has_residual_work(end)) {
+        bound_work.push_back(end);
+    }
+    const auto count = last - first;
+    auto type = type_of(expression);
+    if (type.is_array()) {
+        type.length = count;
+    }
     if (!reserve_array(count, type, expression.span)) {
         return nullptr;
     }
     std::vector<hir::ExprPtr> elements;
     elements.reserve(count);
-    for (auto index = expression.begin; index < expression.end; ++index) {
+    for (auto index = first; index < last; ++index) {
         if (!consume_fuel(expression.span)) {
             return nullptr;
         }
@@ -490,16 +736,23 @@ hir::ExprPtr StageAnalyzer::analyze_array_generator(
             make_sequence(std::move(body.effects), std::move(body.value),
                           expression.body->span);
         if (!value->falls_through) {
-            return make_sequence(std::move(elements), std::move(value),
+            return make_sequence(std::move(bound_work),
+                                 make_sequence(std::move(elements),
+                                               std::move(value),
+                                               expression.span),
                                  expression.span);
         }
         elements.push_back(std::move(value));
     }
-    return finish_array(std::move(elements), type, expression.span);
+    return make_sequence(
+        std::move(bound_work),
+        finish_array(std::move(elements), type, expression.span),
+        expression.span);
 }
 
 hir::ExprPtr StageAnalyzer::finish_array(std::vector<hir::ExprPtr> elements,
-                                         syntax::Type type, source::Span span) {
+                                         const syntax::Type& type,
+                                         source::Span span) {
     std::optional<hir::RuntimeTrace> trace;
     for (const auto& element : elements) {
         if (element->stage == hir::Stage::Runtime) {
@@ -567,7 +820,7 @@ hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
                 value = std::get<std::vector<std::uint32_t>>(
                     *array->constant)[offset];
             }
-        } else if (auto selected = project_array_element(array, offset)) {
+        } else if (auto selected = project_aggregate_member(array, offset)) {
             value = std::move(selected->constant);
             selected_trace = std::move(selected->trace);
         }
@@ -734,6 +987,14 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
     }
 
     const auto& function = *function_iterator->second;
+    for (std::size_t index = 0; index < arguments.size(); ++index) {
+        if (!check_resolved_type(
+                function.parameters[index].type, arguments[index],
+                expression.arguments[index]->span,
+                "argument for `" + function.parameters[index].name + "`")) {
+            return nullptr;
+        }
+    }
     // Arguments execute left-to-right, including on a specialization hit and
     // when the callee does not use their values.
     std::vector<hir::ExprPtr> argument_work;
@@ -825,6 +1086,10 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
     auto result =
         make_sequence(std::move(block_result.effects),
                       std::move(block_result.value), function.body->span);
+    if (!check_resolved_type(function.result, result, function.body->span,
+                             "function tail expression")) {
+        result = nullptr;
+    }
     if (result && result->may_return) {
         if (auto resolved = resolve_return(result)) {
             result = std::move(resolved);
@@ -881,8 +1146,19 @@ hir::ExprPtr StageAnalyzer::analyze_if(const syntax::IfExpr& expression) {
     if (!then_value || !else_value) {
         return nullptr;
     }
-    return make_runtime(hir::Expr::Kind::If, type_of(expression),
-                        expression.span, {condition, then_value, else_value},
+    auto type = type_of(expression);
+    if (then_value->falls_through && else_value->falls_through &&
+        !check_resolved_type(then_value->type, else_value,
+                             expression.else_block->span, "`if` arm")) {
+        return nullptr;
+    }
+    if (then_value->falls_through) {
+        type = then_value->type;
+    } else if (else_value->falls_through) {
+        type = else_value->type;
+    }
+    return make_runtime(hir::Expr::Kind::If, type, expression.span,
+                        {condition, then_value, else_value},
                         condition->trace.value());
 }
 
@@ -907,7 +1183,7 @@ hir::ExprPtr StageAnalyzer::make_runtime(
     std::optional<syntax::BinaryOperator> binary) const {
     auto expression = std::make_shared<hir::Expr>();
     expression->kind = kind;
-    expression->type = type;
+    expression->type = std::move(type);
     expression->stage = hir::Stage::Runtime;
     expression->span = span;
     expression->trace = std::move(trace);
@@ -977,6 +1253,20 @@ hir::ExprPtr StageAnalyzer::resolve_return(const hir::ExprPtr& value) const {
         }
     }
     return nullptr;
+}
+
+bool StageAnalyzer::check_resolved_type(const syntax::Type& expected,
+                                        const hir::ExprPtr& value,
+                                        source::Span span,
+                                        const std::string& context) {
+    if (!value || !value->falls_through || !expected.is_array() ||
+        expected == value->type) {
+        return true;
+    }
+    diagnostics_.error("E1008", "type mismatch in " + context, span,
+                       "expected `" + syntax::type_name(expected) +
+                           "`, found `" + syntax::type_name(value->type) + "`");
+    return false;
 }
 
 void StageAnalyzer::report_static_failure(const syntax::BindingStmt& binding,

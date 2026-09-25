@@ -1,0 +1,13 @@
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 5
+fn last(n: u32) -> u32 {
+    let table = [for i in 0..n { i }];
+    table[n - 1]
+}
+let a = last(2);
+let b = last(4);
+let c = last(2);
+let result = a + b + c;
+// CHECK: result: Static
+// CHECK: specializations=2, cache-hits=1
+// CHECK-SAME: array-elements=6, array-bytes=24

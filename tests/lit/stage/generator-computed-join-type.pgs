@@ -1,0 +1,7 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let n = 3;
+let bad_join = if external_input() != 0 {
+    [for i in 0..n { i }]
+} else { [for i in 0..n + 1 { i }] };
+// CHECK: error[E1008]: type mismatch in `if` arm
+// CHECK: expected `[u32; 3]`, found `[u32; 4]`

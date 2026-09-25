@@ -1,0 +1,12 @@
+// RUN: %run_residual %s 9 5 1
+// RUN: %run_residual %s 11 5 0 8
+// RUN: %run_optimized %s 9 5 1
+record Triple { known: u32, first: u32, last: u32 }
+fn choose() -> u32 {
+    let config = Triple(
+        first: external_input(),
+        known: if external_input() != 0 { return 9; } else { 11 },
+        last: external_input());
+    config.known
+}
+let result = choose();

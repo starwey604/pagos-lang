@@ -42,6 +42,7 @@ void Parser::synchronize() {
         }
         switch (current().kind) {
         case TokenKind::KwFn:
+        case TokenKind::KwRecord:
         case TokenKind::KwLet:
         case TokenKind::KwStatic:
         case TokenKind::KwRuntime:
@@ -60,7 +61,11 @@ std::unique_ptr<Module> Parser::parse_module() {
     auto module = std::make_unique<Module>();
     while (!at_end()) {
         const auto before = index_;
-        if (check(TokenKind::KwFn)) {
+        if (check(TokenKind::KwRecord)) {
+            if (auto record = parse_record()) {
+                module->records.push_back(std::move(*record));
+            }
+        } else if (check(TokenKind::KwFn)) {
             if (auto function = parse_function()) {
                 module->functions.push_back(std::move(function));
             }
@@ -78,7 +83,42 @@ std::unique_ptr<Module> Parser::parse_module() {
     return module;
 }
 
+std::optional<Module::Record> Parser::parse_record() {
+    consume(TokenKind::KwRecord, "expected `record`");
+    const auto* name = consume(TokenKind::Identifier, "expected record name");
+    if (!name ||
+        !consume(TokenKind::LeftBrace, "expected `{` after record name")) {
+        return std::nullopt;
+    }
+    Module::Record record{.name = std::string(name->lexeme),
+                          .name_span = name->span};
+    if (!check(TokenKind::RightBrace)) {
+        do {
+            const auto* field =
+                consume(TokenKind::Identifier, "expected field name");
+            if (!field ||
+                !consume(TokenKind::Colon, "expected `:` after field name")) {
+                return std::nullopt;
+            }
+            const auto type = parse_type();
+            if (!type) {
+                return std::nullopt;
+            }
+            record.fields.push_back({.name = std::string(field->lexeme),
+                                     .name_span = field->span,
+                                     .type = *type});
+        } while (match(TokenKind::Comma) && !check(TokenKind::RightBrace));
+    }
+    if (!consume(TokenKind::RightBrace, "expected `}` after record fields")) {
+        return std::nullopt;
+    }
+    return record;
+}
+
 std::optional<Type> Parser::parse_type() {
+    if (match(TokenKind::Identifier)) {
+        return Type::record(std::string(previous().lexeme));
+    }
     if (match(TokenKind::LeftBracket)) {
         const auto element_span = current().span;
         if (!check(TokenKind::KwBool) && !check(TokenKind::KwU32)) {
@@ -121,9 +161,9 @@ std::optional<Type> Parser::parse_type() {
     if (match(TokenKind::KwU32)) {
         return TypeKind::U32;
     }
-    diagnostics_.error(
-        "E1002", "expected type", current().span,
-        "expected `bool`, `u32`, or a fixed-length scalar array");
+    diagnostics_.error("E1002", "expected type", current().span,
+                       "expected `bool`, `u32`, a record name, or a "
+                       "fixed-length scalar array");
     return std::nullopt;
 }
 
@@ -530,6 +570,19 @@ std::unique_ptr<Expr> Parser::parse_unary() {
 std::unique_ptr<Expr> Parser::parse_call() {
     auto expression = parse_primary();
     while (expression) {
+        if (match(TokenKind::Dot)) {
+            const auto* field =
+                consume(TokenKind::Identifier, "expected field name after `.`");
+            if (!field) {
+                return nullptr;
+            }
+            const auto span = source::Span{.begin = expression->span.begin,
+                                           .end = field->span.end};
+            expression = std::make_unique<FieldExpr>(std::move(expression),
+                                                     std::string(field->lexeme),
+                                                     field->span, span);
+            continue;
+        }
         if (match(TokenKind::LeftBracket)) {
             auto index = parse_expression();
             if (!index) {
@@ -554,6 +607,35 @@ std::unique_ptr<Expr> Parser::parse_call() {
             diagnostics_.error("E1002", "only named functions can be called",
                                expression->span);
             return nullptr;
+        }
+        if (check(TokenKind::Identifier) && index_ + 1 < tokens_.size() &&
+            tokens_[index_ + 1].kind == TokenKind::Colon) {
+            std::vector<FieldInitializer> fields;
+            do {
+                const auto* field = consume(TokenKind::Identifier,
+                                            "expected initializer field name");
+                if (!field || !consume(TokenKind::Colon,
+                                       "expected `:` after field name")) {
+                    return nullptr;
+                }
+                auto value = parse_expression();
+                if (!value) {
+                    return nullptr;
+                }
+                fields.push_back({.name = std::string(field->lexeme),
+                                  .name_span = field->span,
+                                  .value = std::move(value)});
+            } while (match(TokenKind::Comma) && !check(TokenKind::RightParen));
+            const auto* end = consume(TokenKind::RightParen,
+                                      "expected `)` after record fields");
+            if (!end) {
+                return nullptr;
+            }
+            const auto span = source::Span{.begin = expression->span.begin,
+                                           .end = end->span.end};
+            expression = std::make_unique<RecordExpr>(name->name, name->span,
+                                                      std::move(fields), span);
+            continue;
         }
         std::vector<std::unique_ptr<Expr>> arguments;
         if (!check(TokenKind::RightParen)) {
@@ -635,26 +717,6 @@ std::unique_ptr<Expr> Parser::parse_primary() {
     return nullptr;
 }
 
-std::optional<std::uint32_t> Parser::parse_generator_bound() {
-    const auto* token =
-        consume(TokenKind::Integer, "expected literal array generator bound");
-    if (!token) {
-        return std::nullopt;
-    }
-    std::string digits(token->lexeme);
-    std::erase(digits, '_');
-    std::uint32_t value{};
-    const auto parsed =
-        std::from_chars(digits.data(), digits.data() + digits.size(), value);
-    if (parsed.ec != std::errc{} ||
-        parsed.ptr != digits.data() + digits.size()) {
-        diagnostics_.error("E1005", "array generator bound does not fit `u32`",
-                           token->span);
-        return std::nullopt;
-    }
-    return value;
-}
-
 std::unique_ptr<Expr> Parser::parse_array_generator(source::Span start) {
     const auto* variable =
         consume(TokenKind::Identifier, "expected array generator index name");
@@ -662,19 +724,13 @@ std::unique_ptr<Expr> Parser::parse_array_generator(source::Span start) {
         !consume(TokenKind::KwIn, "expected `in` after generator index")) {
         return nullptr;
     }
-    const auto begin = parse_generator_bound();
+    auto begin = parse_expression();
     if (!begin ||
         !consume(TokenKind::Range, "expected `..` between generator bounds")) {
         return nullptr;
     }
-    const auto end = parse_generator_bound();
+    auto end = parse_expression();
     if (!end) {
-        return nullptr;
-    }
-    if (*end <= *begin) {
-        diagnostics_.error(
-            "E1005", "array generator range must be nonempty and increasing",
-            previous().span);
         return nullptr;
     }
     auto body = parse_block();
@@ -687,8 +743,8 @@ std::unique_ptr<Expr> Parser::parse_array_generator(source::Span start) {
         return nullptr;
     }
     return std::make_unique<ArrayGeneratorExpr>(
-        std::string(variable->lexeme), variable->span, *begin, *end,
-        std::move(body),
+        std::string(variable->lexeme), variable->span, std::move(begin),
+        std::move(end), std::move(body),
         source::Span{.begin = start.begin, .end = right->span.end});
 }
 

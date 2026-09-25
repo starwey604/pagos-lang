@@ -1,0 +1,7 @@
+// RUN: %pagosc --max-aggregate-members=8 --max-aggregate-bytes=20 explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 7 4
+record R { value: u32, flag: bool }
+for i in 0..3 { let r = R(value: i, flag: true); }
+for i in 0..external_input() { let r = R(value: i, flag: false); }
+let result = 7;
+// CHECK: aggregate-constructions=4, aggregate-members=8, aggregate-bytes=20

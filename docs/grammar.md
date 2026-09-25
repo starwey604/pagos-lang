@@ -23,14 +23,17 @@ The grammar uses EBNF: `{ x }` repeats `x`, `[ x ]` makes `x` optional, and
 `( x | y )` selects an alternative.
 
 ```ebnf
-source          = { function | statement } EOF ;
+source          = { record | function | statement } EOF ;
+record          = "record" identifier "{" record-fields [ "," ] "}" ;
+record-fields   = identifier ":" scalar-type
+                  { "," identifier ":" scalar-type } ;
 
 function        = "fn" identifier "(" [ parameters ] ")"
                   "->" type block ;
 parameters      = parameter { "," parameter } ;
 parameter       = identifier ":" type ;
 scalar-type     = "bool" | "u32" ;
-type            = scalar-type | "[" scalar-type ";" integer "]" ;
+type            = scalar-type | identifier | "[" scalar-type ";" integer "]" ;
 
 block           = "{" { statement } [ expression ] "}" ;
 statement       = binding ";"
@@ -55,11 +58,15 @@ shift           = additive { ( "<<" | ">>" ) additive } ;
 additive        = multiplicative { ( "+" | "-" ) multiplicative } ;
 multiplicative  = unary { ( "*" | "/" | "%" ) unary } ;
 unary           = ( "!" | "~" ) unary | call ;
-call            = primary { "(" [ arguments ] ")" | "[" expression "]" } ;
+call            = primary { "(" [ arguments ] ")" | "[" expression "]"
+                          | "." identifier } ;
 arguments       = expression { "," expression } ;
 primary         = integer | "true" | "false" | identifier
+                | identifier "(" named-fields [ "," ] ")"
                 | "(" expression ")" | "[" arguments [ "," ] "]"
-                | "[" "for" identifier "in" integer ".." integer block "]" ;
+                | "[" "for" identifier "in" expression ".." expression block "]" ;
+named-fields    = identifier ":" expression
+                  { "," identifier ":" expression } ;
 ```
 
 Top-level statements form an implicit entry unit in the research compiler.
@@ -90,6 +97,34 @@ with zeros; left shift discards high bits. Shift counts must be below 32:
 an analyzed Static count outside this range reports `E4009`, even with a Runtime
 left operand; a Runtime count is checked before shifting and traps if invalid.
 Unselected Static branches and skipped short-circuit operands are not evaluated.
+
+## Minimal Records (Milestone 2)
+
+`record Config { clock_hz: u32, ready: bool }` declares a nonempty immutable
+nominal type. `Config(ready: true, clock_hz: 80_000_000)` constructs it, and
+`config.clock_hz` selects a field. Every field must be supplied exactly once;
+initializers evaluate in source order, independently of declaration order.
+Declarations are module-level and may be referenced before their declaration.
+Record and function names may not collide. Type names have a separate namespace
+from local bindings. Positional record construction is not supported.
+
+Fields are `u32` or `bool` only. Nested records, array fields, arrays of records,
+empty records, methods, mutation, structural equality, and generics are deferred.
+Two differently named records remain distinct even with identical fields.
+Function parameters/results, annotations, and continuing `if` arms must agree
+on the nominal type. An aggregate-valued implicit entry returns zero.
+
+A record is Static when every field is Static. Field selection preserves
+individual stages through aliases, call parameters, and direct returns, but
+must retain evaluation of every initializer, including reads, traps, and returns.
+Explicit Runtime record boundaries and Runtime branch/call-result selection
+keep all projections Runtime. Diagnostics identify the selected field's source.
+Records can cross into residual MIR/LLVM as value aggregates without exposing
+host addresses; no stable layout, packing, memory size, or C ABI is promised.
+Existing fuel/depth/specialization limits apply. Shared aggregate construction
+quotas charge every declared field before member allocation or initializer
+evaluation; array-only quotas still exclude records. See
+[aggregate construction budgets](#aggregate-construction-budgets).
 
 ## Fixed-Length Arrays (Milestone 2)
 
@@ -125,21 +160,46 @@ The implicit entry returns zero when its final value is an array.
 ### Bulk array generation
 
 `[for i in 0..256 { i * i }]` constructs a 256-element array in ascending
-index order. Both bounds must be `u32` literals (separators are allowed), and
-the end must exceed the start. Its type has length `end - start`; each body
+index order. Both bounds must evaluate to Static `u32` values, and the end
+must exceed the start. Its type has length `end - start`; each body
 must produce `u32` or `bool`. The immutable index is Static and scoped to each
 iteration. A body may call functions, bind locals, or return from the enclosing
 function. A definite return stops generation; Runtime returns remain residual.
 
 ```pagos
 fn square(i: u32) -> u32 { i * i }
-static let table: [u32; 256] = [for i in 0..256 { square(i) }];
+static let bits = 8;
+static let table: [u32; 256] = [for i in 0..1 << bits { square(i) }];
 let result = table[external_input()];
 ```
 
+Bounds evaluate once, start then end, in the enclosing scope before the index
+binding exists. Static names, arithmetic, function calls, array indexing, and
+record fields are accepted. The two values determine the length before the
+element vector is allocated or the body runs. Each function specialization
+resolves its own length. Bounds use ordinary `u32` arithmetic, including wrap;
+an analyzed empty or reversed range reports `E1005`, without unsigned subtraction.
+An analyzed Runtime bound reports `E2002` with its dependency path.
+
+Bound evaluation may retain Runtime effects while producing a Static value.
+Those effects precede body effects, including on cache hits. A definite return
+in a bound exits the enclosing function without reserving the outer array;
+a conditional Runtime return remains residual. Bound expressions consume normal
+fuel and any constructors they evaluate consume their own aggregate quotas.
+
+Source type annotations and function signatures still require literal lengths;
+this is not dependent typing or dynamic allocation. Length constraints involving
+computed generators are deferred until their expressions are analyzed: binding
+annotations, call arguments, explicit returns, and function tails must agree
+with the resolved shape (`E1008`). Runtime branch continuations must agree too.
+A Static branch resolves only its selected arm; lengths in skipped arms and
+uncalled function bodies are not evaluated. Ordinary name and element-type
+checking still covers those bodies, and known literal shape mismatches remain
+type errors. No unresolved length reaches residual HIR/MIR values.
+
 The body follows ordinary staging and evaluation-order rules. All-Static
 elements become an embedded table; mixed elements preserve per-element stages
-and residual effects. Runtime or computed bounds, empty ranges, nested array
+and residual effects. Runtime bounds, empty ranges, nested array
 elements, and mutation are not supported. Both Runtime branches are analyzed
 and budgeted; unselected Static branches do not generate or consume budget.
 
@@ -156,6 +216,33 @@ in addition to ordinary body evaluation. Exceeding a quota reports `E4008`.
 These are construction-work/data budgets, not a bound on process memory: AST,
 HIR nodes, constant copies, cache keys, and LLVM allocations are not counted.
 Full host-memory accounting remains future work.
+
+## Aggregate Construction Budgets
+
+All array and record constructors share `--max-aggregate-members` (default
+65,536) and `--max-aggregate-bytes` (default 262,144). An array element or record
+field costs one member; `u32` costs four logical bytes and `bool` one, without
+target padding. Arrays whose continuation type is `never` reserve four bytes
+per element. A record uses its declared scalar field types even when an
+initializer returns early. Shared quota exhaustion reports `E4010`.
+
+Reservations are cumulative per analysis and precede member-vector allocation
+and initializer/body evaluation. Failed reservations change no counters and
+only the first construction-budget failure is reported. Successful reservations
+are not refunded on early return, discarded results, or later failure.
+Unselected Static branches do not construct; both Runtime branches are charged.
+Static loops/generators charge each analyzed construction, while Runtime loop
+bodies charge during analysis, not per target iteration. Aliases/projections
+and cached results incur no reconstruction charge, but freshly constructed call
+arguments are charged even when the call hits a cache entry.
+
+Arrays must satisfy both the array-only and shared quotas; the array-only check
+runs first (`E4008` takes precedence when both would fail). Raising an old
+array limit alone does not raise the new shared limit. Array counters are a
+subset of shared counters, not an additional charge. Statistics report reserved
+construction count, members, and logical bytes. AST/HIR overhead, record schemas,
+constant/cache copies, target layout, and LLVM allocations remain outside this
+accounting; it is not a process-memory cap or target Runtime allocation budget.
 
 ## Milestone 1 Runtime Intrinsic
 
@@ -180,6 +267,6 @@ unary operators, and calls/indexing. Write `(value & 1) != 0` for a bit test;
 ## Reserved Decisions
 
 Milestone 1 does not include user-defined operators, implicit numeric
-conversions, overloading, mutable assignment, records, pointers, or generic
+conversions, overloading, mutable assignment, pointers, or generic
 parameters. New syntax for those features requires a documented semantic
 decision and examples before parser implementation.

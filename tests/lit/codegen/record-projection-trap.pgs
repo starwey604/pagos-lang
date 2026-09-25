@@ -1,0 +1,5 @@
+// RUN: %run_residual %s trap 0
+// RUN: %run_optimized %s trap 0
+// RUN: %run_residual %s 11 2
+record Pair { known: u32, other: u32 }
+static let result = Pair(known: 11, other: 10 / external_input()).known;

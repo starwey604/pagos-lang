@@ -1,4 +1,6 @@
 // RUN: not %pagosc check %s 2>&1 | %FileCheck %s
-let n = 3;
+runtime let n = 3;
 let table = [for i in 0..n { i }];
-// CHECK: error[E1002]: expected literal array generator bound
+// CHECK: error[E2002]: array generator end must be Static
+// CHECK: Runtime source `n`
+// CHECK: dependency path: n -> array generator end

@@ -1,0 +1,13 @@
+// RUN: %run_residual %s 7 0
+// RUN: %run_residual %s 42 3 42
+// RUN: %run_optimized %s 42 3 42
+record Config { value: u32, enabled: bool }
+fn choose(end: u32) -> Config {
+    for i in 0..end {
+        if i == 1 {
+            return Config(enabled: true, value: external_input());
+        } else { 0 };
+    }
+    Config(value: 7, enabled: false)
+}
+let result = choose(external_input()).value;

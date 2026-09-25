@@ -1,0 +1,9 @@
+// RUN: %pagosc --max-aggregate-members=1 --max-aggregate-bytes=1 explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 7
+record R { flag: bool }
+fn choose() -> u32 {
+    let ignored = R(flag: if true { return 7; } else { false });
+    0
+}
+let result = choose();
+// CHECK: aggregate-constructions=1, aggregate-members=1, aggregate-bytes=1

@@ -1,0 +1,14 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let begin = [for i in true..3 { i }];
+let end = [for i in 0..false { i }];
+let scope = [for j in 0..j { j }];
+fn invalid_body() -> u32 {
+    [for i in if true { return 1; } else { 0 }..2 { [1] }];
+    0
+}
+// CHECK: error[E1008]: array generator body must produce `bool` or `u32`
+// CHECK: error[E1008]: type mismatch in array generator start
+// CHECK: expected `u32`, found `bool`
+// CHECK: error[E1008]: type mismatch in array generator end
+// CHECK: expected `u32`, found `bool`
+// CHECK: error[E1003]: unknown name `j`

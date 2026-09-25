@@ -6,6 +6,8 @@
 // RUN: not %pagosc --max-fuel=100 check %s 2>&1 | %FileCheck %s --check-prefix=FUEL
 // RUN: not %pagosc --max-specializations=8 check %s 2>&1 | %FileCheck %s --check-prefix=SPECIALIZATIONS
 // RUN: not %pagosc --max-recursion-depth=4 check %s 2>&1 | %FileCheck %s --check-prefix=DEPTH
+// RUN: not %pagosc --max-aggregate-members=255 check %s 2>&1 | %FileCheck %s --check-prefix=AGGREGATE
+// RUN: not %pagosc --max-aggregate-bytes=1023 check %s 2>&1 | %FileCheck %s --check-prefix=AGGREGATE
 
 // CRC-32/ISO-HDLC: reflected polynomial 0xEDB88320, init/xorout 0xFFFFFFFF.
 // Eight recursive bit steps run only during table construction.
@@ -49,6 +51,7 @@ let result = crc32_9(table, bytes);
 // STAGE: bytes: Runtime
 // STAGE: result: Runtime
 // STAGE-SAME: external_input -> array element 0 -> bytes -> crc32_9.bytes
+// STAGE: aggregate-constructions=3, aggregate-members=274, aggregate-bytes=1096
 // LLVM: @pagos.table = private unnamed_addr constant [256 x i32]
 // LLVM: define i32 @pagos_main()
 // LLVM-COUNT-9: call i32 @pagos_external_input()
@@ -58,3 +61,4 @@ let result = crc32_9(table, bytes);
 // FUEL: error[E4004]
 // SPECIALIZATIONS: error[E4006]
 // DEPTH: error[E4005]
+// AGGREGATE: error[E4010]

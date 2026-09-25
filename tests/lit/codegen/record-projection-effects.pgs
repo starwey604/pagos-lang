@@ -1,0 +1,7 @@
+// RUN: %run_residual %s 22 99
+// RUN: %run_optimized %s 22 99
+record Pair { known: u32, input: u32 }
+let pair = Pair(input: external_input(), known: 11);
+static let first = pair.known;
+static let second = pair.known;
+let result = first + second;

@@ -1,0 +1,16 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+record Config { value: u32, ready: bool }
+let a = Config(value: true, ready: true);
+let b = Config(value: 1);
+let c = Config(value: 1, value: 2, ready: false);
+let d = Config(value: 1, ready: true, other: 2);
+let e = Config(value: 1, ready: true).other;
+let f = 1.value;
+let g = Config(1, true);
+// CHECK: error[E1008]: type mismatch in field `value`
+// CHECK: error[E1008]: missing field `ready`
+// CHECK: error[E1004]: duplicate initializer for field `value`
+// CHECK: error[E1008]: unknown field `other`
+// CHECK: error[E1008]: unknown field `other`
+// CHECK: error[E1008]: field access requires a record
+// CHECK: error[E1008]: record construction requires named fields

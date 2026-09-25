@@ -1,0 +1,4 @@
+// RUN: %pagosc --max-aggregate-members=0 --max-aggregate-bytes=0 explain-stage %s | %FileCheck %s
+record R { value: u32 }
+let result = if true { 7 } else { R(value: 1 / 0).value };
+// CHECK: aggregate-constructions=0, aggregate-members=0, aggregate-bytes=0

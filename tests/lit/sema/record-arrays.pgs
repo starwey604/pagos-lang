@@ -1,0 +1,6 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+record Config { value: u32 }
+let a = [Config(value: 1)];
+let b = [for i in 0..2 { Config(value: i) }];
+// CHECK: array elements must be `bool` or `u32`
+// CHECK: array generator body must produce `bool` or `u32`

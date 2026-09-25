@@ -1,0 +1,6 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+fn ignore(table: [u32; 2]) -> u32 { 0 }
+let n = 3;
+let argument = ignore([for i in 0..n { i }]);
+// CHECK: error[E1008]: type mismatch in argument for `table`
+// CHECK: expected `[u32; 2]`, found `[u32; 3]`

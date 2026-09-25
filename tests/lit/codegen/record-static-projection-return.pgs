@@ -1,0 +1,11 @@
+// RUN: %run_residual %s 9 1
+// RUN: %run_residual %s 12 0 3
+// RUN: %run_optimized %s 9 1
+record Pair { known: u32, other: u32 }
+fn choose() -> u32 {
+    static let known = Pair(known: 11, other: if external_input() != 0 {
+        return 9;
+    } else { external_input() }).known;
+    known + 1
+}
+let result = choose();

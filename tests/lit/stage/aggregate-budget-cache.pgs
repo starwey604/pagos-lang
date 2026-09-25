@@ -1,0 +1,9 @@
+// RUN: %pagosc --max-aggregate-members=2 --max-aggregate-bytes=5 explain-stage %s | %FileCheck %s
+record R { value: u32, flag: bool }
+fn make() -> R { R(value: 7, flag: true) }
+let a = make();
+let alias = a;
+let b = make();
+let result = alias.value + b.value;
+// CHECK: specializations=1, cache-hits=1
+// CHECK-SAME: aggregate-constructions=1, aggregate-members=2, aggregate-bytes=5

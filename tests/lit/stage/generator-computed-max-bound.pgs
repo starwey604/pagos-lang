@@ -1,0 +1,4 @@
+// RUN: %run_residual %s 4294967294
+let last = 4294967295;
+let table = [for i in last - 2..last { i }];
+let result = table[1];

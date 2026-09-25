@@ -62,6 +62,25 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
             output << std::get<std::uint32_t>(constant);
         } else if (std::holds_alternative<bool>(constant)) {
             output << (std::get<bool>(constant) ? "true" : "false");
+        } else if (const auto* record =
+                       std::get_if<RecordConstant>(&constant)) {
+            output << record->name << '(';
+            for (std::size_t index = 0; index < record->fields.size();
+                 ++index) {
+                if (index != 0) {
+                    output << ", ";
+                }
+                std::visit(
+                    [&](auto value) {
+                        if constexpr (std::is_same_v<decltype(value), bool>) {
+                            output << (value ? "true" : "false");
+                        } else {
+                            output << value;
+                        }
+                    },
+                    record->fields[index]);
+            }
+            output << ')';
         } else {
             std::visit(
                 [&](const auto& values) {
@@ -129,11 +148,20 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
         print_expression(expression->operands.at(2), output);
         output << ')';
         break;
+    case Expr::Kind::Field:
+        output << "field(";
+        print_expression(expression->operands.at(0), output);
+        output << ", " << expression->variable_name.value() << ')';
+        break;
+    case Expr::Kind::Record:
+        output << syntax::type_name(expression->type);
+        [[fallthrough]];
     case Expr::Kind::Sequence:
     case Expr::Kind::Array:
     case Expr::Kind::Index:
         output << (expression->kind == Expr::Kind::Sequence ? "sequence("
                    : expression->kind == Expr::Kind::Array  ? "array("
+                   : expression->kind == Expr::Kind::Record ? "("
                                                             : "index(");
         for (std::size_t index = 0; index < expression->operands.size();
              ++index) {
@@ -175,7 +203,7 @@ std::string_view stage_name(Stage stage) noexcept {
 ExprPtr make_constant(Constant value, syntax::Type type, source::Span span) {
     auto expression = std::make_shared<Expr>();
     expression->kind = Expr::Kind::Constant;
-    expression->type = type;
+    expression->type = std::move(type);
     expression->stage = Stage::Static;
     expression->span = span;
     expression->constant = std::move(value);
@@ -196,6 +224,17 @@ ExprPtr with_trace_step(const ExprPtr& expression, std::string step) {
 }
 
 void print(const Module& module, std::ostream& output) {
+    for (const auto& record : module.records) {
+        output << "record " << record.name << " {";
+        for (std::size_t index = 0; index < record.fields.size(); ++index) {
+            if (index != 0) {
+                output << ", ";
+            }
+            output << record.names[index] << ": "
+                   << syntax::type_name(record.fields[index]);
+        }
+        output << "}\n";
+    }
     for (const auto& function : module.functions) {
         output << "fn " << function.name << '(';
         for (std::size_t index = 0; index < function.parameters.size();

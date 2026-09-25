@@ -439,6 +439,65 @@ table loads. Each input contributes its low eight bits. The whole table and
 Runtime results agree with Python zlib at external Clang `-O0` and `-O2`.
 The [walkthrough](crc32.md) records commands, budgets, and fixed-length scope.
 
+### 38. Named record fields retain independent stages
+
+```pagos
+record Config { clock_hz: u32, revision: u32 }
+fn keep(config: Config) -> Config { config }
+let config = Config(revision: external_input(), clock_hz: 80_000_000);
+let alias = keep(config);
+static let divisor = alias.clock_hz / 1_000_000;
+let result = divisor + alias.revision;
+```
+
+Expected: `divisor` is Static `80`, while `result` is Runtime. The input executes
+exactly once, even though its initializer precedes the known field and passes
+through a call. A failed Static read of `revision` names that field's Runtime
+source. A Runtime binding or branch selecting the record keeps every field
+read Runtime, even if all candidate field values agree. Record constructors
+require all declared fields exactly once and preserve source evaluation order.
+See the [record walkthrough](records.md) and
+[executable configuration case](../tests/lit/stage/record-config.pgs).
+
+### 39. Arrays and records share construction quotas
+
+```pagos
+record Config { value: u32, ready: bool }
+let config = Config(value: 7, ready: true);
+let flags = [true, false];
+```
+
+Expected: two reserved constructions, four aggregate members, and seven logical
+bytes; the array-only subset is two elements/two bytes. Shared limits of four
+members/seven bytes permit this program. A three-member limit reports `E4010`
+on the array without changing either counter set. A four-byte limit rejects the
+record before either field initializer executes. Early return does not refund
+declared fields; aliases and cached results do not reconstruct values, while
+fresh call arguments still consume quota on cache hits. See
+[resource budgets](resource-budgets.md) for the exact scope and legacy limits.
+
+### 40. Computed Static generator lengths
+
+```pagos
+fn last(n: u32) -> u32 {
+    let table = [for i in 0..n { i * i }];
+    table[n - 1]
+}
+static let small = last(2);
+static let large = last(4);
+```
+
+Expected: `small` is `1`, `large` is `9`; their arrays have independent lengths
+two and four. Both bounds evaluate before reservation and body execution.
+`last(external_input())` fails with `E2002` and a dependency path through
+`last.n`. Returning this table from a function declared `-> [u32; 2]` with
+`n == 4` instead fails with `E1008`. Bounds may use Static record fields or
+function results, preserving any accompanying Runtime reads/traps/returns.
+Runtime branch continuations must agree on concrete shape; Static selection
+does not evaluate skipped bounds. See the
+[computed table fixture](../tests/lit/stage/generator-computed.pgs) and
+[bulk generation rules](grammar.md#bulk-array-generation).
+
 ## Acceptance Use
 
 Each example becomes a fixture when its feature enters an implementation

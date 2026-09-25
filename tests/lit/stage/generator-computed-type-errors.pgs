@@ -1,0 +1,5 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let n = 3;
+runtime let wrong: [u32; 2] = [for i in 0..n { i }];
+// CHECK: error[E1008]: type mismatch in initializer for `wrong`
+// CHECK: expected `[u32; 2]`, found `[u32; 3]`

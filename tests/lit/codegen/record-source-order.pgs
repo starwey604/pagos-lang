@@ -1,0 +1,7 @@
+// RUN: %run_residual %s 203 3 2
+// RUN: %run_optimized %s 203 3 2
+record Pair { left: u32, right: u32 }
+fn keep(pair: Pair) -> Pair { pair }
+let pair = keep(Pair(right: external_input(), left: external_input()));
+let alias = pair;
+let result = alias.left * 100 + pair.right;

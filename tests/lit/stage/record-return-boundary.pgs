@@ -1,0 +1,10 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+record Config { value: u32 }
+fn choose(flag: bool) -> Config {
+    if flag { return Config(value: 11); } else { 0 };
+    Config(value: 11)
+}
+runtime let flag = external_input() != 0;
+static let result = choose(flag).value;
+// CHECK: error[E2001]
+// CHECK: dependency path: flag -> choose.flag -> return control -> field access value -> result

@@ -1,7 +1,8 @@
 # CRC-32 Staging Demonstration
 
-The [executable example](../tests/lit/stage/crc32.pgs) closes Milestone 2's
-representative static-table case, not every remaining milestone deliverable.
+The [executable example](../tests/lit/stage/crc32.pgs) is Milestone 2's
+representative static-table case. See the [baseline summary](milestone-2.md)
+for the overall scope and deferred work.
 
 ## Algorithm and scope
 
@@ -49,10 +50,14 @@ zero bytes, high bits, and deterministically generated data. Each message runs
 under external Clang `-O0` and `-O2`; exact input order/count is checked too.
 These flags exercise residual code, not an integrated `pagosc -O` pipeline.
 
-The example fits default limits: 41,552 fuel, 2,314 specializations, maximum
+The example fits default limits: 41,554 fuel, 2,314 specializations, maximum
 depth 9, and 274 reserved array slots / 1,096 logical bytes. Those totals include
-both nine-element message arrays as well as the 256-entry table. Regression
-tests deliberately lower each budget and require its corresponding diagnostic.
+both nine-element message arrays as well as the 256-entry table. Aggregate
+statistics report three constructions, 274 aggregate members,
+and 1,096 aggregate bytes; all constructions in this example are arrays.
+Both the array-only and shared aggregate quotas must allow those totals.
+Regression tests deliberately lower each budget and require its corresponding
+diagnostic.
 Array quotas are cumulative construction limits, not compiler RSS limits.
 
 ## Shift safety

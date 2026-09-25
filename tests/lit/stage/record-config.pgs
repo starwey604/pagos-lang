@@ -1,0 +1,30 @@
+// RUN: %pagosc explain-stage %s | %FileCheck %s --check-prefix=STAGE
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=LLVM
+// RUN: %run_residual %s 83 1
+// RUN: %run_residual %s 80 0
+// RUN: %run_optimized %s 83 1
+record Config { clock_hz: u32, ready: bool }
+fn identity(config: Config) -> Config { return config; }
+fn clock(config: Config) -> u32 { config.clock_hz }
+let config = Config(ready: external_input() != 0, clock_hz: 80_000_000);
+let alias = identity(config);
+static let frequency = clock(alias);
+static let divisor = frequency / 1_000_000;
+let result = divisor + (if alias.ready { 3 } else { 0 });
+// STAGE: config: Runtime
+// STAGE: alias: Runtime
+// STAGE: frequency: Static
+// STAGE: divisor: Static
+// STAGE: result: Runtime
+// STAGE-SAME: field ready
+// HIR: record Config {clock_hz: u32, ready: bool}
+// HIR: binding divisor: u32 [Static] = sequence(
+// HIR-SAME: , 80)
+// MIR: record
+// MIR: field
+// LLVM: call i32 @pagos_external_input()
+// LLVM-NOT: call i32 @pagos_external_input()
+// LLVM: insertvalue { i32, i1 }
+// LLVM: extractvalue { i32, i1 }

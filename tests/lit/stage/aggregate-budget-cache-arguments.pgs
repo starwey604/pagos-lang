@@ -1,0 +1,9 @@
+// RUN: %pagosc --max-aggregate-members=2 explain-stage %s | %FileCheck %s --check-prefix=OK
+// RUN: not %pagosc --max-aggregate-members=1 check %s 2>&1 | %FileCheck %s --check-prefix=FAIL
+record R { value: u32 }
+fn read(r: R) -> u32 { r.value }
+let a = read(R(value: 7));
+let b = read(R(value: 7));
+// OK: specializations=1, cache-hits=1
+// OK-SAME: aggregate-constructions=2, aggregate-members=2, aggregate-bytes=8
+// FAIL: error[E4010]

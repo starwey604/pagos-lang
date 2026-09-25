@@ -1,0 +1,7 @@
+// RUN: %pagosc --max-aggregate-bytes=3 explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 1
+let n = 3;
+static let table: [bool; 3] = [for i in n - 3..n { i == 2 }];
+let result = if table[2] { 1 } else { 0 };
+// CHECK: table: Static
+// CHECK: array-elements=3, array-bytes=3

@@ -21,6 +21,9 @@ struct AnalysisLimits {
     std::size_t specializations{4'096};
     std::size_t array_elements{65'536};
     std::size_t array_bytes{262'144};
+    // Cumulative construction quotas shared by arrays and records, not RSS.
+    std::size_t aggregate_members{65'536};
+    std::size_t aggregate_bytes{262'144};
 };
 
 struct AnalysisStats {
@@ -30,6 +33,9 @@ struct AnalysisStats {
     std::size_t maximum_recursion_depth{};
     std::size_t array_elements_reserved{};
     std::size_t array_bytes_reserved{};
+    std::size_t aggregate_constructions{};
+    std::size_t aggregate_members_reserved{};
+    std::size_t aggregate_bytes_reserved{};
 };
 
 class StageAnalyzer {
@@ -77,9 +83,14 @@ class StageAnalyzer {
     hir::ExprPtr
     analyze_array_generator(const syntax::ArrayGeneratorExpr& expression);
     hir::ExprPtr finish_array(std::vector<hir::ExprPtr> elements,
-                              syntax::Type type, source::Span span);
-    bool reserve_array(std::size_t count, syntax::Type type, source::Span span);
+                              const syntax::Type& type, source::Span span);
+    bool reserve_array(std::size_t count, const syntax::Type& type,
+                       source::Span span);
+    bool reserve_aggregate(std::size_t bool_members, std::size_t u32_members,
+                           source::Span span);
     hir::ExprPtr analyze_index(const syntax::IndexExpr& expression);
+    hir::ExprPtr analyze_record(const syntax::RecordExpr& expression);
+    hir::ExprPtr analyze_field(const syntax::FieldExpr& expression);
 
     void define(const std::string& name, hir::ExprPtr value);
     [[nodiscard]] hir::ExprPtr lookup(const std::string& name) const;
@@ -94,6 +105,9 @@ class StageAnalyzer {
     [[nodiscard]] hir::ExprPtr resolve_return(const hir::ExprPtr& value) const;
     void report_static_failure(const syntax::BindingStmt& binding,
                                const hir::RuntimeTrace& trace);
+    bool check_resolved_type(const syntax::Type& expected,
+                             const hir::ExprPtr& value, source::Span span,
+                             const std::string& context);
     [[nodiscard]] syntax::Type type_of(const syntax::Expr& expression) const;
     [[nodiscard]] bool consume_fuel(source::Span span);
     [[nodiscard]] std::optional<SpecializationKey>
@@ -101,6 +115,7 @@ class StageAnalyzer {
                        const std::vector<hir::ExprPtr>& arguments) const;
 
     source::DiagnosticEngine& diagnostics_;
+    std::unordered_map<std::string, const syntax::Module::Record*> records_;
     const sema::TypeTable& types_;
     AnalysisLimits limits_;
     AnalysisStats stats_;
@@ -112,7 +127,7 @@ class StageAnalyzer {
     std::unordered_set<SpecializationKey, SpecializationKeyHash>
         active_specializations_;
     bool fuel_exhausted_{};
-    bool array_budget_exhausted_{};
+    bool construction_budget_exhausted_{};
 };
 
 } // namespace pagos::stage

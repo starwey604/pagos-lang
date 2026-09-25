@@ -1,0 +1,11 @@
+// RUN: %pagosc emit-mir %s | %FileCheck %s
+// RUN: %run_residual %s 1 1 0 1
+// RUN: %run_residual %s 0 0
+// RUN: %run_optimized %s 1 1 0 1
+fn make(n: u32, flag: bool) -> [bool; 2] {
+    if flag { return [for i in 0..n { external_input() == i }]; }
+    else { [for i in 0..n { false }] }
+}
+let result = if make(2, external_input() != 0)[1] { 1 } else { 0 };
+// CHECK: [bool; 2]
+// CHECK: phi

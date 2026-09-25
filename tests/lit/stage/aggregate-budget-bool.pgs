@@ -1,0 +1,7 @@
+// RUN: %pagosc --max-aggregate-members=2 --max-aggregate-bytes=2 explain-stage %s | %FileCheck %s --check-prefix=OK
+// RUN: not %pagosc --max-aggregate-bytes=1 check %s 2>&1 | %FileCheck %s --check-prefix=FAIL
+record R { first: bool, second: bool }
+let result = R(first: true, second: false).first;
+// OK: aggregate-constructions=1, aggregate-members=2, aggregate-bytes=2
+// FAIL: error[E4010]
+// FAIL: request 2 bool members and 0 u32 members

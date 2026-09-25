@@ -14,12 +14,13 @@ IfExpr::~IfExpr() = default;
 
 ArrayGeneratorExpr::ArrayGeneratorExpr(std::string variable,
                                        source::Span variable_span,
-                                       std::uint32_t begin, std::uint32_t end,
+                                       std::unique_ptr<Expr> begin,
+                                       std::unique_ptr<Expr> end,
                                        std::unique_ptr<Block> body,
                                        source::Span span)
     : Expr(Kind::ArrayGenerator, span), variable(std::move(variable)),
-      variable_span(variable_span), begin(begin), end(end),
-      body(std::move(body)) {}
+      variable_span(variable_span), begin(std::move(begin)),
+      end(std::move(end)), body(std::move(body)) {}
 
 ArrayGeneratorExpr::~ArrayGeneratorExpr() = default;
 
@@ -32,12 +33,14 @@ ForStmt::ForStmt(std::string variable, source::Span variable_span,
 
 ForStmt::~ForStmt() = default;
 
-std::string type_name(Type type) {
+std::string type_name(const Type& type) {
     switch (type.kind) {
+    case TypeKind::Record:
+        return type.record_name;
     case TypeKind::ArrayBool:
     case TypeKind::ArrayU32:
         return "[" + type_name(type.element_type()) + "; " +
-               std::to_string(type.length) + "]";
+               (type.length == 0 ? "?" : std::to_string(type.length)) + "]";
     case TypeKind::Unknown:
         return "<unknown>";
     case TypeKind::Void:

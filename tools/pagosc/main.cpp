@@ -29,12 +29,14 @@ struct Options {
 };
 
 void print_usage() {
-    std::println(stderr, "usage: pagosc [--max-fuel=N] "
-                         "[--max-recursion-depth=N] "
-                         "[--max-specializations=N] "
-                         "[--max-array-elements=N] [--max-array-bytes=N] "
-                         "<check|emit-hir|emit-mir|emit-llvm|explain-stage> "
-                         "<source.pgs>");
+    std::println(stderr,
+                 "usage: pagosc [--max-fuel=N] "
+                 "[--max-recursion-depth=N] "
+                 "[--max-specializations=N] "
+                 "[--max-array-elements=N] [--max-array-bytes=N] "
+                 "[--max-aggregate-members=N] [--max-aggregate-bytes=N] "
+                 "<check|emit-hir|emit-mir|emit-llvm|explain-stage> "
+                 "<source.pgs>");
 }
 
 std::optional<Command> parse_command(std::string_view name) {
@@ -85,6 +87,10 @@ std::expected<Options, std::string> parse_options(int argument_count,
         constexpr std::string_view array_elements_prefix =
             "--max-array-elements=";
         constexpr std::string_view array_bytes_prefix = "--max-array-bytes=";
+        constexpr std::string_view aggregate_members_prefix =
+            "--max-aggregate-members=";
+        constexpr std::string_view aggregate_bytes_prefix =
+            "--max-aggregate-bytes=";
         if (argument.starts_with(fuel_prefix)) {
             auto value = parse_limit(argument, fuel_prefix);
             if (!value) {
@@ -115,6 +121,18 @@ std::expected<Options, std::string> parse_options(int argument_count,
                 return std::unexpected(value.error());
             }
             limits.array_bytes = *value;
+        } else if (argument.starts_with(aggregate_members_prefix)) {
+            auto value = parse_limit(argument, aggregate_members_prefix);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            limits.aggregate_members = *value;
+        } else if (argument.starts_with(aggregate_bytes_prefix)) {
+            auto value = parse_limit(argument, aggregate_bytes_prefix);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            limits.aggregate_bytes = *value;
         } else if (argument.starts_with("--")) {
             return std::unexpected("unknown option `" + std::string(argument) +
                                    "`");
@@ -193,13 +211,18 @@ int main(int argument_count, char** arguments) {
         pagos::hir::explain_stages(*hir_module, std::cout);
         std::println(std::cout,
                      "analysis: fuel={}, specializations={}, cache-hits={}, "
-                     "max-depth={}, array-elements={}, array-bytes={}",
+                     "max-depth={}, array-elements={}, array-bytes={}, "
+                     "aggregate-constructions={}, aggregate-members={}, "
+                     "aggregate-bytes={}",
                      stage_analyzer.stats().fuel_consumed,
                      stage_analyzer.stats().specializations,
                      stage_analyzer.stats().cache_hits,
                      stage_analyzer.stats().maximum_recursion_depth,
                      stage_analyzer.stats().array_elements_reserved,
-                     stage_analyzer.stats().array_bytes_reserved);
+                     stage_analyzer.stats().array_bytes_reserved,
+                     stage_analyzer.stats().aggregate_constructions,
+                     stage_analyzer.stats().aggregate_members_reserved,
+                     stage_analyzer.stats().aggregate_bytes_reserved);
         return 0;
     case Command::EmitMir:
     case Command::EmitLlvm:

@@ -1,0 +1,7 @@
+// RUN: %pagosc --max-aggregate-members=9 --max-aggregate-bytes=27 explain-stage %s | %FileCheck %s --check-prefix=OK
+// RUN: not %pagosc --max-aggregate-members=8 check %s 2>&1 | %FileCheck %s --check-prefix=FAIL
+record R { value: u32, flag: bool }
+let a = [for i in 0..3 { R(value: i, flag: true).value }];
+// OK: array-elements=3, array-bytes=12, aggregate-constructions=4, aggregate-members=9, aggregate-bytes=27
+// FAIL: error[E4010]
+// FAIL: request 1 bool members and 1 u32 members; reserved 7/8 members, 22/262144 bytes

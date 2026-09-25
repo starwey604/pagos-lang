@@ -1,0 +1,11 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+fn make(n: u32) -> u32 { [for i in 0..n + 1 { i }][0] }
+let n = external_input();
+let start = [for i in n..4 { i }];
+let result = make(n);
+// CHECK: error[E2002]: array generator start must be Static
+// CHECK: Runtime source `external_input`
+// CHECK: dependency path: external_input -> n -> array generator start
+// CHECK: error[E2002]: array generator end must be Static
+// CHECK: Runtime source `external_input`
+// CHECK: dependency path: external_input -> n -> make.n -> array generator end

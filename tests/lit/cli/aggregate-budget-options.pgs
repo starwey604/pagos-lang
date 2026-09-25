@@ -1,0 +1,9 @@
+// RUN: not %pagosc --max-aggregate-members=-1 check %s 2>&1 | %FileCheck %s --check-prefix=INVALID
+// RUN: not %pagosc --max-aggregate-members= check %s 2>&1 | %FileCheck %s --check-prefix=INVALID
+// RUN: not %pagosc --max-aggregate-bytes=oops check %s 2>&1 | %FileCheck %s --check-prefix=INVALID
+// RUN: not %pagosc --max-aggregate-bytes=184467440737095516160 check %s 2>&1 | %FileCheck %s --check-prefix=INVALID
+// RUN: %pagosc --max-aggregate-members=0 check %s --max-aggregate-bytes=0
+// RUN: %pagosc --max-aggregate-members=3 --max-aggregate-members=0 explain-stage %s | %FileCheck %s --check-prefix=STATS
+let result = 7;
+// INVALID: error: invalid numeric option
+// STATS: aggregate-constructions=0, aggregate-members=0, aggregate-bytes=0

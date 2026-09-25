@@ -1,0 +1,6 @@
+// RUN: not %pagosc --max-aggregate-members=0 check %s 2>&1 | %FileCheck %s --implicit-check-not=E4001
+record R { value: u32 }
+let r = R(value: 1 / 0);
+let a = [2];
+// CHECK: error[E4010]
+// CHECK-NOT: error[

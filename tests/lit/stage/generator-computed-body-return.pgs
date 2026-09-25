@@ -1,0 +1,13 @@
+// RUN: %run_residual %s 9 10 20 30 40
+// RUN: %run_optimized %s 9 10 20 30 40
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+fn bound(n: u32) -> u32 { external_input(); n }
+fn choose() -> u32 {
+    [for i in bound(0)..bound(3) {
+        external_input();
+        if i == 1 { return 9; } else { i }
+    }];
+    1 / 0
+}
+let result = choose();
+// CHECK: array-elements=3, array-bytes=12

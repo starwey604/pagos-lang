@@ -1,0 +1,20 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+record Empty {}
+record Pair { value: u32, value: bool }
+record Nested { pair: Pair }
+record ArrayField { values: [u32; 2] }
+record Pair { other: u32 }
+fn Pair() -> u32 { 0 }
+fn missing(arg: Unknown) -> Unknown { arg }
+let value: Unknown = 1;
+let another = Unknown(value: 1);
+// CHECK: empty records are not supported
+// CHECK: duplicate field `value`
+// CHECK: record fields must be `bool` or `u32`
+// CHECK: record fields must be `bool` or `u32`
+// CHECK: duplicate or reserved record name `Pair`
+// CHECK: function and record share name `Pair`
+// CHECK: unknown record type `Unknown`
+// CHECK: unknown record type `Unknown`
+// CHECK: unknown record type `Unknown`
+// CHECK: unknown record type `Unknown`

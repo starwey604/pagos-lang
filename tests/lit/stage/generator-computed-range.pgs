@@ -1,0 +1,11 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let n = 3;
+let empty = [for i in n..n { i }];
+let reversed = [for i in n..n - 1 { i }];
+let wrapped = [for i in 0..4294967295 + 1 { i }];
+// CHECK: error[E1005]: array generator range must be nonempty and increasing
+// CHECK: start 3, end 3
+// CHECK: error[E1005]: array generator range must be nonempty and increasing
+// CHECK: start 3, end 2
+// CHECK: error[E1005]: array generator range must be nonempty and increasing
+// CHECK: start 0, end 0

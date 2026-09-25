@@ -19,24 +19,36 @@ enum class TypeKind {
     Never,
     Error,
     ArrayBool,
-    ArrayU32
+    ArrayU32,
+    Record
 };
 
 struct Type {
     TypeKind kind{TypeKind::Error};
+    // Zero denotes a deferred array length in the semantic type table only.
+    // Source array types and all residual array values must have positive size.
     std::uint32_t length{};
+    std::string record_name;
 
     Type() = default;
     Type(TypeKind kind, std::uint32_t length = 0)
         : kind(kind), length(length) {}
     bool operator==(const Type&) const = default;
+    [[nodiscard]] bool is_record() const noexcept {
+        return kind == TypeKind::Record;
+    }
+    [[nodiscard]] static Type record(std::string name) {
+        Type type{TypeKind::Record};
+        type.record_name = std::move(name);
+        return type;
+    }
     [[nodiscard]] bool is_array() const noexcept {
         return kind == TypeKind::ArrayBool || kind == TypeKind::ArrayU32;
     }
     [[nodiscard]] Type element_type() const noexcept {
         return kind == TypeKind::ArrayBool ? TypeKind::Bool : TypeKind::U32;
     }
-    [[nodiscard]] static Type array(Type element, std::uint32_t length) {
+    [[nodiscard]] static Type array(const Type& element, std::uint32_t length) {
         return {element == TypeKind::Bool ? TypeKind::ArrayBool
                                           : TypeKind::ArrayU32,
                 length};
@@ -78,7 +90,9 @@ struct Expr {
         If,
         Array,
         ArrayGenerator,
-        Index
+        Index,
+        Record,
+        Field
     };
 
     Expr(Kind kind, source::Span span) : kind(kind), span(span) {}
@@ -160,16 +174,42 @@ struct IndexExpr final : Expr {
     std::unique_ptr<Expr> index;
 };
 
+struct FieldInitializer {
+    std::string name;
+    source::Span name_span;
+    std::unique_ptr<Expr> value;
+};
+
+struct RecordExpr final : Expr {
+    RecordExpr(std::string name, source::Span name_span,
+               std::vector<FieldInitializer> fields, source::Span span)
+        : Expr(Kind::Record, span), name(std::move(name)), name_span(name_span),
+          fields(std::move(fields)) {}
+    std::string name;
+    source::Span name_span;
+    std::vector<FieldInitializer> fields;
+};
+
+struct FieldExpr final : Expr {
+    FieldExpr(std::unique_ptr<Expr> record, std::string name,
+              source::Span name_span, source::Span span)
+        : Expr(Kind::Field, span), record(std::move(record)),
+          name(std::move(name)), name_span(name_span) {}
+    std::unique_ptr<Expr> record;
+    std::string name;
+    source::Span name_span;
+};
+
 struct ArrayGeneratorExpr final : Expr {
     ArrayGeneratorExpr(std::string variable, source::Span variable_span,
-                       std::uint32_t begin, std::uint32_t end,
+                       std::unique_ptr<Expr> begin, std::unique_ptr<Expr> end,
                        std::unique_ptr<Block> body, source::Span span);
     ~ArrayGeneratorExpr() override;
 
     std::string variable;
     source::Span variable_span;
-    std::uint32_t begin;
-    std::uint32_t end;
+    std::unique_ptr<Expr> begin;
+    std::unique_ptr<Expr> end;
     std::unique_ptr<Block> body;
 };
 
@@ -188,7 +228,8 @@ struct BindingStmt final : Stmt {
                 source::Span name_span, std::optional<Type> annotation,
                 std::unique_ptr<Expr> initializer, source::Span span)
         : Stmt(Kind::Binding, span), binding_kind(binding_kind),
-          name(std::move(name)), name_span(name_span), annotation(annotation),
+          name(std::move(name)), name_span(name_span),
+          annotation(std::move(annotation)),
           initializer(std::move(initializer)) {}
 
     BindingKind binding_kind;
@@ -245,10 +286,16 @@ struct Function {
 };
 
 struct Module {
+    struct Record {
+        std::string name;
+        source::Span name_span;
+        std::vector<Parameter> fields;
+    };
+    std::vector<Record> records;
     std::vector<std::unique_ptr<Function>> functions;
     std::vector<std::unique_ptr<Stmt>> statements;
 };
 
-[[nodiscard]] std::string type_name(Type type);
+[[nodiscard]] std::string type_name(const Type& type);
 
 } // namespace pagos::syntax

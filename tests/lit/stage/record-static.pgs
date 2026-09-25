@@ -1,0 +1,13 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s
+// RUN: %pagosc explain-stage %s | %FileCheck %s --check-prefix=CACHE
+// RUN: %run_residual %s 22
+fn value(pair: Pair) -> u32 { if pair.ready { pair.value } else { 0 } }
+fn make() -> Pair { Pair(ready: true, value: 11) }
+record Pair { value: u32, ready: bool, }
+static let first = make();
+static let second: Pair = Pair(value: 11, ready: true);
+static let result = value(first) + value(second);
+// CHECK: binding first: Pair [Static] = Pair(11, true)
+// CHECK: binding second: Pair [Static] = Pair(11, true)
+// CHECK: binding result: u32 [Static] = 22
+// CACHE: specializations=2, cache-hits=1

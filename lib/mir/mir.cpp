@@ -210,6 +210,28 @@ std::expected<void, std::string> verify_function(const Function& function) {
                     std::get_if<std::vector<std::uint32_t>>(&constant->value);
                 const auto* booleans =
                     std::get_if<std::vector<bool>>(&constant->value);
+                if (const auto* record =
+                        std::get_if<RecordConstant>(&constant->value)) {
+                    if (!instruction.type.is_record() ||
+                        record->name != instruction.type.record_name ||
+                        record->fields.size() !=
+                            instruction.type.fields.size()) {
+                        return std::unexpected(
+                            "MIR record constant shape mismatch");
+                    }
+                    for (std::size_t field = 0; field < record->fields.size();
+                         ++field) {
+                        const auto type =
+                            std::holds_alternative<bool>(record->fields[field])
+                                ? Type::Bool
+                                : Type::U32;
+                        if (type != instruction.type.fields[field]) {
+                            return std::unexpected(
+                                "MIR record constant field type mismatch");
+                        }
+                    }
+                    continue;
+                }
                 const bool valid =
                     (instruction.type.kind == Type::ArrayU32 && integers &&
                      integers->size() == instruction.type.length) ||
@@ -277,8 +299,8 @@ std::expected<void, std::string> verify_function(const Function& function) {
                 using enum BinaryOperator;
                 if (binary->operation == Equal ||
                     binary->operation == NotEqual) {
-                    if (left->is_array() || *left != *right ||
-                        instruction.type != Type::Bool) {
+                    if (left->is_array() || left->is_record() ||
+                        *left != *right || instruction.type != Type::Bool) {
                         return std::unexpected(
                             "invalid MIR equality operation");
                     }
@@ -365,6 +387,49 @@ std::expected<void, std::string> verify_function(const Function& function) {
                 continue;
             }
 
+            if (const auto* record =
+                    std::get_if<RecordOperation>(&instruction.operation)) {
+                if (!instruction.type.is_record() ||
+                    record->fields.size() != instruction.type.fields.size()) {
+                    return std::unexpected("invalid MIR record construction");
+                }
+                for (std::size_t field = 0; field < record->fields.size();
+                     ++field) {
+                    const auto operand = value_type(record->fields[field]);
+                    if (!operand) {
+                        return std::unexpected(operand.error());
+                    }
+                    if (*operand != instruction.type.fields[field]) {
+                        return std::unexpected(
+                            "MIR record field type mismatch");
+                    }
+                    if (auto valid = require_dominance(record->fields[field],
+                                                       block.id, index);
+                        !valid) {
+                        return valid;
+                    }
+                }
+                continue;
+            }
+            if (const auto* field =
+                    std::get_if<FieldOperation>(&instruction.operation)) {
+                const auto record = value_type(field->record);
+                if (!record) {
+                    return std::unexpected(record.error());
+                }
+                if (!record->is_record() ||
+                    field->index >= record->fields.size() ||
+                    instruction.type != record->fields[field->index]) {
+                    return std::unexpected("invalid MIR field access");
+                }
+                if (auto valid =
+                        require_dominance(field->record, block.id, index);
+                    !valid) {
+                    return valid;
+                }
+                continue;
+            }
+
             const auto& phi = std::get<PhiOperation>(instruction.operation);
             if (phi.incoming.empty()) {
                 return std::unexpected("MIR phi has no incoming values");
@@ -432,6 +497,25 @@ void print_instruction(const Instruction& instruction, std::ostream& output) {
             output << std::get<std::uint32_t>(constant->value);
         } else if (std::holds_alternative<bool>(constant->value)) {
             output << (std::get<bool>(constant->value) ? "true" : "false");
+        } else if (const auto* record =
+                       std::get_if<RecordConstant>(&constant->value)) {
+            output << record->name << '(';
+            for (std::size_t index = 0; index < record->fields.size();
+                 ++index) {
+                if (index != 0) {
+                    output << ", ";
+                }
+                std::visit(
+                    [&](auto value) {
+                        if constexpr (std::is_same_v<decltype(value), bool>) {
+                            output << (value ? "true" : "false");
+                        } else {
+                            output << value;
+                        }
+                    },
+                    record->fields[index]);
+            }
+            output << ')';
         } else {
             std::visit(
                 [&](const auto& values) {
@@ -479,6 +563,18 @@ void print_instruction(const Instruction& instruction, std::ostream& output) {
             }
             output << value_name(array->elements[index]);
         }
+    } else if (const auto* record =
+                   std::get_if<RecordOperation>(&instruction.operation)) {
+        output << "record ";
+        for (std::size_t index = 0; index < record->fields.size(); ++index) {
+            if (index != 0) {
+                output << ", ";
+            }
+            output << value_name(record->fields[index]);
+        }
+    } else if (const auto* field =
+                   std::get_if<FieldOperation>(&instruction.operation)) {
+        output << "field " << value_name(field->record) << ", " << field->index;
     } else if (const auto* access =
                    std::get_if<IndexOperation>(&instruction.operation)) {
         output << "index.checked " << value_name(access->array) << ", "
@@ -499,7 +595,10 @@ void print_instruction(const Instruction& instruction, std::ostream& output) {
 
 } // namespace
 
-std::string type_name(Type type) {
+std::string type_name(const Type& type) {
+    if (type.is_record()) {
+        return type.record_name;
+    }
     if (type.is_array()) {
         return "[" + type_name(type.element_type()) + "; " +
                std::to_string(type.length) + "]";
@@ -551,7 +650,26 @@ std::expected<void, std::string> verify(const Module& module) {
         return std::unexpected("MIR module has no functions");
     }
     std::unordered_set<std::string> names;
+    std::unordered_map<std::string, Type> records;
+    const auto consistent = [&](const Type& type) {
+        if (!type.is_record()) {
+            return true;
+        }
+        const auto [entry, inserted] = records.emplace(type.record_name, type);
+        return inserted || entry->second == type;
+    };
     for (const auto& function : module.functions) {
+        if (!consistent(function.result_type)) {
+            return std::unexpected("inconsistent MIR record definition");
+        }
+        for (const auto& block : function.blocks) {
+            for (const auto& instruction : block.instructions) {
+                if (!consistent(instruction.type)) {
+                    return std::unexpected(
+                        "inconsistent MIR record definition");
+                }
+            }
+        }
         if (!names.insert(function.name).second) {
             return std::unexpected("duplicate MIR function `" + function.name +
                                    "`");

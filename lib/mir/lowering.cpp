@@ -19,6 +19,15 @@ class Lowerer {
     }
 
     std::expected<Module, std::string> run(const hir::Module& hir_module) {
+        for (const auto& record : hir_module.records) {
+            Type type{Type::Record};
+            type.record_name = record.name;
+            for (const auto& field : record.fields) {
+                type.fields.push_back(
+                    field == syntax::TypeKind::Bool ? Type::Bool : Type::U32);
+            }
+            records_.emplace(record.name, std::move(type));
+        }
         ValueId result{};
         if (hir_module.result) {
             auto lowered = lower_expression(hir_module.result);
@@ -29,7 +38,8 @@ class Lowerer {
             if (hir_module.result->type == syntax::TypeKind::Bool) {
                 result = emit(Type::U32, BoolToU32Operation{.operand = result},
                               hir_module.result->span);
-            } else if (hir_module.result->type.is_array()) {
+            } else if (hir_module.result->type.is_array() ||
+                       hir_module.result->type.is_record()) {
                 result = emit(Type::U32,
                               ConstantOperation{.value = std::uint32_t{0}},
                               hir_module.result->span);
@@ -104,7 +114,7 @@ class Lowerer {
         const auto result = next_value_++;
         block(current_block_)
             .instructions.push_back({.result = result,
-                                     .type = type,
+                                     .type = std::move(type),
                                      .operation = std::move(operation),
                                      .span = span});
         return result;
@@ -169,6 +179,10 @@ class Lowerer {
         case hir::Expr::Kind::Array:
         case hir::Expr::Kind::Index:
             result = lower_array_operation(expression);
+            break;
+        case hir::Expr::Kind::Record:
+        case hir::Expr::Kind::Field:
+            result = lower_record_operation(expression);
             break;
         }
         if (result && live_) {
@@ -437,7 +451,34 @@ class Lowerer {
                     expression->span);
     }
 
-    static Type type_of(syntax::Type type) {
+    std::expected<ValueId, std::string>
+    lower_record_operation(const hir::ExprPtr& expression) {
+        std::vector<ValueId> fields;
+        for (const auto& operand : expression->operands) {
+            auto value = lower_expression(operand);
+            if (!value || !live_) {
+                return value;
+            }
+            fields.push_back(*value);
+        }
+        if (expression->kind == hir::Expr::Kind::Record) {
+            return emit(type_of(expression->type),
+                        RecordOperation{.fields = std::move(fields)},
+                        expression->span);
+        }
+        if (fields.size() != 1) {
+            return std::unexpected("HIR field access requires one record");
+        }
+        return emit(type_of(expression->type),
+                    FieldOperation{.record = fields[0],
+                                   .index = expression->field_index},
+                    expression->span);
+    }
+
+    Type type_of(const syntax::Type& type) const {
+        if (type.is_record()) {
+            return records_.at(type.record_name);
+        }
         if (type.is_array()) {
             return {type.element_type() == syntax::TypeKind::Bool
                         ? Type::ArrayBool
@@ -495,6 +536,7 @@ class Lowerer {
     }
 
     Function function_;
+    std::unordered_map<std::string, Type> records_;
     BlockId current_block_{};
     // Returned paths have no continuation value; callers must stop lowering
     // that path while this is false, even if lower_expression succeeded.

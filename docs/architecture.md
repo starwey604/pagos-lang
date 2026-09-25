@@ -1,7 +1,8 @@
 # Compiler Architecture
 
-Status: Milestone 1 implemented. Milestone 2 is in progress with the residual
-SSA MIR boundary implemented; later Milestone 2 components remain proposed.
+Status: Milestones 1 and 2 core baselines implemented; see the
+[Milestone 2 summary](milestone-2.md) for scope and deferred work. The broader
+component design below also includes future systems and build capabilities.
 
 ## Design boundary
 
@@ -147,10 +148,21 @@ number of specializations; `AnalysisStats` exposes consumption, cache hits, and
 maximum depth. Runtime recursion and full host-memory accounting remain future
 work.
 
-Array generators remain compact AST nodes through type checking. Their literal
-range determines the result length without allocating per-element AST nodes.
-Analysis reserves cumulative element/data-byte quotas before allocating the
+Array generators retain bound expressions in compact AST nodes through type
+checking, without per-element AST expansion. The semantic type table retains
+literal lengths where known and uses length zero for deferred scalar-array
+shapes (`[u32; ?]` / `[bool; ?]` in diagnostic text). Zero is not a valid source
+array length or a MIR value type. Analysis evaluates the bounds per invocation
+and creates concrete HIR types without mutating the shared semantic table.
+It rechecks deferred shape constraints at bindings, call arguments, explicit
+returns, function tails, and Runtime branch joins before MIR lowering.
+Source signatures remain fixed-length, not dependent types.
+
+After bound evaluation, analysis reserves cumulative quotas before allocating the
 element vector, then charges fuel per iteration and analyzes the scoped body.
+Bound effects wrap the constructed result in a Sequence, preserving early exits,
+reads, traps, and argument work on cache hits. Bound evaluation itself uses the
+ordinary fuel, recursion, specialization, and construction budgets.
 Both generators and literals use the same HIR array construction path, so
 embedding, per-element staging, effects, and residual returns remain shared.
 Quota checks use remaining capacity and division before multiplication to
@@ -164,6 +176,24 @@ the same stages and sequencing as other strict primitives. MIR names shifts
 shifting to avoid poison. Right shift is logical, and no overflow/exact flags
 are attached. Known valid counts need no residual guard. See the
 [CRC walkthrough](crc32.md) for the differential test and current scope.
+
+Minimal record declarations retain only source names and explicit scalar types
+in AST. Inferred expression types remain in semantic side tables. HIR carries
+record schemas and canonical declaration-order field operands; a Sequence
+preserves source-order initializer work, with shared identities preventing
+duplicate execution. Field projection looks through aliases and sequences,
+but not Runtime boundaries, conditionals, or call return joins. Portable
+constants in `include/pagos/value.h` carry nominal record names and typed
+scalar fields; specialization keys hash their contents, not host pointers.
+
+Shared aggregate reservations count scalar members and logical payload bytes
+for arrays and records. Remaining-capacity checks precede sums/products and
+member-vector allocation. Records count declared boolean and integer fields;
+array checks compose atomically with existing array-only quotas. An exhausted
+construction budget suppresses subsequent construction-budget errors until the
+next analysis. Statistics count successful reservations, including ones whose
+evaluation later exits early, not live heap allocations. Constant/key copies,
+record schema storage, and backend allocations remain outside these quotas.
 
 ### 7. Residual SSA MIR
 
@@ -183,6 +213,14 @@ loads; failure calls `llvm.trap`. MIR verification also rejects invalid
 types, undefined values, unreachable blocks, incomplete phi inputs, and
 non-dominating uses before LLVM lowering. `pagosc emit-mir` provides a stable
 textual form for golden tests.
+
+Record construction and constant-field projection are explicit MIR operations.
+Nominal record types include ordered scalar field kinds; verification rejects
+inconsistent definitions, malformed constants, wrong field types/counts,
+out-of-range projections, non-dominating operands, and incompatible phi inputs.
+LLVM uses unpacked struct values with `insertvalue`, `extractvalue`, and struct
+phis. This internal representation is not a source-level layout or C ABI
+contract. Record values do not require heap allocation.
 
 Initial operations should cover:
 

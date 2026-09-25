@@ -71,14 +71,21 @@ determines the result prevents the right operand from thawing the expression.
 Analysis should be value- and field-sensitive:
 
 ```pagos
-let config = {
-    clock_hz: 80_000_000,        // Static
-    runtime revision: read_id()  // Runtime
-};
+record Config { clock_hz: u32, revision: u32 }
+let config = Config(clock_hz: 80_000_000, revision: external_input());
+static let clock = config.clock_hz;
 ```
 
 The runtime `revision` field must not thaw `clock_hz` or unrelated device
-topology. Exact record syntax remains undecided.
+topology. Minimal named records now implement this rule for `u32`/`bool`
+fields. Field precision is an analysis property, not a stage annotation in the
+record type. Constructors evaluate named initializers in source order, then
+store values in declaration order. A Static field read preserves all constructor
+work and may therefore still require Runtime reads, traps, or early returns.
+Aliases, parameters, and direct returns retain precision; explicit Runtime
+boundaries and Runtime branch/call-result selection remain opaque, as for arrays.
+Records are nominal, immutable, and have no structural equality or stable ABI.
+See [Minimal Records](grammar.md#minimal-records-milestone-2).
 
 Fixed-length array construction retains each element's stage. The array as a
 whole is Static only when every element is Static, but a Static index selects
@@ -138,6 +145,8 @@ result are Static and evaluating the specialized body has no residual work.
 Argument evaluation is preserved separately, including on cache hits. Its key
 contains function identity and the typed argument constants; target
 configuration and effect dependencies join the key when those features land.
+Record keys contain the nominal name and typed scalar fields in declaration
+order, so reordered initializers share a key without reordering their effects.
 Static recursion is permitted when selected
 Static branches change the arguments and terminate within the configured fuel,
 depth, and specialization limits. Re-entering an active key is a recursive
@@ -189,15 +198,29 @@ Short-circuit expressions follow the same control rule: a statically skipped
 right operand performs no effect, while a right operand selected by a Runtime
 left operand is under Runtime control.
 
-Literal-range array generators expand in ascending index order with a fresh
+Static-bound array generators expand in ascending index order with a fresh
 Static index per iteration. The body follows the same staging, effect-order,
 and enclosing-function return rules as a Static loop; only scalar continuation
 values become array elements. A Runtime body does not make the length dynamic.
+Unlike statement loops, generators reject Runtime bounds (`E2002`). Each bound
+is evaluated once, left-to-right, before reservation and expansion; Static
+values may still retain residual effects and early returns. A specialization
+resolves its own array length, and deferred shape constraints are checked before
+residualization. Computed shape obligations in skipped Static arms or uncalled
+functions are not evaluated; Runtime branch continuations must have equal shapes.
 Static selection skips unselected generators; Runtime branches are both
 analyzed and charged against cumulative array quotas. Construction inside a
 Runtime loop is charged when analyzed, not on each target execution. Bounds,
 reservation rules, and defaults are specified in
 [Bulk array generation](grammar.md#bulk-array-generation).
+
+All arrays and records also participate in shared aggregate construction quotas.
+Each record reserves its declared scalar fields before any initializer executes.
+No reservation is refunded when a constructor returns early or its value is
+discarded. Aliases and cached results do not reconstruct values, but constructing
+an argument still consumes quota on a cache hit. These deterministic logical
+construction counters are separate from cache-copy or process-memory accounting.
+See [Aggregate Construction Budgets](grammar.md#aggregate-construction-budgets).
 
 ## 6. Effects and capabilities
 
@@ -309,8 +332,8 @@ constraint, the first Runtime source, and the shortest useful dependency path.
 - What memory and ownership model should the systems language use?
 - Which generic and reflection facilities are necessary for the first useful
   embedded configuration library?
-- Can runtime aggregate fields remain independently staged in the type system,
-  or is field sensitivity only an analysis property?
+- Should the current analysis-only field sensitivity later become part of the
+  type system, particularly for nested records and explicit stage annotations?
 - What memory accounting and default resource limits should releases promise?
 - How are floating-point reproducibility and target-specific behavior exposed?
 - Which compile-time effects are stable enough to include in cache keys?

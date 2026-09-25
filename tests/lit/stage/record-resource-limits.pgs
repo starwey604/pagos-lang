@@ -1,0 +1,8 @@
+// RUN: %pagosc --max-array-elements=0 --max-array-bytes=0 check %s
+// RUN: not %pagosc --max-fuel=2 check %s 2>&1 | %FileCheck %s --check-prefix=FUEL
+// RUN: not %pagosc --max-specializations=1 check %s 2>&1 | %FileCheck %s --check-prefix=LIMIT
+record Config { value: u32 }
+fn value(config: Config) -> u32 { config.value }
+let result = value(Config(value: 1)) + value(Config(value: 2));
+// FUEL: error[E4004]
+// LIMIT: error[E4006]

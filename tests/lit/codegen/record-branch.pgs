@@ -1,0 +1,12 @@
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=LLVM
+// RUN: %run_residual %s 9 1 9
+// RUN: %run_residual %s 5 0
+record Config { value: u32, enabled: bool }
+let config = if external_input() != 0 {
+    Config(enabled: true, value: external_input())
+} else { Config(value: 5, enabled: false) };
+let result = config.value;
+// MIR: Config = phi
+// LLVM: phi { i32, i1 }
+// LLVM: extractvalue { i32, i1 }

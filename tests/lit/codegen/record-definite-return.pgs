@@ -1,0 +1,9 @@
+// RUN: %run_residual %s 9 5
+record Pair { first: u32, last: u32 }
+fn choose() -> u32 {
+    let ignored = Pair(last: external_input(), first: if true {
+        return 9;
+    } else { external_input() });
+    external_input()
+}
+let result = choose();

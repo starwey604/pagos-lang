@@ -1,0 +1,7 @@
+// RUN: %run_residual %s 2 2 5 10 20 30
+// RUN: %run_optimized %s 2 2 5 10 20 30
+// RUN: %run_residual %s trap 0
+// RUN: %run_residual %s trap 2 0
+fn bound(n: u32) -> u32 { 10 / external_input(); n }
+let table = [for i in bound(0)..bound(3) { external_input(); i }];
+static let result = table[2];

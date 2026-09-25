@@ -51,6 +51,7 @@ build/debug/pagosc --max-fuel=100000 check source.pgs
 build/debug/pagosc --max-recursion-depth=64 explain-stage source.pgs
 build/debug/pagosc --max-specializations=512 emit-mir source.pgs
 build/debug/pagosc --max-array-elements=4096 --max-array-bytes=16384 check source.pgs
+build/debug/pagosc --max-aggregate-members=8192 --max-aggregate-bytes=32768 check source.pgs
 ```
 
 `explain-stage` ends with deterministic analysis statistics for fuel,
@@ -61,6 +62,14 @@ quotas, not process-memory caps. Defaults are 65,536 elements and 262,144 bytes;
 Reservations precede expansion and are not refunded on early return. Cache
 hits and aliases do not reconstruct arrays. A zero array quota permits scalar
 code, but rejects any analyzed array construction.
+
+Shared array/record quotas additionally default to 65,536 aggregate members and
+262,144 logical bytes. `explain-stage` appends `aggregate-constructions`,
+`aggregate-members`, and `aggregate-bytes`; array counters are their array-only
+subset. `E4010` reports a shared quota failure. Both quota sets must permit an
+array: raising a legacy array limit does not raise a shared limit. Records are
+unaffected by array-only quotas. See [resource budgets](resource-budgets.md) for
+examples, failure precedence, and accounting boundaries.
 
 `external_input()` is the temporary Milestone 1 runtime-source intrinsic. It
 returns `u32` and lowers to a declaration of `pagos_external_input` in LLVM IR.
@@ -80,14 +89,18 @@ direct calls. Inspect `tests/lit/stage/array-projection.pgs` for a Static
 result that still retains an unrelated Runtime input read. Nested arrays and
 element mutation remain deferred.
 
-Generate a table with `[for i in 0..256 { i * i }]`. Literal bounds determine
-the array type before evaluation. Each iteration consumes fuel as well as the
-normal body cost; literals, generators, and Runtime array constructions share
-the array quotas. Inspect the complete 256-entry lookup example:
+Generate a table with `[for i in 0..256 { i * i }]`, or use Static expressions
+such as `0..1 << bits`. Bounds evaluate once before reservation; Runtime bounds
+report `E2002` with a dependency path. Source annotations still use literal
+lengths, checked against the resolved shape. Each iteration consumes fuel as
+well as the normal body cost; literals, generators, and Runtime array
+constructions share the array quotas. Inspect both table examples:
 
 ```sh
 build/debug/pagosc explain-stage tests/lit/stage/generated-table.pgs
 build/debug/pagosc emit-llvm tests/lit/stage/generated-table.pgs
+build/debug/pagosc emit-hir tests/lit/stage/generator-computed.pgs
+build/debug/pagosc emit-llvm tests/lit/stage/generator-computed.pgs
 ```
 
 `E4008` means the next array reservation would exceed a quota; its label shows
@@ -95,6 +108,14 @@ the request, already-reserved amounts, and both configured limits. Increase
 limits deliberately. AST, HIR, cache copies, and LLVM memory are not counted.
 
 ## Test and Check
+
+Inspect the [minimal record example](records.md) with:
+
+```sh
+build/debug/pagosc explain-stage tests/lit/stage/record-config.pgs
+build/debug/pagosc emit-mir tests/lit/stage/record-config.pgs
+build/debug/pagosc emit-llvm tests/lit/stage/record-config.pgs
+```
 
 The [CRC-32 walkthrough](crc32.md) demonstrates a complete generated table,
 Static check vector, Runtime checksum, and budget failures. Its differential

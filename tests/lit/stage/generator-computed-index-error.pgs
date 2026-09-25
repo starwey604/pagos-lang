@@ -1,0 +1,6 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let n = 3;
+let table = [for i in 0..n { i }];
+let result = table[n];
+// CHECK: error[E4007]: array index out of bounds
+// CHECK: index 3, length 3

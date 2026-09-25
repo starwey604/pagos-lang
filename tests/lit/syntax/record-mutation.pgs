@@ -1,0 +1,5 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+record Config { value: u32 }
+let config = Config(value: 1);
+config.value = 2;
+// CHECK: error[E1002]: expected `;` after expression
