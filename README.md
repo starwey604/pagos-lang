@@ -132,6 +132,13 @@ Arrays and records share cumulative member/data-byte construction budgets;
 the [resource budget guide](docs/resource-budgets.md) defines accounting,
 legacy array limits, and the distinction from host-memory limits.
 
+The [M3 preparation baseline](docs/m3-preparation.md) is complete: pinned
+compiler CI, Release measurements, separate semantic types, a private APInt
+adapter, target-layout queries, and QEMU RV32 C/assembly environment checks.
+Explicit-target LLVM IR is available; Pagos object emission, pointers/MMIO,
+and firmware execution remain M3 work. CI has been exercised locally in the
+fixed container, not yet on GitHub Actions.
+
 ## Development
 
 Configure, build, and test the default Clang 22 development preset:

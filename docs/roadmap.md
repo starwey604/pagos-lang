@@ -92,9 +92,11 @@ Acceptance criteria:
 
 ## Milestone 3: Bare-metal systems slice
 
-Before implementation, follow the [M3 preparation plan](m3-preparation.md).
-It covers measurement, automated regression, type/value foundations, and target
-and effect interfaces without treating full M3 features as prerequisites.
+The [M3 preparation baseline](m3-preparation.md) is complete as of 2026-09-26.
+It covers measurement, locally exercised pinned CI, type/value foundations,
+target layout, effect interfaces, and the RV32 environment probe. Full M3
+language features remain to be implemented; remote CI and static-component
+LLVM linking are not claimed as verified.
 
 Add the minimum systems features needed for real firmware:
 
