@@ -5,6 +5,7 @@ add_executable(pagos_unit_tests
     unit/value_test.cpp
     unit/type_test.cpp
     unit/target_test.cpp
+    unit/hir_test.cpp
     unit/evaluator_test.cpp
     unit/lexer_test.cpp
     unit/mir_test.cpp

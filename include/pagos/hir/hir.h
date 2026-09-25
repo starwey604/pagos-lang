@@ -92,6 +92,9 @@ struct Module {
 };
 
 [[nodiscard]] std::string_view stage_name(Stage stage) noexcept;
+// A Static result can still require ordered Runtime work or return control.
+[[nodiscard]] bool has_residual_work(const ExprPtr& expression);
+[[nodiscard]] bool is_cacheable_result(const ExprPtr& expression);
 [[nodiscard]] ExprPtr make_constant(Constant value, sema::Type type,
                                     source::Span span);
 [[nodiscard]] ExprPtr with_trace_step(const ExprPtr& expression,

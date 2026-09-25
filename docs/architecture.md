@@ -350,6 +350,37 @@ have code.
 
 ## Interoperability strategy
 
+### Runtime call and effect migration contract
+
+The following is a preparation contract, not implemented call/FFI syntax.
+MIR already owns a function list, but lowering still produces the single
+`pagos_main` entry and inlines Pagos calls through HIR ReturnScope. M3 should
+extend `mir::Function` with typed parameters and calling convention, introduce
+stable module-local symbol identities and call operands/results, and teach
+the verifier to check argument/result types and symbol definitions. The
+code generator must create declarations before emitting bodies. Do not infer
+aggregate C ABI classification from storage layout alone.
+
+Ordinary external calls are Runtime and conservatively effectful unless a
+separate, explicit compile-time capability exists. A Static address never
+licenses evaluating, removing, merging, or caching a volatile/MMIO read or
+write. Future target addresses must be target-width values or symbolic
+relocations, never dereferenceable host pointers. Unsafe permissions and
+alias rules remain language work for M3; no host execution of target code
+is introduced by layout preparation.
+
+The current `hir::has_residual_work` and `hir::is_cacheable_result` predicates
+are shared entry points: a Static result can retain Runtime work, trapping
+operations, or return control. Cache hits still evaluate arguments in source
+order, including unused arguments, and only pure completed constant results
+are memoized. MIR's dominance-aware reuse of the same computation identity
+is distinct from proving that two separate effectful operations are equal.
+Specialization caches currently reset per analysis; any future cross-session
+cache containing target-dependent facts must include target configuration
+in its identity. These boundaries precede adding a richer effect model.
+
+### ABI sequence
+
 1. Emit and consume C ABI symbols.
 2. Support manually declared C functions and layout-compatible records.
 3. Add a Clang-based binding generator or consume a stable generated format.

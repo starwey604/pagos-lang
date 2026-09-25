@@ -31,16 +31,6 @@ std::uint32_t parse_u32(const std::string& spelling) {
     return value;
 }
 
-bool has_residual_work(const hir::ExprPtr& expression) {
-    if (!expression) {
-        return false;
-    }
-    if (expression->stage == hir::Stage::Runtime || expression->may_return) {
-        return true;
-    }
-    return std::ranges::any_of(expression->operands, has_residual_work);
-}
-
 struct AggregateProjection {
     std::optional<hir::Constant> constant;
     std::optional<hir::RuntimeTrace> trace;
@@ -1079,8 +1069,7 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
     scopes_.pop_back();
     if (key) {
         active_specializations_.erase(*key);
-        if (result && result->stage == hir::Stage::Static &&
-            !has_residual_work(result)) {
+        if (hir::is_cacheable_result(result)) {
             specialization_cache_.emplace(std::move(*key), result);
         }
     }

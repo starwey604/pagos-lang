@@ -1,9 +1,24 @@
 #include "pagos/hir/hir.h"
 
+#include <algorithm>
 #include <ostream>
 #include <string_view>
 
 namespace pagos::hir {
+bool has_residual_work(const ExprPtr& expression) {
+    if (!expression)
+        return false;
+    if (expression->stage == Stage::Runtime || expression->may_return)
+        return true;
+    return std::ranges::any_of(expression->operands, has_residual_work);
+}
+
+bool is_cacheable_result(const ExprPtr& expression) {
+    return expression && expression->stage == Stage::Static &&
+           expression->constant.has_value() && expression->falls_through &&
+           !has_residual_work(expression);
+}
+
 namespace {
 
 std::string_view binary_name(syntax::BinaryOperator operation) {
