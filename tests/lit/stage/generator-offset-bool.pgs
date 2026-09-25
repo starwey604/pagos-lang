@@ -1,0 +1,5 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s
+// RUN: %run_residual %s 1 2
+static let flags: [bool; 3] = [for i in 1_0..13 { i % 2 == 0 }];
+let result = flags[external_input()];
+// CHECK: binding flags: [bool; 3] [Static] = [true, false, true]

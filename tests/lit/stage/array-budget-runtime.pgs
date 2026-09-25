@@ -1,0 +1,4 @@
+// RUN: not %pagosc --max-array-elements=1 check %s 2>&1 | %FileCheck %s
+let a = [external_input(), external_input()];
+// CHECK: error[E4008]: array construction budget exceeded
+// CHECK: request 2 elements at 4 bytes each

@@ -1,0 +1,9 @@
+// RUN: %run_residual %s 3 10 20
+fn choose() -> u32 {
+    let table = [for i in 0..3 {
+        external_input();
+        if i == 1 { return 3; } else { i }
+    }];
+    10 / 0
+}
+let result = choose();

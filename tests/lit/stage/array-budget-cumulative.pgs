@@ -1,0 +1,5 @@
+// RUN: not %pagosc --max-array-elements=4 check %s 2>&1 | %FileCheck %s
+let literal = [1, 2];
+let generated = [for i in 0..3 { i }];
+// CHECK: error[E4008]: array construction budget exceeded
+// CHECK: request 3 elements at 4 bytes each; reserved 2/4 elements, 8/262144 bytes

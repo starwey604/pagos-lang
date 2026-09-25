@@ -1,0 +1,9 @@
+// RUN: %run_residual %s 109 1 10
+// RUN: %run_residual %s 130 0 10 20 30
+fn choose(flag: bool) -> u32 {
+    let table = [for i in 0..3 {
+        if i == 1 && flag { return 9; } else { external_input() }
+    }];
+    table[2]
+}
+let result = choose(external_input() == 1) + 100;

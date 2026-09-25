@@ -1,0 +1,4 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let n = 3;
+let table = [for i in 0..n { i }];
+// CHECK: error[E1002]: expected literal array generator bound

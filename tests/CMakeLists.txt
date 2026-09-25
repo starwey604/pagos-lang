@@ -5,9 +5,10 @@ add_executable(pagos_unit_tests
     unit/lexer_test.cpp
     unit/mir_test.cpp
     unit/parser_test.cpp
+    unit/stage_test.cpp
     unit/source_manager_test.cpp)
 target_link_libraries(pagos_unit_tests
-    PRIVATE Pagos::syntax Pagos::vm Pagos::mir GTest::gtest_main
+    PRIVATE Pagos::syntax Pagos::vm Pagos::mir Pagos::stage GTest::gtest_main
             pagos_project_options)
 
 include(GoogleTest)

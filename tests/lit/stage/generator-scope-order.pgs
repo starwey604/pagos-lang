@@ -1,0 +1,7 @@
+// RUN: %run_residual %s 146 10 20 30
+let i = 100;
+let table = [for i in 2..5 {
+    let value = external_input();
+    i + value
+}];
+let result = table[0] + table[2] + i;

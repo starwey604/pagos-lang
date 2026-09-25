@@ -72,6 +72,7 @@ struct Expr {
         Call,
         If,
         Array,
+        ArrayGenerator,
         Index
     };
 
@@ -152,6 +153,19 @@ struct IndexExpr final : Expr {
           index(std::move(index)) {}
     std::unique_ptr<Expr> array;
     std::unique_ptr<Expr> index;
+};
+
+struct ArrayGeneratorExpr final : Expr {
+    ArrayGeneratorExpr(std::string variable, source::Span variable_span,
+                       std::uint32_t begin, std::uint32_t end,
+                       std::unique_ptr<Block> body, source::Span span);
+    ~ArrayGeneratorExpr() override;
+
+    std::string variable;
+    source::Span variable_span;
+    std::uint32_t begin;
+    std::uint32_t end;
+    std::unique_ptr<Block> body;
 };
 
 struct Stmt {

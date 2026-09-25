@@ -538,6 +538,10 @@ std::unique_ptr<Expr> Parser::parse_call() {
 
 std::unique_ptr<Expr> Parser::parse_primary() {
     if (match(TokenKind::LeftBracket)) {
+        const auto start_span = previous().span;
+        if (match(TokenKind::KwFor)) {
+            return parse_array_generator(start_span);
+        }
         const auto start = previous().span.begin;
         std::vector<std::unique_ptr<Expr>> elements;
         if (!check(TokenKind::RightBracket)) {
@@ -585,6 +589,63 @@ std::unique_ptr<Expr> Parser::parse_primary() {
     diagnostics_.error("E1002", "expected expression", current().span,
                        "found " + std::string(token_kind_name(current().kind)));
     return nullptr;
+}
+
+std::optional<std::uint32_t> Parser::parse_generator_bound() {
+    const auto* token =
+        consume(TokenKind::Integer, "expected literal array generator bound");
+    if (!token) {
+        return std::nullopt;
+    }
+    std::string digits(token->lexeme);
+    std::erase(digits, '_');
+    std::uint32_t value{};
+    const auto parsed =
+        std::from_chars(digits.data(), digits.data() + digits.size(), value);
+    if (parsed.ec != std::errc{} ||
+        parsed.ptr != digits.data() + digits.size()) {
+        diagnostics_.error("E1005", "array generator bound does not fit `u32`",
+                           token->span);
+        return std::nullopt;
+    }
+    return value;
+}
+
+std::unique_ptr<Expr> Parser::parse_array_generator(source::Span start) {
+    const auto* variable =
+        consume(TokenKind::Identifier, "expected array generator index name");
+    if (!variable ||
+        !consume(TokenKind::KwIn, "expected `in` after generator index")) {
+        return nullptr;
+    }
+    const auto begin = parse_generator_bound();
+    if (!begin ||
+        !consume(TokenKind::Range, "expected `..` between generator bounds")) {
+        return nullptr;
+    }
+    const auto end = parse_generator_bound();
+    if (!end) {
+        return nullptr;
+    }
+    if (*end <= *begin) {
+        diagnostics_.error(
+            "E1005", "array generator range must be nonempty and increasing",
+            previous().span);
+        return nullptr;
+    }
+    auto body = parse_block();
+    if (!body) {
+        return nullptr;
+    }
+    const auto* right =
+        consume(TokenKind::RightBracket, "expected `]` after array generator");
+    if (!right) {
+        return nullptr;
+    }
+    return std::make_unique<ArrayGeneratorExpr>(
+        std::string(variable->lexeme), variable->span, *begin, *end,
+        std::move(body),
+        source::Span{.begin = start.begin, .end = right->span.end});
 }
 
 } // namespace pagos::syntax

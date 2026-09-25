@@ -1,0 +1,7 @@
+// RUN: %pagosc --max-array-elements=0 --max-array-bytes=0 explain-stage %s | %FileCheck %s
+static let result = if true { 7 } else {
+    let table = [for i in 0..4294967295 { i }];
+    table[0]
+};
+// CHECK: result: Static
+// CHECK: array-elements=0, array-bytes=0

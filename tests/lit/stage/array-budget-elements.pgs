@@ -1,0 +1,9 @@
+// RUN: %pagosc --max-array-elements=4 --max-array-bytes=16 explain-stage %s | %FileCheck %s --check-prefix=OK
+// RUN: not %pagosc --max-array-elements=3 check %s 2>&1 | %FileCheck %s --check-prefix=FAIL
+// RUN: not %pagosc --max-array-bytes=15 check %s 2>&1 | %FileCheck %s --check-prefix=BYTES
+let table = [for i in 0..4 { i }];
+// OK: array-elements=4, array-bytes=16
+// FAIL: error[E4008]: array construction budget exceeded
+// FAIL: request 4 elements at 4 bytes each; reserved 0/3 elements
+// BYTES: error[E4008]: array construction budget exceeded
+// BYTES: reserved 0/65536 elements, 0/15 bytes

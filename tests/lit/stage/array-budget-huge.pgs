@@ -1,0 +1,6 @@
+// RUN: not %pagosc emit-llvm %s 2>&1 | %FileCheck %s
+let table = [for i in 0..4294967295 { 1 / 0 }];
+// CHECK: error[E4008]: array construction budget exceeded
+// CHECK: request 4294967295 elements at 4 bytes each; reserved 0/65536 elements, 0/262144 bytes
+// CHECK-NOT: E4001
+// CHECK-NOT: define

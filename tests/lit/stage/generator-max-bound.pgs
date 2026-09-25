@@ -1,0 +1,5 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s
+// RUN: %run_residual %s 4294967294
+static let table = [for i in 4294967293..4294967295 { i }];
+static let result = table[1];
+// CHECK: [Static] = [4294967293, 4294967294]

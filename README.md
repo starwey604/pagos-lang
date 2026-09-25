@@ -113,6 +113,8 @@ arrays are supported. Static lookup tables embed as read-only constants, with
 bounds-checked Runtime indexing.
 Static-index reads of mixed arrays retain the selected element's stage while
 preserving evaluation of the entire array.
+Bulk generation uses `[for i in 0..256 { i * i }]`, with fuel and cumulative
+array-construction quotas checked before expansion.
 
 ## Development
 

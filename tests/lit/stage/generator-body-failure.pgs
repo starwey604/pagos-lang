@@ -1,0 +1,7 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+fn choose() -> u32 {
+    let table = [for i in 0..3 { 10 / (1 - i) }];
+    return 7;
+}
+let result = choose();
+// CHECK: error[E4001]: division by zero

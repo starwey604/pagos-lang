@@ -1,0 +1,5 @@
+// RUN: %pagosc --max-array-elements=4 --max-array-bytes=4 explain-stage %s | %FileCheck %s --check-prefix=OK
+// RUN: not %pagosc --max-array-bytes=3 check %s 2>&1 | %FileCheck %s --check-prefix=FAIL
+let table = [for i in 0..4 { i == 0 }];
+// OK: array-elements=4, array-bytes=4
+// FAIL: request 4 elements at 1 bytes each

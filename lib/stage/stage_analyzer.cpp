@@ -135,6 +135,7 @@ StageAnalyzer::analyze(const syntax::Module& module) {
     specialization_cache_.clear();
     active_specializations_.clear();
     fuel_exhausted_ = false;
+    array_budget_exhausted_ = false;
 
     auto result = std::make_unique<hir::Module>();
     for (const auto& function : module.functions) {
@@ -396,6 +397,9 @@ hir::ExprPtr StageAnalyzer::analyze_expression(const syntax::Expr& expression) {
         return analyze_if(static_cast<const syntax::IfExpr&>(expression));
     case syntax::Expr::Kind::Array:
         return analyze_array(static_cast<const syntax::ArrayExpr&>(expression));
+    case syntax::Expr::Kind::ArrayGenerator:
+        return analyze_array_generator(
+            static_cast<const syntax::ArrayGeneratorExpr&>(expression));
     case syntax::Expr::Kind::Index:
         return analyze_index(static_cast<const syntax::IndexExpr&>(expression));
     }
@@ -403,9 +407,12 @@ hir::ExprPtr StageAnalyzer::analyze_expression(const syntax::Expr& expression) {
 }
 
 hir::ExprPtr StageAnalyzer::analyze_array(const syntax::ArrayExpr& expression) {
+    if (!reserve_array(expression.elements.size(), type_of(expression),
+                       expression.span)) {
+        return nullptr;
+    }
     std::vector<hir::ExprPtr> elements;
     elements.reserve(expression.elements.size());
-    std::optional<hir::RuntimeTrace> trace;
     for (const auto& element : expression.elements) {
         auto value = analyze_expression(*element);
         if (!value) {
@@ -414,15 +421,95 @@ hir::ExprPtr StageAnalyzer::analyze_array(const syntax::ArrayExpr& expression) {
         if (!value->falls_through) {
             return make_sequence(std::move(elements), value, expression.span);
         }
-        if (value->stage == hir::Stage::Runtime && !trace) {
-            trace = value->trace;
+        elements.push_back(std::move(value));
+    }
+    return finish_array(std::move(elements), type_of(expression),
+                        expression.span);
+}
+
+bool StageAnalyzer::reserve_array(std::size_t count, syntax::Type type,
+                                  source::Span span) {
+    if (array_budget_exhausted_) {
+        return false;
+    }
+    const std::size_t width =
+        type.element_type() == syntax::TypeKind::Bool ? 1 : 4;
+    const auto element_room =
+        limits_.array_elements - stats_.array_elements_reserved;
+    const auto byte_room = limits_.array_bytes - stats_.array_bytes_reserved;
+    if (count > element_room || count > byte_room / width) {
+        array_budget_exhausted_ = true;
+        diagnostics_.report({
+            .severity = source::Severity::Error,
+            .code = "E4008",
+            .message = "array construction budget exceeded",
+            .primary = {.span = span,
+                        .message =
+                            "request " + std::to_string(count) +
+                            " elements at " + std::to_string(width) +
+                            " bytes each; reserved " +
+                            std::to_string(stats_.array_elements_reserved) +
+                            "/" + std::to_string(limits_.array_elements) +
+                            " elements, " +
+                            std::to_string(stats_.array_bytes_reserved) + "/" +
+                            std::to_string(limits_.array_bytes) + " bytes"},
+            .help = "reduce array construction or increase "
+                    "--max-array-elements and --max-array-bytes; these are "
+                    "cumulative construction quotas, not host-memory limits",
+        });
+        return false;
+    }
+    stats_.array_elements_reserved += count;
+    stats_.array_bytes_reserved += count * width;
+    return true;
+}
+
+hir::ExprPtr StageAnalyzer::analyze_array_generator(
+    const syntax::ArrayGeneratorExpr& expression) {
+    const auto type = type_of(expression);
+    const auto count = expression.end - expression.begin;
+    if (!reserve_array(count, type, expression.span)) {
+        return nullptr;
+    }
+    std::vector<hir::ExprPtr> elements;
+    elements.reserve(count);
+    for (auto index = expression.begin; index < expression.end; ++index) {
+        if (!consume_fuel(expression.span)) {
+            return nullptr;
+        }
+        scopes_.emplace_back();
+        define(expression.variable,
+               hir::make_constant(index, syntax::TypeKind::U32,
+                                  expression.variable_span));
+        auto body = analyze_block(*expression.body);
+        scopes_.pop_back();
+        if (diagnostics_.has_error() || !body.value) {
+            return nullptr;
+        }
+        auto value =
+            make_sequence(std::move(body.effects), std::move(body.value),
+                          expression.body->span);
+        if (!value->falls_through) {
+            return make_sequence(std::move(elements), std::move(value),
+                                 expression.span);
         }
         elements.push_back(std::move(value));
     }
-    const auto type = type_of(expression);
+    return finish_array(std::move(elements), type, expression.span);
+}
+
+hir::ExprPtr StageAnalyzer::finish_array(std::vector<hir::ExprPtr> elements,
+                                         syntax::Type type, source::Span span) {
+    std::optional<hir::RuntimeTrace> trace;
+    for (const auto& element : elements) {
+        if (element->stage == hir::Stage::Runtime) {
+            trace = element->trace;
+            break;
+        }
+    }
     if (trace) {
         trace->path.push_back("array element");
-        return make_runtime(hir::Expr::Kind::Array, type, expression.span,
+        return make_runtime(hir::Expr::Kind::Array, type, span,
                             std::move(elements), std::move(*trace));
     }
     hir::Constant constant;
@@ -444,10 +531,9 @@ hir::ExprPtr StageAnalyzer::analyze_array(const syntax::ArrayExpr& expression) {
     std::erase_if(elements, [](const auto& element) {
         return !has_residual_work(element);
     });
-    return make_sequence(
-        std::move(elements),
-        hir::make_constant(std::move(constant), type, expression.span),
-        expression.span);
+    return make_sequence(std::move(elements),
+                         hir::make_constant(std::move(constant), type, span),
+                         span);
 }
 
 hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {

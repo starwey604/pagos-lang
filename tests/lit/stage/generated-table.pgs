@@ -1,0 +1,13 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=LLVM --implicit-check-not=alloca
+// RUN: %run_residual %s 65025 255
+// RUN: %run_residual %s 0 0
+// RUN: %run_residual %s trap 256
+fn square(i: u32) -> u32 { i * i }
+static let table: [u32; 256] = [for i in 0..256 { square(i) }];
+let result = table[external_input()];
+// HIR: binding table: [u32; 256] [Static] = [0, 1, 4, 9,
+// LLVM: private unnamed_addr constant [256 x i32]
+// LLVM: icmp ult i32 {{.*}}, 256
+// LLVM: getelementptr inbounds [256 x i32], ptr @pagos.table
+// LLVM: load i32

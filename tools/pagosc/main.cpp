@@ -32,6 +32,7 @@ void print_usage() {
     std::println(stderr, "usage: pagosc [--max-fuel=N] "
                          "[--max-recursion-depth=N] "
                          "[--max-specializations=N] "
+                         "[--max-array-elements=N] [--max-array-bytes=N] "
                          "<check|emit-hir|emit-mir|emit-llvm|explain-stage> "
                          "<source.pgs>");
 }
@@ -81,6 +82,9 @@ std::expected<Options, std::string> parse_options(int argument_count,
         constexpr std::string_view depth_prefix = "--max-recursion-depth=";
         constexpr std::string_view specialization_prefix =
             "--max-specializations=";
+        constexpr std::string_view array_elements_prefix =
+            "--max-array-elements=";
+        constexpr std::string_view array_bytes_prefix = "--max-array-bytes=";
         if (argument.starts_with(fuel_prefix)) {
             auto value = parse_limit(argument, fuel_prefix);
             if (!value) {
@@ -99,6 +103,18 @@ std::expected<Options, std::string> parse_options(int argument_count,
                 return std::unexpected(value.error());
             }
             limits.specializations = *value;
+        } else if (argument.starts_with(array_elements_prefix)) {
+            auto value = parse_limit(argument, array_elements_prefix);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            limits.array_elements = *value;
+        } else if (argument.starts_with(array_bytes_prefix)) {
+            auto value = parse_limit(argument, array_bytes_prefix);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            limits.array_bytes = *value;
         } else if (argument.starts_with("--")) {
             return std::unexpected("unknown option `" + std::string(argument) +
                                    "`");
@@ -177,11 +193,13 @@ int main(int argument_count, char** arguments) {
         pagos::hir::explain_stages(*hir_module, std::cout);
         std::println(std::cout,
                      "analysis: fuel={}, specializations={}, cache-hits={}, "
-                     "max-depth={}",
+                     "max-depth={}, array-elements={}, array-bytes={}",
                      stage_analyzer.stats().fuel_consumed,
                      stage_analyzer.stats().specializations,
                      stage_analyzer.stats().cache_hits,
-                     stage_analyzer.stats().maximum_recursion_depth);
+                     stage_analyzer.stats().maximum_recursion_depth,
+                     stage_analyzer.stats().array_elements_reserved,
+                     stage_analyzer.stats().array_bytes_reserved);
         return 0;
     case Command::EmitMir:
     case Command::EmitLlvm:

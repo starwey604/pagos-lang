@@ -1,0 +1,9 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let nested = [for i in 0..2 { [i] }];
+let missing = [for i in 0..2 { let a = i; }];
+let length: [u32; 3] = [for i in 0..2 { i }];
+let leaked = i;
+// CHECK: array generator body must produce
+// CHECK: array generator body must produce
+// CHECK: type mismatch in initializer
+// CHECK: unknown name `i`

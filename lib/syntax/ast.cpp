@@ -12,6 +12,17 @@ IfExpr::IfExpr(std::unique_ptr<Expr> condition,
 
 IfExpr::~IfExpr() = default;
 
+ArrayGeneratorExpr::ArrayGeneratorExpr(std::string variable,
+                                       source::Span variable_span,
+                                       std::uint32_t begin, std::uint32_t end,
+                                       std::unique_ptr<Block> body,
+                                       source::Span span)
+    : Expr(Kind::ArrayGenerator, span), variable(std::move(variable)),
+      variable_span(variable_span), begin(begin), end(end),
+      body(std::move(body)) {}
+
+ArrayGeneratorExpr::~ArrayGeneratorExpr() = default;
+
 ForStmt::ForStmt(std::string variable, source::Span variable_span,
                  std::unique_ptr<Expr> begin, std::unique_ptr<Expr> end,
                  std::unique_ptr<Block> body, source::Span span)

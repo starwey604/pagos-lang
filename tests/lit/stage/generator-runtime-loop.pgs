@@ -1,0 +1,7 @@
+// RUN: %run_residual %s 99 2 10 20 30 40
+// RUN: %run_residual %s 99 0
+for outer in 0..external_input() {
+    let table = [for i in 0..2 { external_input() + outer + i }];
+    table[1];
+}
+let result = 99;

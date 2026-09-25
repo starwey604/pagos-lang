@@ -86,6 +86,14 @@ including the index and length in its label. Runtime indices instead trap
 before memory access. Array shape, element, and index-type errors use `E1008`;
 invalid literal lengths use `E1005`.
 
+`E4008` reports array construction quota exhaustion before reserve or element
+evaluation. Its label includes the requested element count, bytes per element,
+reserved totals, and configured `--max-array-elements` / `--max-array-bytes`
+limits. Only the first exhausted reservation is reported. Quotas count logical
+construction data, not peak host memory. Generator bound/range errors use
+`E1005` (or `E1002` for nonliteral bounds); invalid generator body types use
+`E1008`. Generator iterations also participate in existing fuel limits.
+
 ## Testing Rules
 
 Golden tests normalize only platform path separators and explicitly unstable

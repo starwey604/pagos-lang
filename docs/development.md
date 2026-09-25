@@ -50,10 +50,17 @@ command:
 build/debug/pagosc --max-fuel=100000 check source.pgs
 build/debug/pagosc --max-recursion-depth=64 explain-stage source.pgs
 build/debug/pagosc --max-specializations=512 emit-mir source.pgs
+build/debug/pagosc --max-array-elements=4096 --max-array-bytes=16384 check source.pgs
 ```
 
 `explain-stage` ends with deterministic analysis statistics for fuel,
-specializations, cache hits, and maximum recursion depth.
+specializations, cache hits, maximum recursion depth, reserved array elements,
+and reserved array data bytes. Array limits are cumulative construction
+quotas, not process-memory caps. Defaults are 65,536 elements and 262,144 bytes;
+`u32` costs four bytes and `bool` one logical byte per planned element.
+Reservations precede expansion and are not refunded on early return. Cache
+hits and aliases do not reconstruct arrays. A zero array quota permits scalar
+code, but rejects any analyzed array construction.
 
 `external_input()` is the temporary Milestone 1 runtime-source intrinsic. It
 returns `u32` and lowers to a declaration of `pagos_external_input` in LLVM IR.
@@ -72,6 +79,20 @@ Static-index reads preserve individual element stages through aliases and
 direct calls. Inspect `tests/lit/stage/array-projection.pgs` for a Static
 result that still retains an unrelated Runtime input read. Nested arrays and
 element mutation remain deferred.
+
+Generate a table with `[for i in 0..256 { i * i }]`. Literal bounds determine
+the array type before evaluation. Each iteration consumes fuel as well as the
+normal body cost; literals, generators, and Runtime array constructions share
+the array quotas. Inspect the complete 256-entry lookup example:
+
+```sh
+build/debug/pagosc explain-stage tests/lit/stage/generated-table.pgs
+build/debug/pagosc emit-llvm tests/lit/stage/generated-table.pgs
+```
+
+`E4008` means the next array reservation would exceed a quota; its label shows
+the request, already-reserved amounts, and both configured limits. Increase
+limits deliberately. AST, HIR, cache copies, and LLVM memory are not counted.
 
 ## Test and Check
 

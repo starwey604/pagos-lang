@@ -1,0 +1,4 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let table = [for i in 0..3 { i };
+// CHECK: expected
+// CHECK-SAME: after array generator

@@ -76,8 +76,11 @@ returns; result-completeness checks account for empty loops. Fixed-length
 specialization keys, Runtime aggregate values, and checked residual indexing
 into deduplicated read-only tables. Static-index reads now retain individual
 element stages through aliases and direct calls, without discarding residual
-array evaluation or crossing explicit Runtime/control boundaries. Records,
-richer table-generation syntax, effect-aware keys, and memory accounting remain.
+array evaluation or crossing explicit Runtime/control boundaries. Literal-range
+array generators now build bulk lookup tables under fuel and cumulative array
+construction quotas, checked before expansion. Records, computed generator
+lengths, bitwise operations for CRC algorithms, effect-aware keys, and full
+host-memory accounting remain.
 
 Add:
 

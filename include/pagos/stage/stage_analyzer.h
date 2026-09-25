@@ -19,6 +19,8 @@ struct AnalysisLimits {
     std::size_t fuel{1'000'000};
     std::size_t recursion_depth{128};
     std::size_t specializations{4'096};
+    std::size_t array_elements{65'536};
+    std::size_t array_bytes{262'144};
 };
 
 struct AnalysisStats {
@@ -26,6 +28,8 @@ struct AnalysisStats {
     std::size_t specializations{};
     std::size_t cache_hits{};
     std::size_t maximum_recursion_depth{};
+    std::size_t array_elements_reserved{};
+    std::size_t array_bytes_reserved{};
 };
 
 class StageAnalyzer {
@@ -70,6 +74,11 @@ class StageAnalyzer {
     hir::ExprPtr analyze_call(const syntax::CallExpr& expression);
     hir::ExprPtr analyze_if(const syntax::IfExpr& expression);
     hir::ExprPtr analyze_array(const syntax::ArrayExpr& expression);
+    hir::ExprPtr
+    analyze_array_generator(const syntax::ArrayGeneratorExpr& expression);
+    hir::ExprPtr finish_array(std::vector<hir::ExprPtr> elements,
+                              syntax::Type type, source::Span span);
+    bool reserve_array(std::size_t count, syntax::Type type, source::Span span);
     hir::ExprPtr analyze_index(const syntax::IndexExpr& expression);
 
     void define(const std::string& name, hir::ExprPtr value);
@@ -103,6 +112,7 @@ class StageAnalyzer {
     std::unordered_set<SpecializationKey, SpecializationKeyHash>
         active_specializations_;
     bool fuel_exhausted_{};
+    bool array_budget_exhausted_{};
 };
 
 } // namespace pagos::stage

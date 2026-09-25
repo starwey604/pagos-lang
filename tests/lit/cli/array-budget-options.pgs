@@ -1,0 +1,6 @@
+// RUN: not %pagosc --max-array-elements=-1 check %s 2>&1 | %FileCheck %s --check-prefix=INVALID
+// RUN: not %pagosc --max-array-bytes=oops check %s 2>&1 | %FileCheck %s --check-prefix=INVALID
+// RUN: not %pagosc --max-array-bytes=184467440737095516160 check %s 2>&1 | %FileCheck %s --check-prefix=INVALID
+// RUN: %pagosc --max-array-elements=0 --max-array-bytes=0 check %s
+let value = 7;
+// INVALID: error: invalid numeric option

@@ -1,0 +1,12 @@
+// RUN: %pagosc --max-array-elements=6 --max-array-bytes=24 explain-stage %s | %FileCheck %s --check-prefix=OK
+// RUN: not %pagosc --max-array-elements=4 check %s 2>&1 | %FileCheck %s --check-prefix=FAIL
+// RUN: %run_residual %s 9
+static let table = [for i in 1..3 {
+    let inner = [for i in 3..5 { i }];
+    i + inner[0]
+}];
+static let result = table[0] + table[1];
+// OK: result: Static
+// OK: array-elements=6, array-bytes=24
+// FAIL: error[E4008]: array construction budget exceeded
+// FAIL: request 2 elements at 4 bytes each; reserved 4/4 elements, 16/262144 bytes

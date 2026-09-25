@@ -45,6 +45,8 @@ class Parser {
     std::unique_ptr<Expr> parse_unary();
     std::unique_ptr<Expr> parse_call();
     std::unique_ptr<Expr> parse_primary();
+    std::unique_ptr<Expr> parse_array_generator(source::Span start);
+    std::optional<std::uint32_t> parse_generator_bound();
     std::unique_ptr<Expr> parse_binary(std::unique_ptr<Expr> left,
                                        BinaryOperator operation,
                                        std::unique_ptr<Expr> right);

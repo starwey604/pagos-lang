@@ -54,7 +54,8 @@ unary           = "!" unary | call ;
 call            = primary { "(" [ arguments ] ")" | "[" expression "]" } ;
 arguments       = expression { "," expression } ;
 primary         = integer | "true" | "false" | identifier
-                | "(" expression ")" | "[" arguments [ "," ] "]" ;
+                | "(" expression ")" | "[" arguments [ "," ] "]"
+                | "[" "for" identifier "in" integer ".." integer block "]" ;
 ```
 
 Top-level statements form an implicit entry unit in the research compiler.
@@ -109,6 +110,41 @@ index is checked before memory access and traps if out of bounds.
 Static tables used by residual indexing are embedded as deduplicated read-only
 LLVM constants. Runtime arrays remain ordinary immutable value aggregates.
 The implicit entry returns zero when its final value is an array.
+
+### Bulk array generation
+
+`[for i in 0..256 { i * i }]` constructs a 256-element array in ascending
+index order. Both bounds must be `u32` literals (separators are allowed), and
+the end must exceed the start. Its type has length `end - start`; each body
+must produce `u32` or `bool`. The immutable index is Static and scoped to each
+iteration. A body may call functions, bind locals, or return from the enclosing
+function. A definite return stops generation; Runtime returns remain residual.
+
+```pagos
+fn square(i: u32) -> u32 { i * i }
+static let table: [u32; 256] = [for i in 0..256 { square(i) }];
+let result = table[external_input()];
+```
+
+The body follows ordinary staging and evaluation-order rules. All-Static
+elements become an embedded table; mixed elements preserve per-element stages
+and residual effects. Runtime or computed bounds, empty ranges, nested array
+elements, and mutation are not supported. Both Runtime branches are analyzed
+and budgeted; unselected Static branches do not generate or consume budget.
+
+Array construction has cumulative per-analysis quotas, charged before reserve
+or body evaluation: `--max-array-elements` (default 65,536 slots) and
+`--max-array-bytes` (default 262,144 logical data bytes). Each planned element
+costs one slot and four bytes for `u32` or one for `bool`. Non-continuing arrays
+whose element type is `never` conservatively reserve four bytes per slot.
+Reservations are not refunded on early return. Literals and Runtime arrays
+share the quotas; aliases and specialization-cache hits do not reconstruct
+arrays and incur no new reservation. Each generated iteration also costs fuel,
+in addition to ordinary body evaluation. Exceeding a quota reports `E4008`.
+
+These are construction-work/data budgets, not a bound on process memory: AST,
+HIR nodes, constant copies, cache keys, and LLVM allocations are not counted.
+Full host-memory accounting remains future work.
 
 ## Milestone 1 Runtime Intrinsic
 

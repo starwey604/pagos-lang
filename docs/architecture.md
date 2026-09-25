@@ -144,7 +144,18 @@ Static values crossing the boundary are checked for embeddability.
 The current evaluator supports bounded Static recursion and memoizes pure,
 fully Static results. `AnalysisLimits` controls fuel, recursion depth, and the
 number of specializations; `AnalysisStats` exposes consumption, cache hits, and
-maximum depth. Runtime recursion and memory accounting remain future work.
+maximum depth. Runtime recursion and full host-memory accounting remain future
+work.
+
+Array generators remain compact AST nodes through type checking. Their literal
+range determines the result length without allocating per-element AST nodes.
+Analysis reserves cumulative element/data-byte quotas before allocating the
+element vector, then charges fuel per iteration and analyzes the scoped body.
+Both generators and literals use the same HIR array construction path, so
+embedding, per-element staging, effects, and residual returns remain shared.
+Quota checks use remaining capacity and division before multiplication to
+avoid overflow; counters reset for each analysis. These quotas do not measure
+HIR overhead, cache copies, or backend allocations.
 
 ### 7. Residual SSA MIR
 

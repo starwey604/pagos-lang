@@ -34,6 +34,29 @@ TEST(Parser, ParsesArrayTypesLiteralsAndPostfixIndexing) {
     EXPECT_EQ(index.index->kind, Expr::Kind::Integer);
 }
 
+TEST(Parser, PreservesCompactArrayGeneratorSyntax) {
+    using namespace pagos::syntax;
+    const auto source = pagos::source::SourceFile::from_text(
+        "generator.pgs", "let table = [for i in 1_0..1_000 { i * i }];");
+    pagos::source::DiagnosticEngine diagnostics(source);
+    Lexer lexer(source, diagnostics);
+    const auto tokens = lexer.tokenize();
+    Parser parser(tokens, diagnostics);
+    const auto module = parser.parse_module();
+    ASSERT_FALSE(diagnostics.has_error());
+    const auto& binding =
+        static_cast<const BindingStmt&>(*module->statements.at(0));
+    ASSERT_EQ(binding.initializer->kind, Expr::Kind::ArrayGenerator);
+    const auto& generator =
+        static_cast<const ArrayGeneratorExpr&>(*binding.initializer);
+    EXPECT_EQ(generator.begin, 10U);
+    EXPECT_EQ(generator.end, 1000U);
+    EXPECT_EQ(generator.variable, "i");
+    EXPECT_TRUE(generator.body->statements.empty());
+    ASSERT_NE(generator.body->tail, nullptr);
+    EXPECT_EQ(generator.body->tail->kind, Expr::Kind::Binary);
+}
+
 TEST(SyntaxType, ArrayLengthAndElementTypeParticipateInEquality) {
     using namespace pagos::syntax;
     EXPECT_NE(Type::array(TypeKind::U32, 2), Type::array(TypeKind::U32, 3));

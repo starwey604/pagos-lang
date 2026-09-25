@@ -1,0 +1,9 @@
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 11 20 30
+let table = [for i in 0..3 {
+    if i == 0 { 11 } else { external_input() }
+}];
+static let result = table[0];
+// CHECK: table: Runtime
+// CHECK: result: Static
+// CHECK: array-elements=3, array-bytes=12

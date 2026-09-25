@@ -1,0 +1,6 @@
+// RUN: %run_residual %s 7
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+fn choose() -> u32 { [for i in 0..4 { return 7; }]; }
+let result = choose();
+// CHECK: result: Static
+// CHECK: array-elements=4, array-bytes=16

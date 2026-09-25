@@ -189,6 +189,16 @@ Short-circuit expressions follow the same control rule: a statically skipped
 right operand performs no effect, while a right operand selected by a Runtime
 left operand is under Runtime control.
 
+Literal-range array generators expand in ascending index order with a fresh
+Static index per iteration. The body follows the same staging, effect-order,
+and enclosing-function return rules as a Static loop; only scalar continuation
+values become array elements. A Runtime body does not make the length dynamic.
+Static selection skips unselected generators; Runtime branches are both
+analyzed and charged against cumulative array quotas. Construction inside a
+Runtime loop is charged when analyzed, not on each target execution. Bounds,
+reservation rules, and defaults are specified in
+[Bulk array generation](grammar.md#bulk-array-generation).
+
 ## 6. Effects and capabilities
 
 Stages alone cannot determine when an operation is legal. The initial semantic

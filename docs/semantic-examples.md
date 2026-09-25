@@ -387,6 +387,33 @@ Expected: `E2001` names `selected`, not `unrelated`, with the path
 `selected -> array element 1 -> table -> array index -> result`. Array aliases
 and function parameter names remain in this path when present.
 
+### 34. Bulk static lookup generation
+
+```pagos
+fn square(i: u32) -> u32 { i * i }
+static let table: [u32; 256] = [for i in 0..256 { square(i) }];
+let result = table[external_input()];
+```
+
+Expected: generation is Static and produces a 256-entry read-only table.
+Runtime input `255` returns `65025`; `256` traps. No generator loop or
+`square` call remains. `explain-stage` reports 256 reserved array elements
+and 1024 logical data bytes. Bounds must be increasing `u32` literals.
+
+### 35. Array construction budgets precede expansion
+
+```pagos
+let table = [for i in 0..4294967295 { 1 / 0 }];
+```
+
+Expected: default limits report `E4008` before allocating a generated element
+vector or evaluating the division. The request exceeds the 65,536-element
+and 262,144-byte quotas. `[for i in 0..4 { i }]` needs four slots and 16 bytes;
+the boolean form `[for i in 0..4 { i == 0 }]` needs four slots and four bytes.
+Several smaller constructions accumulate; unused results and early returns
+do not refund reservations. Aliases and cached results are not new arrays.
+Full compiler-memory accounting remains separate from these quotas.
+
 ## Acceptance Use
 
 Each example becomes a fixture when its feature enters an implementation

@@ -260,6 +260,28 @@ syntax::Type TypeChecker::check_expression(syntax::Expr& expression) {
         }
         break;
     }
+    case syntax::Expr::Kind::ArrayGenerator: {
+        auto& generator = static_cast<syntax::ArrayGeneratorExpr&>(expression);
+        scopes_.emplace_back();
+        define(generator.variable, syntax::TypeKind::U32,
+               generator.variable_span);
+        bool returns = false;
+        const auto element =
+            check_block(*generator.body, current_return_type_, returns);
+        scopes_.pop_back();
+        if (element == syntax::TypeKind::Never) {
+            type = syntax::TypeKind::Never;
+        } else if (element == syntax::TypeKind::U32 ||
+                   element == syntax::TypeKind::Bool) {
+            type =
+                syntax::Type::array(element, generator.end - generator.begin);
+        } else if (element != syntax::TypeKind::Error) {
+            diagnostics_.error(
+                "E1008", "array generator body must produce `bool` or `u32`",
+                generator.body->span);
+        }
+        break;
+    }
     case syntax::Expr::Kind::Index: {
         auto& index = static_cast<syntax::IndexExpr&>(expression);
         const auto array_type = check_expression(*index.array);
