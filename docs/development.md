@@ -63,6 +63,32 @@ builds, and `asan` for AddressSanitizer plus UndefinedBehaviorSanitizer.
 
 ## Run the Compiler
 
+### RV32 environment probe
+
+Run `python3 scripts/check_rv32.py` with QEMU 11.1.1, Clang/LLD 22, and
+`riscv64-elf-gcc` providing the `rv32imac/ilp32` libgcc multilib. This builds
+C/assembly with both Clang and GCC, then checks UART output, initialized data,
+BSS clearing, stack use, 64-bit division support, failure exits, and timeouts.
+The checked-in board support is under `platforms/qemu-rv32-virt/`; no libc,
+OpenSBI, Linux, semihosting, or physical board is involved. Temporary outputs
+are removed automatically. QEMU version changes require an explicit reviewed
+`--qemu-version` override.
+
+The configuration uses RV32IMAC/ILP32 (`riscv32-unknown-elf` with Clang), a
+single TCG hart, 16 MiB RAM, `virt`, `-bios none`, and an ELF entry at
+`0x80000000`. The CPU starts from `rv32i` with M/A/C/Zicsr/Zifencei explicitly
+enabled. UART is at `0x10000000`; the separate test-finisher at `0x100000`
+reports success/failure. These are virtual-board conventions, not language
+semantics or evidence of CH32 support. See the
+[QEMU board source](https://gitlab.com/qemu-project/qemu/-/blob/v11.1.0/hw/riscv/virt.c)
+and [test device](https://gitlab.com/qemu-project/qemu/-/blob/v11.1.0/hw/misc/sifive_test.c).
+
+This probe checks the environment only; Pagos firmware generation belongs to
+M3. The matching target libgcc is currently linked explicitly; the installed
+host compiler-rt must not be substituted for it.
+
+### Host compiler commands
+
 ```sh
 build/debug/pagosc check source.pgs
 build/debug/pagosc emit-hir source.pgs
