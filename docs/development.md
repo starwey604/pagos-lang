@@ -203,6 +203,10 @@ tool versions. Wall time includes process startup and the measurement wrapper;
 differences between commands are not precise phase timings. Avoid concurrent
 builds/tests and compare repeated runs on the same machine. Reports stay under
 ignored `build/`; keep only concise conclusions in the preparation plan.
+Use `--reference-compiler /path/to/old/build/release/pagosc` for alternating
+old/new samples with reversed order on each repeat. Both binaries must be
+Release builds; results include the reference hash/revision and paired ratios.
+This helps distinguish machine-wide fluctuations from implementation changes.
 
 ### Regression commands
 

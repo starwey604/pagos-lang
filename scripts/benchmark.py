@@ -50,6 +50,8 @@ def run_sample(command, directory):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--compiler", type=Path, default=ROOT / "build/release/pagosc")
+    parser.add_argument("--reference-compiler", type=Path,
+                        help="alternate samples with an earlier Release binary")
     parser.add_argument("--repeats", type=int, default=7)
     parser.add_argument("--warmups", type=int, default=2)
     parser.add_argument("--output", type=Path, required=True)
@@ -57,9 +59,13 @@ def main():
     if args.repeats < 3 or args.warmups < 1:
         parser.error("use at least 3 repeats and 1 warmup")
     compiler = args.compiler.resolve()
+    reference = args.reference_compiler.resolve() if args.reference_compiler else None
     cache = (compiler.parent / "CMakeCache.txt").read_text()
     if "CMAKE_BUILD_TYPE:STRING=Release" not in cache:
         parser.error("benchmark compiler must have a Release CMake build")
+    if reference and "CMAKE_BUILD_TYPE:STRING=Release" not in (
+            reference.parent / "CMakeCache.txt").read_text():
+        parser.error("reference compiler must also have a Release CMake build")
     report = {"schema": 1, "commit": output(["git", "rev-parse", "HEAD"]),
               "dirty": bool(output(["git", "status", "--porcelain"])),
               "compiler_sha256": hashlib.sha256(compiler.read_bytes()).hexdigest(),
@@ -73,6 +79,12 @@ def main():
               "warmups": args.warmups, "repeats": args.repeats, "limits": LIMITS,
               "measurement": "wall seconds include GNU time/process-launch overhead; RSS in KiB",
               "results": []}
+    if reference:
+        report["reference"] = {
+            "path": str(reference),
+            "compiler_sha256": hashlib.sha256(reference.read_bytes()).hexdigest(),
+            "commit": subprocess.check_output(
+                ["git", "-C", str(reference.parent), "rev-parse", "HEAD"], text=True).strip()}
     with tempfile.TemporaryDirectory(prefix="pagos-benchmark-") as temporary:
         directory = Path(temporary)
         for case in CASES:
@@ -82,9 +94,20 @@ def main():
                      re.findall(r"([a-z][a-z-]*)=(\d+)", explanation)}
             for mode in ("check", "emit-mir", "emit-llvm"):
                 command = [str(compiler), *LIMITS, mode, str(source)]
+                reference_command = [str(reference), *command[1:]] if reference else None
                 for _ in range(args.warmups):
                     run_sample(command, directory)
-                samples = [run_sample(command, directory) for _ in range(args.repeats)]
+                    if reference_command:
+                        run_sample(reference_command, directory)
+                samples, reference_samples = [], []
+                for index in range(args.repeats):
+                    commands = [(command, samples)]
+                    if reference_command:
+                        commands.append((reference_command, reference_samples))
+                    if index % 2:
+                        commands.reverse()
+                    for measured, destination in commands:
+                        destination.append(run_sample(measured, directory))
                 sizes = {sample[2] for sample in samples}
                 if len(sizes) != 1:
                     raise RuntimeError(f"non-repeatable output size: {case}/{mode}")
@@ -96,6 +119,16 @@ def main():
                     "min_seconds": min(seconds), "max_seconds": max(seconds),
                     "peak_rss_kib": max(sample[1] for sample in samples),
                     "output_bytes": samples[0][2], "stage_stats": stats})
+                if reference_samples:
+                    prior = [sample[0] for sample in reference_samples]
+                    report["results"][-1]["reference"] = {
+                        "median_seconds": statistics.median(prior),
+                        "min_seconds": min(prior), "max_seconds": max(prior),
+                        "peak_rss_kib": max(sample[1] for sample in reference_samples),
+                        "output_bytes": reference_samples[0][2],
+                        "median_paired_ratio": statistics.median(
+                            current[0] / previous[0] for current, previous in
+                            zip(samples, reference_samples, strict=True))}
                 print(f"{case} {mode}: {statistics.median(seconds):.6f}s", flush=True)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n")
