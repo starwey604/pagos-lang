@@ -182,6 +182,27 @@ ignored `build/`; keep only concise conclusions in the preparation plan.
 
 ### Regression commands
 
+`python3 scripts/ci.py --preset debug --quality --rv32` runs a clean build,
+the complete test suite, benchmark-source checks, quality checks, and the
+RV32 probe. Repeat with `--preset gcc-debug`, `asan`, and `release` for the
+full matrix. Logs and tool versions remain under `build/ci-logs/`; temporary
+build trees are removed on success or failure. Leak checks remain enabled.
+
+The compiler workflow runs debug/quality/RV32 on PRs and the full matrix on
+push, weekly schedule, or manual dispatch. Its Dockerfile fixes an amd64 base
+image digest and the Arch archive dated 2026-09-25, independent of runner
+toolchains. Refresh both deliberately; pinned images still need security
+updates. Build the image with network access, then run tests without network:
+
+```sh
+docker build -f ci/Dockerfile -t pagos-ci .
+docker run --rm --network none --user "$(id -u):$(id -g)" \
+  -v "$PWD:/work" pagos-ci python3 scripts/ci.py --preset debug --quality --rv32
+```
+
+Local script/container success is not a claim that GitHub Actions has run.
+Workflow execution on GitHub requires pushing the commits separately.
+
 Inspect the [minimal record example](records.md) with:
 
 ```sh

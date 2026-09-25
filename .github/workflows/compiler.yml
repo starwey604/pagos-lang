@@ -1,0 +1,48 @@
+name: Compiler
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 2 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compiler-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' || '["debug", "gcc-debug", "asan", "release"]') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Build pinned toolchain environment
+        run: docker build -f ci/Dockerfile -t pagos-ci .
+      - name: Run clean build and regression
+        shell: bash
+        run: |
+          extra=()
+          if [[ '${{ matrix.preset }}' == debug ]]; then
+            extra+=(--quality --rv32)
+          fi
+          docker run --rm --network none \
+            --user "$(id -u):$(id -g)" \
+            -v "$PWD:/work" pagos-ci \
+            python3 scripts/ci.py --preset '${{ matrix.preset }}' "${extra[@]}"
+      - name: Preserve logs
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: compiler-${{ matrix.preset }}
+          path: build/ci-logs/
+          if-no-files-found: warn
