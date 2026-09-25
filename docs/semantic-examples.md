@@ -345,19 +345,47 @@ is Runtime. Residual LLVM contains a read-only table and a bounds-checked
 load, not calls to `square`. Index `3` or larger traps. Replacing the Runtime
 index with Static `3` reports `E4007` instead.
 
-### 31. Whole-array staging and immutable values
+### 31. Element-sensitive staging and immutable values
 
 ```pagos
 fn pair(value: u32) -> [u32; 2] { [11, value] }
 let values = pair(external_input());
-let first = values[0];
+static let first = values[0];
 ```
 
-Expected: both `values` and `first` are Runtime in the current whole-array
-slice. The input read executes exactly once, even though `first` selects the
-known element. `static let first` fails with a dependency path through the
-array element and index. `[u32; 3]` cannot receive this pair: array length is
+Expected: `values` is Runtime but `first` is Static `11`. The input read
+executes exactly once, even though `first` selects the known element. This
+refines the original whole-array slice; unrelated Runtime elements no longer
+thaw a Static-index read. `[u32; 3]` cannot receive this pair: array length is
 part of the type. Arrays cannot be compared for equality or mutated yet.
+
+### 32. Array projection respects Runtime boundaries
+
+```pagos
+runtime let forced = [11, 22];
+runtime let flag = true;
+let selected = if flag { [11, 20] } else { [11, 30] };
+static let a = forced[0];
+static let b = selected[0];
+```
+
+Expected: both Static constraints fail with `E2001`. The paths point to
+`forced` and `flag`, respectively. Equal element values across Runtime
+branches do not make their selection Static. The same rule applies to arrays
+selected by Runtime-controlled early returns, and to Runtime indices.
+
+### 33. Selected-element diagnostic provenance
+
+```pagos
+runtime let unrelated = external_input();
+runtime let selected = external_input();
+let table = [unrelated, selected];
+static let result = table[1];
+```
+
+Expected: `E2001` names `selected`, not `unrelated`, with the path
+`selected -> array element 1 -> table -> array index -> result`. Array aliases
+and function parameter names remain in this path when present.
 
 ## Acceptance Use
 

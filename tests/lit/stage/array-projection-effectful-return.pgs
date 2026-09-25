@@ -1,0 +1,13 @@
+// RUN: %run_residual %s 11 5 6 7
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+fn pair() -> [u32; 2] {
+    external_input();
+    return [11, external_input()];
+}
+fn read() -> u32 {
+    let a = pair();
+    external_input();
+    a[0]
+}
+static let result = read();
+// CHECK: result: Static

@@ -1,0 +1,6 @@
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 11 2 50
+// RUN: %run_residual %s trap 0
+fn offset() -> u32 { external_input(); 0 }
+static let result = [11, 10 / external_input()][offset()];
+// CHECK: result: Static

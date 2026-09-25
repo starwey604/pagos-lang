@@ -97,11 +97,15 @@ let selected = lookup(squares, external_input());
 ```
 
 Elements evaluate left-to-right, then indexing evaluates the array before its
-`u32` index. Arrays are Static only when every element is Static; this slice
-uses whole-array rather than element-sensitive staging. Static indexing of a
-Static array folds. An analyzed Static index outside the type's length is
-`E4007`; a Runtime index is checked before memory access and traps if out of
-bounds.
+`u32` index. A constructed array is Static only when every element is Static,
+but a Static index into a mixed array inherits the selected element's stage.
+Aliases, call parameters, and directly returned arrays preserve that precision.
+Selecting a Static element folds its value while preserving evaluation of the
+entire array and the index, including unused reads, traps, and early returns.
+An explicit `runtime let` array boundary, Runtime branch/call-result selection,
+or Runtime index keeps the read Runtime, even when values happen to agree.
+An analyzed Static index outside the type's length reports `E4007`; a Runtime
+index is checked before memory access and traps if out of bounds.
 Static tables used by residual indexing are embedded as deduplicated read-only
 LLVM constants. Runtime arrays remain ordinary immutable value aggregates.
 The implicit entry returns zero when its final value is an array.

@@ -1,0 +1,10 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+fn read(a: [u32; 2]) -> u32 { let alias = a; alias[1] }
+runtime let unrelated = external_input();
+runtime let selected = external_input();
+let table = [unrelated, selected];
+static let result = read(table);
+// CHECK: error[E2001]: static binding
+// CHECK: Runtime source
+// CHECK-SAME: selected
+// CHECK: selected -> array element 1 -> table -> read.a -> alias -> array index -> result

@@ -1,0 +1,6 @@
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 11 10 20 30
+fn known() -> u32 { external_input(); 11 }
+fn offset() -> u32 { external_input(); 0 }
+static let result = [known(), external_input()][offset()];
+// CHECK: result: Static

@@ -97,6 +97,14 @@ value only where its definition dominates the use. `emit-hir` includes a
 `residual =` line for sequenced entry work, including top-level loops; repeated
 textual expressions can denote shared nodes rather than repeated evaluations.
 
+Static-index array projection follows `Reference` nodes and the result of a
+`Sequence` to an `Array` construction. It selects that element's stage and
+rebases diagnostic alias/parameter steps onto that element's Runtime source.
+Folding emits a `Sequence` of the original array/index work and a fresh scalar
+constant, preserving identity and all earlier evaluations. Explicit
+`RuntimeBoundary`, Runtime `If`, and `ReturnScope` nodes are opaque: projection
+does not infer Static values across Runtime selection or compare branches.
+
 HIR records whether an expression can continue and whether it may return from
 the enclosing call. `Return` carries the return value; `ReturnScope` delimits
 an inlined call with residual returns. Statically resolved returns disappear

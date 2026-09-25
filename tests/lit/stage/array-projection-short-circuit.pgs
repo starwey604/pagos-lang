@@ -1,0 +1,4 @@
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 0 10
+static let result = [false, external_input() == 1][0] && (external_input() == 1);
+// CHECK: result: Static

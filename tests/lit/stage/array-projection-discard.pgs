@@ -1,0 +1,7 @@
+// RUN: %run_residual %s 99 10 20
+fn unused() -> u32 {
+    [11, external_input()][0];
+    99
+}
+[22, external_input()][0];
+let result = unused();

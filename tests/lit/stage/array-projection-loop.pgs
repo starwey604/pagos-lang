@@ -1,0 +1,13 @@
+// RUN: %pagosc emit-mir %s | %FileCheck %s
+// RUN: %run_residual %s 99 2 10 20
+// RUN: %run_residual %s 99 0
+for i in 0..external_input() {
+    let table = [11, i + external_input()];
+    static let known = table[0];
+    table[1] + known;
+}
+let result = 99;
+// CHECK: phi
+// CHECK: condbr
+// CHECK: external_input
+// CHECK: index.checked

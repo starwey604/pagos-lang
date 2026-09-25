@@ -1,0 +1,5 @@
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 11 20
+let table = if true { [11, external_input()] } else { [99, 1 / 0] };
+static let result = table[0];
+// CHECK: result: Static

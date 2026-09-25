@@ -68,7 +68,10 @@ build/debug/pagosc emit-llvm tests/lit/stage/array-lookup.pgs
 
 The lookup example embeds one read-only table and retains a checked Runtime
 index. Arrays currently support nonempty one-dimensional `u32`/`bool` values;
-nested arrays, element mutation, and element-sensitive staging are deferred.
+Static-index reads preserve individual element stages through aliases and
+direct calls. Inspect `tests/lit/stage/array-projection.pgs` for a Static
+result that still retains an unrelated Runtime input read. Nested arrays and
+element mutation remain deferred.
 
 ## Test and Check
 

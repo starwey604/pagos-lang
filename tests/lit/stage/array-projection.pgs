@@ -1,0 +1,20 @@
+// RUN: %pagosc explain-stage %s | %FileCheck %s --check-prefix=STAGE
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=LLVM
+// RUN: %run_residual %s 11 50
+let table = [11, external_input()];
+let alias = table;
+static let first = alias[0];
+static let again = table[0];
+let result = first;
+// STAGE: table: Runtime
+// STAGE: alias: Runtime
+// STAGE: first: Static
+// STAGE: again: Static
+// STAGE: result: Static
+// MIR: external_input
+// MIR-NOT: external_input
+// MIR-NOT: index.checked
+// LLVM: call i32 @pagos_external_input()
+// LLVM-NOT: call i32 @pagos_external_input()
+// LLVM: ret i32 11

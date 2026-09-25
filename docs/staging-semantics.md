@@ -80,14 +80,20 @@ let config = {
 The runtime `revision` field must not thaw `clock_hz` or unrelated device
 topology. Exact record syntax remains undecided.
 
-The current fixed-length array slice is deliberately whole-array staged:
-every element must be Static for the array to be Static. A Runtime element,
-Runtime branch selection, or explicit `runtime let` thaws the entire array,
-including reads at Static indices. Array construction and index evaluation
-preserve all residual work in source order, even when the selected value is
-Static. See [Core Grammar](grammar.md#fixed-length-arrays-milestone-2) for
-syntax, length rules, and checked bounds behavior. Element-sensitive staging
-remains future work rather than an implicit guarantee of this slice.
+Fixed-length array construction retains each element's stage. The array as a
+whole is Static only when every element is Static, but a Static index selects
+that element's stage and dependency path rather than joining unrelated
+elements. This precision survives aliases, call parameters, and direct returns.
+For example, `[11, external_input()][0]` is Static `11`; the input read still
+executes exactly once. A Static value need not be free of residual work.
+
+Explicit `runtime let` array boundaries and Runtime control selecting an array
+(including per-call return joins) keep every projection Runtime. A Runtime
+index also keeps its read Runtime, even for identical elements. Projection
+does not look through these boundaries or compare branch values. Array and
+index evaluation preserve all residual work in source order, including traps
+and early returns. See [Core Grammar](grammar.md#fixed-length-arrays-milestone-2)
+for syntax, length rules, and checked bounds behavior.
 
 The compiler converts control flow to SSA-like values before final stage
 propagation. A merge is Runtime when a reachable incoming value is Runtime or

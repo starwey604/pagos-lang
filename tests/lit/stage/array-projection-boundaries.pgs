@@ -1,0 +1,25 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+fn choose(flag: bool) -> [u32; 2] {
+    if flag { return [11, 20]; } else { 0 };
+    [11, 30]
+}
+runtime let forced = [11, 22];
+runtime let flag = true;
+runtime let index = 0;
+static let a = forced[0];
+let branch = if flag { [11, 20] } else { [11, 30] };
+static let b = branch[0];
+static let c = choose(flag)[0];
+static let d = [11, 11][index];
+// CHECK: error[E2001]: static binding
+// CHECK-SAME: a
+// CHECK: forced -> array index -> a
+// CHECK: error[E2001]: static binding
+// CHECK-SAME: b
+// CHECK: flag -> branch -> array index -> b
+// CHECK: error[E2001]: static binding
+// CHECK-SAME: c
+// CHECK: flag -> choose.flag -> return control -> array index -> c
+// CHECK: error[E2001]: static binding
+// CHECK-SAME: d
+// CHECK: index -> array index -> d

@@ -111,6 +111,8 @@ specializations are memoized under explicit evaluation limits.
 Static and Runtime loops, per-call early returns, and immutable fixed-length
 arrays are supported. Static lookup tables embed as read-only constants, with
 bounds-checked Runtime indexing.
+Static-index reads of mixed arrays retain the selected element's stage while
+preserving evaluation of the entire array.
 
 ## Development
 

@@ -41,6 +41,40 @@ bool has_residual_work(const hir::ExprPtr& expression) {
     return std::ranges::any_of(expression->operands, has_residual_work);
 }
 
+struct ArrayProjection {
+    std::optional<hir::Constant> constant;
+    std::optional<hir::RuntimeTrace> trace;
+};
+
+std::optional<ArrayProjection> project_array_element(hir::ExprPtr array,
+                                                     std::uint32_t offset) {
+    std::vector<std::string> uses;
+    // Only diagnostic aliases and ordered evaluation wrappers are transparent.
+    // RuntimeBoundary, If, and ReturnScope deliberately stop projection.
+    while (array) {
+        if (array->kind == hir::Expr::Kind::Reference) {
+            uses.push_back(array->trace->path.back());
+            array = array->operands.front();
+        } else if (array->kind == hir::Expr::Kind::Sequence) {
+            array = array->operands.back();
+        } else if (array->kind == hir::Expr::Kind::Array) {
+            const auto& element = array->operands.at(offset);
+            if (element->stage == hir::Stage::Static) {
+                return ArrayProjection{.constant = element->constant};
+            }
+            auto trace = element->trace;
+            trace->path.push_back("array element " + std::to_string(offset));
+            for (auto use = uses.rbegin(); use != uses.rend(); ++use) {
+                trace->path.push_back(*use);
+            }
+            return ArrayProjection{.trace = std::move(trace)};
+        } else {
+            break;
+        }
+    }
+    return std::nullopt;
+}
+
 std::optional<hir::RuntimeTrace> return_dependency(const hir::ExprPtr& value) {
     if (!value || !value->may_return) {
         return std::nullopt;
@@ -428,6 +462,7 @@ hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
     if (!index->falls_through) {
         return make_sequence({array}, index, expression.span);
     }
+    std::optional<hir::RuntimeTrace> selected_trace;
     if (index->stage == hir::Stage::Static) {
         const auto offset = std::get<std::uint32_t>(*index->constant);
         if (offset >= array->type.length) {
@@ -437,8 +472,8 @@ hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
                                    std::to_string(array->type.length));
             return nullptr;
         }
+        std::optional<hir::Constant> value;
         if (array->stage == hir::Stage::Static) {
-            hir::Constant value;
             if (array->type.element_type() == syntax::TypeKind::Bool) {
                 value = static_cast<bool>(
                     std::get<std::vector<bool>>(*array->constant)[offset]);
@@ -446,6 +481,11 @@ hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
                 value = std::get<std::vector<std::uint32_t>>(
                     *array->constant)[offset];
             }
+        } else if (auto selected = project_array_element(array, offset)) {
+            value = std::move(selected->constant);
+            selected_trace = std::move(selected->trace);
+        }
+        if (value) {
             std::vector<hir::ExprPtr> effects;
             if (has_residual_work(array)) {
                 effects.push_back(array);
@@ -454,13 +494,14 @@ hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
                 effects.push_back(index);
             }
             return make_sequence(std::move(effects),
-                                 hir::make_constant(std::move(value),
+                                 hir::make_constant(std::move(*value),
                                                     type_of(expression),
                                                     expression.span),
                                  expression.span);
         }
     }
-    auto trace = first_trace(array, index);
+    auto trace =
+        selected_trace ? std::move(*selected_trace) : first_trace(array, index);
     trace.path.push_back("array index");
     return make_runtime(hir::Expr::Kind::Index, type_of(expression),
                         expression.span, {array, index}, std::move(trace));

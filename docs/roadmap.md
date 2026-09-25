@@ -74,8 +74,10 @@ returns now merge at per-call exits, including nested loops and conditional
 returns; result-completeness checks account for empty loops. Fixed-length
 `u32`/`bool` arrays now support Static construction and indexing, content-based
 specialization keys, Runtime aggregate values, and checked residual indexing
-into deduplicated read-only tables. Field-sensitive staging, records, richer
-table-generation syntax, effect-aware keys, and memory accounting remain.
+into deduplicated read-only tables. Static-index reads now retain individual
+element stages through aliases and direct calls, without discarding residual
+array evaluation or crossing explicit Runtime/control boundaries. Records,
+richer table-generation syntax, effect-aware keys, and memory accounting remain.
 
 Add:
 

@@ -1,0 +1,13 @@
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 22 10 20
+fn pair(value: u32) -> [u32; 2] { return [11, value]; }
+fn identity(a: [u32; 2]) -> [u32; 2] { let alias = a; alias }
+fn first(a: [u32; 2]) -> u32 { a[0] }
+let values = identity(pair(external_input()));
+static let a = first(values);
+static let b = first(pair(external_input()));
+let result = a + b;
+// CHECK: values: Runtime
+// CHECK: a: Static
+// CHECK: b: Static
+// CHECK: result: Static
