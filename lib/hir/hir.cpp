@@ -57,6 +57,13 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
     case Expr::Kind::Reference:
         print_expression(expression->operands.at(0), output);
         break;
+    case Expr::Kind::Return:
+    case Expr::Kind::ReturnScope:
+        output << (expression->kind == Expr::Kind::Return ? "return("
+                                                          : "call_scope(");
+        print_expression(expression->operands.at(0), output);
+        output << ')';
+        break;
     case Expr::Kind::RuntimeBoundary:
         output << "runtime(";
         print_expression(expression->operands.at(0), output);

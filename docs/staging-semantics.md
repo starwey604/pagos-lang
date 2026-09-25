@@ -161,6 +161,15 @@ loop, its iteration variable, and values selected by its control are Runtime.
 Compile-time effects are forbidden inside a Runtime loop. Compile-time loops
 are subject to fuel and memory limits.
 
+`return` exits the enclosing function from any nesting depth. Under Static
+control the evaluator stops that path immediately. Under Runtime control it
+emits an edge to the current call's result merge; it does not return from the
+caller. Only paths that continue can execute later statements, operands, or
+loop increments. A zero-trip loop reaches the function's fallthrough result.
+If Runtime control selects an early return versus a later result, the call
+result is Runtime even when the individual returned values are Static. Its
+dependency path includes the controlling source and `return control`.
+
 Short-circuit expressions follow the same control rule: a statically skipped
 right operand performs no effect, while a right operand selected by a Runtime
 left operand is under Runtime control.

@@ -1,0 +1,9 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+
+fn invalid(end: u32) -> bool {
+    for index in 0..end { return index; }
+    return false;
+}
+
+// CHECK: error[E1008]: type mismatch in return expression
+// CHECK: expected `bool`, found `u32`

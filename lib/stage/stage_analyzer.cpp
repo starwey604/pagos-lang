@@ -35,10 +35,32 @@ bool has_residual_work(const hir::ExprPtr& expression) {
     if (!expression) {
         return false;
     }
-    if (expression->stage == hir::Stage::Runtime) {
+    if (expression->stage == hir::Stage::Runtime || expression->may_return) {
         return true;
     }
     return std::ranges::any_of(expression->operands, has_residual_work);
+}
+
+std::optional<hir::RuntimeTrace> return_dependency(const hir::ExprPtr& value) {
+    if (!value || !value->may_return) {
+        return std::nullopt;
+    }
+    if ((value->kind == hir::Expr::Kind::If ||
+         value->kind == hir::Expr::Kind::RangeLoop ||
+         value->kind == hir::Expr::Kind::Return) &&
+        value->trace) {
+        auto trace = value->trace;
+        if (value->kind != hir::Expr::Kind::Return) {
+            trace->path.push_back("return control");
+        }
+        return trace;
+    }
+    for (const auto& operand : value->operands) {
+        if (auto trace = return_dependency(operand)) {
+            return trace;
+        }
+    }
+    return std::nullopt;
 }
 
 } // namespace
@@ -113,8 +135,8 @@ StageAnalyzer::analyze_block(const syntax::Block& block) {
     }
     auto value = block.tail ? analyze_expression(*block.tail) : nullptr;
     scopes_.pop_back();
-    return {.value = std::move(value),
-            .returned = false,
+    return {.value = value,
+            .returned = block.tail && value && !value->falls_through,
             .effects = std::move(effects)};
 }
 
@@ -126,22 +148,36 @@ StageAnalyzer::analyze_statement(const syntax::Stmt& statement,
         auto value = analyze_binding(
             static_cast<const syntax::BindingStmt&>(statement), output_module);
         return {.value = value,
-                .effects = has_residual_work(value)
+                .returned = value && !value->falls_through,
+                .effects = has_residual_work(value) && value->falls_through
                                ? std::vector<hir::ExprPtr>{value}
                                : std::vector<hir::ExprPtr>{}};
     }
     case syntax::Stmt::Kind::Return: {
         const auto& return_statement =
             static_cast<const syntax::ReturnStmt&>(statement);
-        return {.value = analyze_expression(*return_statement.value),
-                .returned = true};
+        auto value = analyze_expression(*return_statement.value);
+        if (!value || !value->falls_through) {
+            return {.value = value, .returned = true};
+        }
+        auto result = std::make_shared<hir::Expr>();
+        result->kind = hir::Expr::Kind::Return;
+        result->type = value->type;
+        result->stage = value->stage;
+        result->span = statement.span;
+        result->trace = value->trace;
+        result->falls_through = false;
+        result->may_return = true;
+        result->operands = {value};
+        return {.value = result, .returned = true};
     }
     case syntax::Stmt::Kind::Expression: {
         const auto& expression_statement =
             static_cast<const syntax::ExpressionStmt&>(statement);
         auto value = analyze_expression(*expression_statement.expression);
         return {.value = value,
-                .effects = has_residual_work(value)
+                .returned = value && !value->falls_through,
+                .effects = has_residual_work(value) && value->falls_through
                                ? std::vector<hir::ExprPtr>{value}
                                : std::vector<hir::ExprPtr>{}};
     }
@@ -154,9 +190,16 @@ StageAnalyzer::analyze_statement(const syntax::Stmt& statement,
 StageAnalyzer::BlockResult
 StageAnalyzer::analyze_for(const syntax::ForStmt& loop_statement) {
     const auto begin = analyze_expression(*loop_statement.begin);
+    if (!begin || !begin->falls_through) {
+        return {.value = begin, .returned = true};
+    }
     const auto end = analyze_expression(*loop_statement.end);
-    if (!begin || !end) {
+    if (!end) {
         return {};
+    }
+    if (!end->falls_through) {
+        return {.value = make_sequence({begin}, end, loop_statement.span),
+                .returned = true};
     }
     if (begin->stage == hir::Stage::Static &&
         end->stage == hir::Stage::Static) {
@@ -207,18 +250,6 @@ StageAnalyzer::analyze_for(const syntax::ForStmt& loop_statement) {
     define(loop_statement.variable, index);
     auto body_result = analyze_block(*loop_statement.body);
     scopes_.pop_back();
-    if (body_result.returned) {
-        diagnostics_.report({
-            .severity = source::Severity::Error,
-            .code = "E5001",
-            .message = "return from a Runtime loop is not implemented yet",
-            .primary = {.span = loop_statement.span,
-                        .message = "the loop trip count is Runtime"},
-            .help = "move the return after the loop or make both bounds "
-                    "Static",
-        });
-        return {};
-    }
 
     auto loop = std::make_shared<hir::Expr>();
     loop->kind = hir::Expr::Kind::RangeLoop;
@@ -232,14 +263,18 @@ StageAnalyzer::analyze_for(const syntax::ForStmt& loop_statement) {
     if (has_residual_work(body_result.value)) {
         loop->operands.push_back(body_result.value);
     }
+    loop->may_return =
+        std::ranges::any_of(loop->operands, [](const auto& operand) {
+            return operand->may_return;
+        });
     return {.effects = {std::move(loop)}};
 }
 
 hir::ExprPtr StageAnalyzer::analyze_binding(const syntax::BindingStmt& binding,
                                             hir::Module* output_module) {
     auto value = analyze_expression(*binding.initializer);
-    if (!value) {
-        return nullptr;
+    if (!value || !value->falls_through) {
+        return value;
     }
 
     if (binding.binding_kind == syntax::BindingKind::Runtime) {
@@ -247,6 +282,7 @@ hir::ExprPtr StageAnalyzer::analyze_binding(const syntax::BindingStmt& binding,
         runtime->kind = hir::Expr::Kind::RuntimeBoundary;
         runtime->type = type_of(*binding.initializer);
         runtime->stage = hir::Stage::Runtime;
+        runtime->may_return = value->may_return;
         runtime->span = binding.span;
         runtime->operands.push_back(value);
         runtime->trace = hir::RuntimeTrace{
@@ -313,8 +349,8 @@ hir::ExprPtr StageAnalyzer::analyze_expression(const syntax::Expr& expression) {
 
 hir::ExprPtr StageAnalyzer::analyze_unary(const syntax::UnaryExpr& expression) {
     auto operand = analyze_expression(*expression.operand);
-    if (!operand) {
-        return nullptr;
+    if (!operand || !operand->falls_through) {
+        return operand;
     }
     if (operand->stage == hir::Stage::Static) {
         const auto result = vm::Evaluator::unary(expression.operation,
@@ -340,8 +376,8 @@ hir::ExprPtr StageAnalyzer::analyze_unary(const syntax::UnaryExpr& expression) {
 hir::ExprPtr
 StageAnalyzer::analyze_binary(const syntax::BinaryExpr& expression) {
     auto left = analyze_expression(*expression.left);
-    if (!left) {
-        return nullptr;
+    if (!left || !left->falls_through) {
+        return left;
     }
 
     using enum syntax::BinaryOperator;
@@ -364,6 +400,13 @@ StageAnalyzer::analyze_binary(const syntax::BinaryExpr& expression) {
     auto right = analyze_expression(*expression.right);
     if (!right) {
         return nullptr;
+    }
+    if (!right->falls_through && expression.operation != LogicalAnd &&
+        expression.operation != LogicalOr) {
+        return make_sequence({left}, right, expression.span);
+    }
+    if (!right->falls_through && left->stage == hir::Stage::Static) {
+        return make_sequence({left}, right, expression.span);
     }
     if (left->stage == hir::Stage::Static &&
         right->stage == hir::Stage::Static) {
@@ -426,11 +469,14 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
     std::vector<hir::ExprPtr> arguments;
     arguments.reserve(expression.arguments.size());
     for (const auto& argument : expression.arguments) {
-        arguments.push_back(analyze_expression(*argument));
-    }
-    if (std::ranges::any_of(arguments,
-                            [](const hir::ExprPtr& value) { return !value; })) {
-        return nullptr;
+        auto value = analyze_expression(*argument);
+        if (!value) {
+            return nullptr;
+        }
+        if (!value->falls_through) {
+            return make_sequence(std::move(arguments), value, expression.span);
+        }
+        arguments.push_back(std::move(value));
     }
 
     const auto& function = *function_iterator->second;
@@ -525,6 +571,20 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
     auto result =
         make_sequence(std::move(block_result.effects),
                       std::move(block_result.value), function.body->span);
+    if (result && result->may_return) {
+        if (auto resolved = resolve_return(result)) {
+            result = std::move(resolved);
+        } else {
+            auto region = std::make_shared<hir::Expr>();
+            region->kind = hir::Expr::Kind::ReturnScope;
+            region->type = function.result;
+            region->stage = hir::Stage::Runtime;
+            region->span = expression.span;
+            region->trace = return_dependency(result);
+            region->operands = {result};
+            result = region;
+        }
+    }
     call_stack_.pop_back();
     scopes_.pop_back();
     if (key) {
@@ -540,8 +600,8 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
 
 hir::ExprPtr StageAnalyzer::analyze_if(const syntax::IfExpr& expression) {
     auto condition = analyze_expression(*expression.condition);
-    if (!condition) {
-        return nullptr;
+    if (!condition || !condition->falls_through) {
+        return condition;
     }
     if (condition->stage == hir::Stage::Static) {
         const auto selected = std::get<bool>(condition->constant.value())
@@ -600,6 +660,20 @@ hir::ExprPtr StageAnalyzer::make_runtime(
     expression->unary_operation = unary;
     expression->binary_operation = binary;
     expression->operands = std::move(operands);
+    expression->may_return =
+        std::ranges::any_of(expression->operands, [](const auto& operand) {
+            return operand->may_return;
+        });
+    if (kind == hir::Expr::Kind::If) {
+        expression->falls_through = expression->operands[0]->falls_through &&
+                                    (expression->operands[1]->falls_through ||
+                                     expression->operands[2]->falls_through);
+    } else {
+        expression->falls_through =
+            std::ranges::all_of(expression->operands, [](const auto& operand) {
+                return operand->falls_through;
+            });
+    }
     return expression;
 }
 
@@ -616,9 +690,39 @@ hir::ExprPtr StageAnalyzer::make_sequence(std::vector<hir::ExprPtr> effects,
     sequence->span = span;
     sequence->trace = value->trace;
     sequence->constant = value->constant;
+    sequence->falls_through = value->falls_through;
     sequence->operands = std::move(effects);
     sequence->operands.push_back(std::move(value));
+    sequence->may_return =
+        std::ranges::any_of(sequence->operands, [](const auto& operand) {
+            return operand->may_return;
+        });
     return sequence;
+}
+
+hir::ExprPtr StageAnalyzer::resolve_return(const hir::ExprPtr& value) const {
+    // Remove a terminal return only when no earlier operation can return.
+    // Otherwise its value must join the other exits in a ReturnScope.
+    if (!value->may_return) {
+        return value;
+    }
+    if (value->kind == hir::Expr::Kind::Return &&
+        !value->operands[0]->may_return) {
+        return value->operands[0];
+    }
+    if (value->kind == hir::Expr::Kind::Sequence) {
+        auto effects = value->operands;
+        auto tail = effects.back();
+        effects.pop_back();
+        if (std::ranges::none_of(effects, [](const auto& operand) {
+                return operand->may_return;
+            })) {
+            if (auto resolved = resolve_return(tail)) {
+                return make_sequence(std::move(effects), resolved, value->span);
+            }
+        }
+    }
+    return nullptr;
 }
 
 void StageAnalyzer::report_static_failure(const syntax::BindingStmt& binding,

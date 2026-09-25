@@ -11,7 +11,7 @@
 
 namespace pagos::syntax {
 
-enum class TypeKind { Unknown, Void, Bool, U32, Error };
+enum class TypeKind { Unknown, Void, Bool, U32, Never, Error };
 enum class BindingKind { Inferred, Static, Runtime };
 enum class UnaryOperator { Not };
 enum class BinaryOperator {

@@ -13,7 +13,7 @@ runtime let input = external_input();
 let output = choose(input == 0);
 
 // HIR: fn choose(bool) -> u32
-// HIR: binding output: u32 [Runtime] = sequence(eq(runtime(external_input()), 0), if(eq(runtime(external_input()), 0), 10, 20))
+// HIR: binding output: u32 [Runtime] = sequence(eq(runtime(external_input()), 0), call_scope(if(eq(runtime(external_input()), 0), return(10), return(20))))
 
 // IR-LABEL: define i32 @pagos_main()
 // IR: call i32 @pagos_external_input()

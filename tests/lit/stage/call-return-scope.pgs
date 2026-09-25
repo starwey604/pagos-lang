@@ -1,0 +1,15 @@
+// RUN: %run_residual %s 13 3 1 2 0 7
+
+fn inner(end: u32) -> u32 {
+    for index in 0..end { return index + 1; }
+    return 0;
+}
+fn outer(end: u32) -> u32 {
+    for index in 0..end {
+        let value = inner(external_input());
+        // inner returns on every nonempty call, but outer keeps iterating.
+        if value == 0 { return index + external_input(); } else { 0 };
+    }
+    return 99;
+}
+let result = outer(external_input()) + 4;

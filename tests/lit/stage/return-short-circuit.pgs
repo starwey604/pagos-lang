@@ -1,0 +1,11 @@
+// RUN: %run_residual %s 107 1 0
+// RUN: %run_residual %s 109 1 2 9
+// RUN: %run_residual %s 108 0 8
+
+fn maybe(flag: bool) -> u32 {
+    let ignored = flag && (if external_input() == 0 {
+        return 7;
+    } else { true });
+    return external_input();
+}
+let result = maybe(external_input() == 1) + 100;

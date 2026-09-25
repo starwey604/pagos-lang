@@ -312,6 +312,25 @@ let invalid = if true { 1 } else { false };
 Expected error: the `if` arms have incompatible types `u32` and `bool`, even
 though the condition is Static.
 
+### 29. Runtime-loop early return
+
+```pagos
+fn first(end: u32) -> u32 {
+    for index in 1..end {
+        return index;
+    }
+    return 9;
+}
+
+runtime let end = external_input();
+let result = first(end) + 100;
+```
+
+Expected: `result` is Runtime. If `end <= 1`, the result is `109`; otherwise it
+is `101`. The loop return exits `first`, and the caller still adds `100`.
+Without the fallthrough `return 9`, result-completeness checking reports
+`E1007`. A `static let result` reports the Runtime control dependency.
+
 ## Acceptance Use
 
 Each example becomes a fixture when its feature enters an implementation

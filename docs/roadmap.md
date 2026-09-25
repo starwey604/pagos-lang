@@ -70,8 +70,9 @@ Static ranges during analysis and lowers Runtime ranges to verified MIR loops.
 Residual sequencing now preserves unused computations and argument evaluation
 on cache hits; diagnostic references preserve loop-index identity. Host
 execution tests cover ordering, read counts, and traps. Runtime-loop early
-returns, aggregates, cross-stage embedding, effect-aware keys, and memory
-accounting remain.
+returns now merge at per-call exits, including nested loops and conditional
+returns; result-completeness checks account for empty loops. Aggregates,
+cross-stage embedding, effect-aware keys, and memory accounting remain.
 
 Add:
 

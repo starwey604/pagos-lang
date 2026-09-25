@@ -50,6 +50,11 @@ class Lowerer {
         ValueId value;
     };
 
+    struct ReturnTarget {
+        BlockId exit;
+        std::vector<PhiIncoming> incoming;
+    };
+
     BlockId create_block(std::string name, std::optional<BlockId> parent) {
         const auto id = static_cast<BlockId>(function_.blocks.size());
         function_.blocks.push_back({.id = id,
@@ -151,8 +156,14 @@ class Lowerer {
         case hir::Expr::Kind::RangeLoop:
             result = lower_range_loop(expression);
             break;
+        case hir::Expr::Kind::Return:
+            result = lower_return(expression);
+            break;
+        case hir::Expr::Kind::ReturnScope:
+            result = lower_return_scope(expression);
+            break;
         }
-        if (result) {
+        if (result && live_) {
             cache(expression.get(), *result);
         }
         return result;
@@ -164,7 +175,7 @@ class Lowerer {
             return std::unexpected("malformed unary HIR expression");
         }
         auto operand = lower_expression(expression->operands.front());
-        if (!operand) {
+        if (!operand || !live_) {
             return operand;
         }
         return emit(Type::Bool,
@@ -179,11 +190,11 @@ class Lowerer {
             return std::unexpected("malformed binary HIR expression");
         }
         auto left = lower_expression(expression->operands[0]);
-        if (!left) {
+        if (!left || !live_) {
             return left;
         }
         auto right = lower_expression(expression->operands[1]);
-        if (!right) {
+        if (!right || !live_) {
             return right;
         }
         const auto operation =
@@ -205,7 +216,7 @@ class Lowerer {
             return std::unexpected("malformed conditional HIR expression");
         }
         auto condition = lower_expression(expression->operands[0]);
-        if (!condition) {
+        if (!condition || !live_) {
             return condition;
         }
 
@@ -223,13 +234,28 @@ class Lowerer {
             return then_value;
         }
         const auto then_exit = current_block_;
+        const auto then_live = live_;
 
         current_block_ = else_block;
+        live_ = true;
         auto else_value = lower_expression(expression->operands[2]);
         if (!else_value) {
             return else_value;
         }
         const auto else_exit = current_block_;
+        const auto else_live = live_;
+
+        if (!then_live && !else_live) {
+            return ValueId{};
+        }
+        live_ = true;
+        if (!then_live) {
+            return *else_value;
+        }
+        if (!else_live) {
+            current_block_ = then_exit;
+            return *then_value;
+        }
 
         const auto merge_block = create_block("if.merge", branch_block);
         block(then_exit).terminator = Branch{.target = merge_block};
@@ -254,7 +280,7 @@ class Lowerer {
             std::unexpected("HIR sequence has no result");
         for (const auto& operand : expression->operands) {
             result = lower_expression(operand);
-            if (!result) {
+            if (!result || !live_) {
                 return result;
             }
         }
@@ -268,11 +294,11 @@ class Lowerer {
             return std::unexpected("malformed range-loop HIR expression");
         }
         auto begin = lower_expression(expression->operands[0]);
-        if (!begin) {
+        if (!begin || !live_) {
             return begin;
         }
         auto end = lower_expression(expression->operands[1]);
-        if (!end) {
+        if (!end || !live_) {
             return end;
         }
 
@@ -304,23 +330,75 @@ class Lowerer {
                 !lowered) {
                 return lowered;
             }
+            if (!live_) {
+                break;
+            }
         }
-        const auto one =
-            emit(Type::U32, ConstantOperation{.value = std::uint32_t{1}},
-                 expression->span);
-        const auto next = emit(Type::U32,
-                               BinaryOperation{.operation = BinaryOperator::Add,
-                                               .left = index,
-                                               .right = one},
-                               expression->span);
-        const auto body_exit = current_block_;
-        block(body_exit).terminator = Branch{.target = header};
-        auto& phi = std::get<PhiOperation>(
-            block(header).instructions.front().operation);
-        phi.incoming.push_back({.block = body_exit, .value = next});
+        if (live_) {
+            const auto one =
+                emit(Type::U32, ConstantOperation{.value = std::uint32_t{1}},
+                     expression->span);
+            const auto next =
+                emit(Type::U32,
+                     BinaryOperation{.operation = BinaryOperator::Add,
+                                     .left = index,
+                                     .right = one},
+                     expression->span);
+            const auto body_exit = current_block_;
+            block(body_exit).terminator = Branch{.target = header};
+            auto& phi = std::get<PhiOperation>(
+                block(header).instructions.front().operation);
+            phi.incoming.push_back({.block = body_exit, .value = next});
+        }
 
         current_block_ = exit;
+        live_ = true;
         return *begin;
+    }
+
+    std::expected<ValueId, std::string>
+    lower_return(const hir::ExprPtr& expression) {
+        if (expression->operands.size() != 1 || return_targets_.empty()) {
+            return std::unexpected(
+                "HIR return requires a value and call scope");
+        }
+        auto value = lower_expression(expression->operands[0]);
+        if (!value || !live_) {
+            return value;
+        }
+        auto& target = return_targets_.back();
+        target.incoming.push_back({.block = current_block_, .value = *value});
+        block(current_block_).terminator = Branch{.target = target.exit};
+        live_ = false;
+        return *value;
+    }
+
+    std::expected<ValueId, std::string>
+    lower_return_scope(const hir::ExprPtr& expression) {
+        if (expression->operands.size() != 1) {
+            return std::unexpected("HIR call scope requires one body");
+        }
+        const auto exit = create_block("call.exit", current_block_);
+        return_targets_.push_back({.exit = exit, .incoming = {}});
+        auto value = lower_expression(expression->operands[0]);
+        if (!value) {
+            return value;
+        }
+        if (live_) {
+            return_targets_.back().incoming.push_back(
+                {.block = current_block_, .value = *value});
+            block(current_block_).terminator = Branch{.target = exit};
+        }
+        auto incoming = std::move(return_targets_.back().incoming);
+        return_targets_.pop_back();
+        if (incoming.empty()) {
+            return std::unexpected("HIR call scope has no result path");
+        }
+        current_block_ = exit;
+        live_ = true;
+        return emit(type_of(expression->type),
+                    PhiOperation{.incoming = std::move(incoming)},
+                    expression->span);
     }
 
     static Type type_of(syntax::TypeKind type) {
@@ -369,6 +447,10 @@ class Lowerer {
 
     Function function_;
     BlockId current_block_{};
+    // Returned paths have no continuation value; callers must stop lowering
+    // that path while this is false, even if lower_expression succeeded.
+    bool live_{true};
+    std::vector<ReturnTarget> return_targets_;
     ValueId next_value_{};
     std::vector<std::optional<BlockId>> parents_;
     std::unordered_map<const hir::Expr*, std::vector<CachedValue>> cache_;

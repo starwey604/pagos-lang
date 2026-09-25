@@ -1,0 +1,13 @@
+// RUN: %run_residual %s 11 2 0
+// RUN: %run_residual %s 21 2 1
+// RUN: %run_residual %s 31 0
+
+fn choose(end: u32) -> u32 {
+    for index in 0..end {
+        if external_input() == 0 { return 10; } else { return 20; };
+        // Neither branch falls through, so this is not evaluated.
+        100 / 0;
+    }
+    return 30;
+}
+let result = choose(external_input()) + 1;

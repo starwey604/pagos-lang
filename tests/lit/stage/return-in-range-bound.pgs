@@ -1,0 +1,12 @@
+// RUN: %run_residual %s 17 1 0
+// RUN: %run_residual %s 19 0 0 2 11 12
+
+fn search(flag: bool) -> u32 {
+    for index in external_input()..(if flag {
+        return 7;
+    } else { external_input() }) {
+        external_input();
+    }
+    return 9;
+}
+let result = search(external_input() == 1) + 10;

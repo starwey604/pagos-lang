@@ -1,0 +1,9 @@
+// RUN: %run_residual %s 31 0
+// RUN: %run_residual %s 26 2 4
+// RUN: %run_residual %s trap 2 0
+
+fn quotient(end: u32) -> u32 {
+    for index in 0..end { return 100 / external_input(); }
+    return 30;
+}
+let result = quotient(external_input()) + 1;

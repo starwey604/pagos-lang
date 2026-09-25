@@ -1,0 +1,16 @@
+// RUN: %run_residual %s 12 3 4 1 0
+// RUN: %run_residual %s 99 0 4
+// RUN: %run_residual %s 99 3 0
+
+fn nested(outer_end: u32, inner_end: u32) -> u32 {
+    for outer in 0..outer_end {
+        for inner in 0..inner_end {
+            if external_input() == 0 {
+                return outer * 10 + inner;
+            } else { 0 };
+        }
+    }
+    return 88;
+}
+let value = nested(external_input(), external_input());
+let result = value + 11;

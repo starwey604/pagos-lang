@@ -38,11 +38,15 @@ struct Expr {
         Sequence, // Ordered evaluations followed by the result value.
         LoopIndex,
         RangeLoop,
+        Return,
+        ReturnScope, // Inline call boundary; returns target this scope.
     };
 
     Kind kind{Kind::Constant};
     syntax::TypeKind type{syntax::TypeKind::Error};
     Stage stage{Stage::Static};
+    bool falls_through{true};
+    bool may_return{};
     source::Span span;
     std::optional<RuntimeTrace> trace;
     std::optional<Constant> constant;

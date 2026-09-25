@@ -1,14 +1,29 @@
-// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+// RUN: %run_residual %s 9 0
+// RUN: %run_residual %s 9 1
+// RUN: %run_residual %s 1 4
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
 
 fn first(end: u32) -> u32 {
-    for index in 0..end {
+    for index in 1..end {
         return index;
     }
-    return 0;
+    return 9;
 }
 
 runtime let end = external_input();
 let result = first(end);
 
-// CHECK: error[E5001]: return from a Runtime loop is not implemented yet
-// CHECK: help: move the return after the loop or make both bounds Static
+// The call result merges the early return and the zero-trip fallback.
+// The always-returning body has no backedge or increment.
+// MIR: bb1:
+// MIR-NEXT: %5: u32 = phi [bb3: %2], [bb4: %4]
+// MIR-NEXT: return %5
+// MIR: bb2:
+// MIR-NEXT: %2: u32 = phi [bb0: %1]
+// MIR-NEXT: %3: bool = lt %2, %0
+// MIR-NEXT: condbr %3, bb3, bb4
+// MIR: bb3:
+// MIR-NEXT: br bb1
+// MIR: bb4:
+// MIR-NEXT: %4: u32 = const 9
+// MIR-NEXT: br bb1

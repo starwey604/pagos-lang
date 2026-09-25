@@ -12,6 +12,7 @@ namespace {
 
 bool compatible(syntax::TypeKind expected, syntax::TypeKind actual) {
     return expected == syntax::TypeKind::Error ||
+           actual == syntax::TypeKind::Never ||
            actual == syntax::TypeKind::Error || expected == actual;
 }
 
@@ -98,8 +99,10 @@ syntax::TypeKind TypeChecker::check_block(syntax::Block& block,
     auto type = syntax::TypeKind::Void;
     if (block.tail) {
         type = check_expression(*block.tail);
-    } else if (saw_return) {
-        type = expected_return;
+    }
+    saw_return = saw_return || type == syntax::TypeKind::Never;
+    if (saw_return) {
+        type = syntax::TypeKind::Never;
     }
     scopes_.pop_back();
     return type;
@@ -112,6 +115,7 @@ void TypeChecker::check_statement(syntax::Stmt& statement,
     case syntax::Stmt::Kind::Binding: {
         auto& binding = static_cast<syntax::BindingStmt&>(statement);
         const auto initializer_type = check_expression(*binding.initializer);
+        saw_return = saw_return || initializer_type == syntax::TypeKind::Never;
         const auto binding_type = binding.annotation.value_or(initializer_type);
         if (binding.annotation &&
             !compatible(*binding.annotation, initializer_type)) {
@@ -138,7 +142,8 @@ void TypeChecker::check_statement(syntax::Stmt& statement,
     case syntax::Stmt::Kind::Expression: {
         auto& expression_statement =
             static_cast<syntax::ExpressionStmt&>(statement);
-        (void)check_expression(*expression_statement.expression);
+        const auto type = check_expression(*expression_statement.expression);
+        saw_return = saw_return || type == syntax::TypeKind::Never;
         break;
     }
     case syntax::Stmt::Kind::For: {
@@ -156,7 +161,12 @@ void TypeChecker::check_statement(syntax::Stmt& statement,
         scopes_.emplace_back();
         define(for_statement.variable, syntax::TypeKind::U32,
                for_statement.variable_span);
-        (void)check_block(*for_statement.body, expected_return, saw_return);
+        bool body_returns = false;
+        (void)check_block(*for_statement.body, expected_return, body_returns);
+        // The body may never execute. Only evaluating a bound can guarantee
+        // a return independently of the trip count.
+        saw_return = saw_return || begin_type == syntax::TypeKind::Never ||
+                     end_type == syntax::TypeKind::Never;
         scopes_.pop_back();
         break;
     }
@@ -187,6 +197,10 @@ syntax::TypeKind TypeChecker::check_expression(syntax::Expr& expression) {
     case syntax::Expr::Kind::Unary: {
         auto& unary = static_cast<syntax::UnaryExpr&>(expression);
         const auto operand_type = check_expression(*unary.operand);
+        if (operand_type == syntax::TypeKind::Never) {
+            type = syntax::TypeKind::Never;
+            break;
+        }
         if (!compatible(syntax::TypeKind::Bool, operand_type)) {
             type_mismatch(unary.operand->span, syntax::TypeKind::Bool,
                           operand_type, "operand of `!`");
@@ -214,6 +228,11 @@ syntax::TypeKind TypeChecker::check_binary(syntax::BinaryExpr& expression) {
     const auto right = check_expression(*expression.right);
     using enum syntax::BinaryOperator;
     const auto operation = expression.operation;
+    if (left == syntax::TypeKind::Never ||
+        (right == syntax::TypeKind::Never && operation != LogicalAnd &&
+         operation != LogicalOr)) {
+        return syntax::TypeKind::Never;
+    }
     if (operation == LogicalAnd || operation == LogicalOr) {
         if (!compatible(syntax::TypeKind::Bool, left)) {
             type_mismatch(expression.left->span, syntax::TypeKind::Bool, left,
@@ -277,8 +296,11 @@ syntax::TypeKind TypeChecker::check_call(syntax::CallExpr& expression) {
     }
     const auto count =
         std::min(expression.arguments.size(), function.parameters.size());
+    bool argument_returns = false;
     for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
         const auto actual = check_expression(*expression.arguments[index]);
+        argument_returns =
+            argument_returns || actual == syntax::TypeKind::Never;
         if (index < count &&
             !compatible(function.parameters[index].type, actual)) {
             type_mismatch(expression.arguments[index]->span,
@@ -287,7 +309,7 @@ syntax::TypeKind TypeChecker::check_call(syntax::CallExpr& expression) {
                               "`");
         }
     }
-    return function.result;
+    return argument_returns ? syntax::TypeKind::Never : function.result;
 }
 
 syntax::TypeKind TypeChecker::check_if(syntax::IfExpr& expression) {
@@ -302,6 +324,17 @@ syntax::TypeKind TypeChecker::check_if(syntax::IfExpr& expression) {
         check_block(*expression.then_block, current_return_type_, then_return);
     const auto else_type =
         check_block(*expression.else_block, current_return_type_, else_return);
+    if (condition == syntax::TypeKind::Never) {
+        return syntax::TypeKind::Never;
+    }
+    if (then_type == syntax::TypeKind::Never &&
+        else_type != syntax::TypeKind::Void) {
+        return else_type;
+    }
+    if (else_type == syntax::TypeKind::Never &&
+        then_type != syntax::TypeKind::Void) {
+        return then_type;
+    }
     if (!compatible(then_type, else_type)) {
         type_mismatch(expression.else_block->span, then_type, else_type,
                       "`if` arm");

@@ -80,6 +80,7 @@ class StageAnalyzer {
     [[nodiscard]] hir::ExprPtr make_sequence(std::vector<hir::ExprPtr> effects,
                                              hir::ExprPtr value,
                                              source::Span span) const;
+    [[nodiscard]] hir::ExprPtr resolve_return(const hir::ExprPtr& value) const;
     void report_static_failure(const syntax::BindingStmt& binding,
                                const hir::RuntimeTrace& trace);
     [[nodiscard]] syntax::TypeKind

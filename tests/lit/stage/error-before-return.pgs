@@ -1,0 +1,9 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+
+fn sink(a: u32, b: u32) -> u32 { a + b }
+fn invalid() -> u32 {
+    sink(1 / 0, if true { return 5; } else { 0 })
+}
+let result = invalid();
+
+// CHECK: error[E4001]: division by zero

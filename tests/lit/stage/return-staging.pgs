@@ -1,0 +1,16 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s
+// RUN: %run_residual %s 13 5
+
+fn early() -> u32 {
+    if true { return 3; } else { 0 };
+    return 100 / 0;
+}
+fn runtime_early(end: u32) -> u32 {
+    for index in 0..end { return 10; }
+    return 20;
+}
+let known = early();
+let result = runtime_early(external_input()) + known;
+
+// CHECK: binding known: u32 [Static] = 3
+// CHECK: binding result: u32 [Runtime]

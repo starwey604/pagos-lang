@@ -27,6 +27,8 @@ std::string_view type_name(TypeKind type) noexcept {
         return "<unknown>";
     case TypeKind::Void:
         return "void";
+    case TypeKind::Never:
+        return "never";
     case TypeKind::Bool:
         return "bool";
     case TypeKind::U32:

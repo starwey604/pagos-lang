@@ -1,0 +1,15 @@
+// RUN: %run_residual %s 101 5 7 0 1
+// RUN: %run_residual %s 909 0 9
+// RUN: %run_residual %s 909 2 7 8 9
+
+fn search(end: u32) -> u32 {
+    for index in 0..end {
+        let sample = external_input();
+        if sample == 0 { return index; } else { 0 };
+    }
+    return 9;
+}
+let found = search(external_input());
+// The callee return must not leave pagos_main or skip this input.
+let after = external_input();
+let result = found * 100 + after;

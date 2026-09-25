@@ -97,6 +97,14 @@ value only where its definition dominates the use. `emit-hir` includes a
 `residual =` line for sequenced entry work, including top-level loops; repeated
 textual expressions can denote shared nodes rather than repeated evaluations.
 
+HIR records whether an expression can continue and whether it may return from
+the enclosing call. `Return` carries the return value; `ReturnScope` delimits
+an inlined call with residual returns. Statically resolved returns disappear
+during analysis. MIR lowering routes residual returns to a per-call exit and
+merges their values with a phi. Terminated paths contribute neither an `if`
+continuation nor a loop backedge. The type side table uses an internal `never`
+type for expressions that always return, so they need no continuation value.
+
 ### 5. Binding-time analysis
 
 Solve the `Static <= Runtime` constraints, preserving field and value

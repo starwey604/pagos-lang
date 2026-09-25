@@ -8,7 +8,8 @@ extend it, but should not silently change accepted programs.
 The compiler supports `bool`, `u32`, immutable bindings, functions, calls, `if`
 expressions, explicit stage constraints, and range-based `for` statements.
 Static ranges execute during analysis; Runtime ranges residualize as target
-control flow. Returning directly from a Runtime loop remains reserved.
+control flow. A `return` inside an expression block or loop exits the nearest
+enclosing function, including when the compiler inlines that function.
 
 Source files use UTF-8. Keywords and identifiers are case-sensitive. An
 identifier starts with an ASCII letter or `_` and continues with ASCII letters,
@@ -59,6 +60,13 @@ Functions must declare parameter and result types. A block's optional final
 expression is its value; an `if` used as a value requires `else`, and both arms
 must have the same type. A function may instead finish through explicit
 `return` statements.
+
+A returning branch does not produce a value for an enclosing expression;
+only branches that continue must agree on a value type. Internally this is
+represented by `never`, which is not a source-level type. Result-completeness
+checking treats range loops conservatively as possibly empty: functions with
+returns only inside a loop must also provide a fallthrough result. Both
+branches of a terminating `if` can instead return directly.
 
 ## Core Type Rules
 

@@ -1,0 +1,11 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+
+fn choose(end: u32) -> u32 {
+    for index in 0..end { return 7; }
+    return 9;
+}
+runtime let input = external_input();
+static let invalid = choose(input);
+
+// CHECK: error[E2001]: static binding `invalid` was thawed
+// CHECK: dependency path: input -> choose.end -> index -> return control -> invalid
