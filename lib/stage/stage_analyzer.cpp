@@ -31,14 +31,14 @@ std::uint32_t parse_u32(const std::string& spelling) {
     return value;
 }
 
-bool has_residual_control(const hir::ExprPtr& expression) {
+bool has_residual_work(const hir::ExprPtr& expression) {
     if (!expression) {
         return false;
     }
-    if (expression->kind == hir::Expr::Kind::RangeLoop) {
+    if (expression->stage == hir::Stage::Runtime) {
         return true;
     }
-    return std::ranges::any_of(expression->operands, has_residual_control);
+    return std::ranges::any_of(expression->operands, has_residual_work);
 }
 
 } // namespace
@@ -122,11 +122,14 @@ StageAnalyzer::BlockResult
 StageAnalyzer::analyze_statement(const syntax::Stmt& statement,
                                  hir::Module* output_module) {
     switch (statement.kind) {
-    case syntax::Stmt::Kind::Binding:
-        return {.value = analyze_binding(
-                    static_cast<const syntax::BindingStmt&>(statement),
-                    output_module),
-                .returned = false};
+    case syntax::Stmt::Kind::Binding: {
+        auto value = analyze_binding(
+            static_cast<const syntax::BindingStmt&>(statement), output_module);
+        return {.value = value,
+                .effects = has_residual_work(value)
+                               ? std::vector<hir::ExprPtr>{value}
+                               : std::vector<hir::ExprPtr>{}};
+    }
     case syntax::Stmt::Kind::Return: {
         const auto& return_statement =
             static_cast<const syntax::ReturnStmt&>(statement);
@@ -136,8 +139,11 @@ StageAnalyzer::analyze_statement(const syntax::Stmt& statement,
     case syntax::Stmt::Kind::Expression: {
         const auto& expression_statement =
             static_cast<const syntax::ExpressionStmt&>(statement);
-        return {.value = analyze_expression(*expression_statement.expression),
-                .returned = false};
+        auto value = analyze_expression(*expression_statement.expression);
+        return {.value = value,
+                .effects = has_residual_work(value)
+                               ? std::vector<hir::ExprPtr>{value}
+                               : std::vector<hir::ExprPtr>{}};
     }
     case syntax::Stmt::Kind::For:
         return analyze_for(static_cast<const syntax::ForStmt&>(statement));
@@ -158,10 +164,10 @@ StageAnalyzer::analyze_for(const syntax::ForStmt& loop_statement) {
             std::get<std::uint32_t>(begin->constant.value());
         const auto end_value = std::get<std::uint32_t>(end->constant.value());
         std::vector<hir::ExprPtr> effects;
-        if (has_residual_control(begin)) {
+        if (has_residual_work(begin)) {
             effects.push_back(begin);
         }
-        if (has_residual_control(end)) {
+        if (has_residual_work(end)) {
             effects.push_back(end);
         }
         for (std::uint32_t index = begin_value; index < end_value; ++index) {
@@ -178,6 +184,9 @@ StageAnalyzer::analyze_for(const syntax::ForStmt& loop_statement) {
             if (body_result.returned) {
                 body_result.effects = std::move(effects);
                 return body_result;
+            }
+            if (has_residual_work(body_result.value)) {
+                effects.push_back(body_result.value);
             }
         }
         return {.effects = std::move(effects)};
@@ -220,6 +229,9 @@ StageAnalyzer::analyze_for(const syntax::ForStmt& loop_statement) {
     loop->variable_name = loop_statement.variable;
     loop->operands = {begin, end, std::move(index)};
     std::ranges::move(body_result.effects, std::back_inserter(loop->operands));
+    if (has_residual_work(body_result.value)) {
+        loop->operands.push_back(body_result.value);
+    }
     return {.effects = {std::move(loop)}};
 }
 
@@ -314,7 +326,7 @@ hir::ExprPtr StageAnalyzer::analyze_unary(const syntax::UnaryExpr& expression) {
         }
         auto value =
             hir::make_constant(*result, type_of(expression), expression.span);
-        if (has_residual_control(operand)) {
+        if (has_residual_work(operand)) {
             return make_sequence({std::move(operand)}, std::move(value),
                                  expression.span);
         }
@@ -341,7 +353,7 @@ StageAnalyzer::analyze_binary(const syntax::BinaryExpr& expression) {
             (expression.operation == LogicalOr && left_value)) {
             auto value = hir::make_constant(left_value, syntax::TypeKind::Bool,
                                             expression.span);
-            if (has_residual_control(left)) {
+            if (has_residual_work(left)) {
                 return make_sequence({std::move(left)}, std::move(value),
                                      expression.span);
             }
@@ -366,10 +378,10 @@ StageAnalyzer::analyze_binary(const syntax::BinaryExpr& expression) {
         auto value =
             hir::make_constant(*result, type_of(expression), expression.span);
         std::vector<hir::ExprPtr> effects;
-        if (has_residual_control(left)) {
+        if (has_residual_work(left)) {
             effects.push_back(std::move(left));
         }
-        if (has_residual_control(right)) {
+        if (has_residual_work(right)) {
             effects.push_back(std::move(right));
         }
         return make_sequence(std::move(effects), std::move(value),
@@ -422,12 +434,21 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
     }
 
     const auto& function = *function_iterator->second;
+    // Arguments execute left-to-right, including on a specialization hit and
+    // when the callee does not use their values.
+    std::vector<hir::ExprPtr> argument_work;
+    for (const auto& argument : arguments) {
+        if (has_residual_work(argument)) {
+            argument_work.push_back(argument);
+        }
+    }
     auto key = specialization_key(function, arguments);
     if (key) {
         if (const auto cached = specialization_cache_.find(*key);
             cached != specialization_cache_.end()) {
             ++stats_.cache_hits;
-            return cached->second;
+            return make_sequence(std::move(argument_work), cached->second,
+                                 expression.span);
         }
         if (active_specializations_.contains(*key)) {
             diagnostics_.report({
@@ -509,11 +530,12 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
     if (key) {
         active_specializations_.erase(*key);
         if (result && result->stage == hir::Stage::Static &&
-            !has_residual_control(result)) {
+            !has_residual_work(result)) {
             specialization_cache_.emplace(std::move(*key), result);
         }
     }
-    return result;
+    return make_sequence(std::move(argument_work), std::move(result),
+                         expression.span);
 }
 
 hir::ExprPtr StageAnalyzer::analyze_if(const syntax::IfExpr& expression) {
@@ -526,7 +548,7 @@ hir::ExprPtr StageAnalyzer::analyze_if(const syntax::IfExpr& expression) {
                                   ? expression.then_block.get()
                                   : expression.else_block.get();
         auto selected_result = analyze_block(*selected);
-        if (has_residual_control(condition)) {
+        if (has_residual_work(condition)) {
             selected_result.effects.insert(selected_result.effects.begin(),
                                            std::move(condition));
         }

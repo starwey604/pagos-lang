@@ -1,0 +1,15 @@
+// RUN: %run_residual %s 8 2 11 12 1 21 3 31 32 33
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+
+fn work() -> u32 {
+    for index in 0..external_input() { external_input(); }
+    return 4;
+}
+
+let a = work();
+work();
+let b = work();
+let result = a + b;
+
+// CHECK: result: Static
+// CHECK: cache-hits=0

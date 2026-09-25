@@ -67,8 +67,11 @@ Status: in progress. The first slice introduced typed residual SSA MIR and
 MIR-only LLVM lowering. The second added bounded Static recursion,
 specialization caching, and resource controls. The current loop slice evaluates
 Static ranges during analysis and lowers Runtime ranges to verified MIR loops.
-Aggregates, cross-stage embedding, effect-aware keys, and memory accounting
-remain.
+Residual sequencing now preserves unused computations and argument evaluation
+on cache hits; diagnostic references preserve loop-index identity. Host
+execution tests cover ordering, read counts, and traps. Runtime-loop early
+returns, aggregates, cross-stage embedding, effect-aware keys, and memory
+accounting remain.
 
 Add:
 

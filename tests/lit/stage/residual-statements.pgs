@@ -1,0 +1,15 @@
+// RUN: %run_residual %s 42 2 10 11 12 13 14 15 16
+
+fn work(end: u32) -> u32 {
+    for index in 0..end { external_input(); }
+    return 7;
+}
+
+runtime let end = external_input();
+let ignored = work(end);
+work(1);
+for outer in 0..end {
+    external_input();
+    external_input()
+}
+let result = 42;

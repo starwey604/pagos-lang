@@ -91,6 +91,14 @@ constraints. A call is analyzed from the values actually used by the selected
 path through the function body; an unused Runtime argument does not by itself
 thaw the result.
 
+Value stage and residual execution are separate: a call can produce a known
+Static constant while still requiring Runtime work. Statements execute in
+source order and arguments are evaluated left-to-right before the callee body,
+including unused arguments. Discarding a value must preserve required reads,
+checked-arithmetic traps, and residual loops. A binding denotes one evaluation;
+aliases and repeated uses do not repeat that evaluation. Short-circuit operands
+and unselected branches remain conditional.
+
 ```pagos
 fn scale(factor: u32, value: u32) -> u32 {
     return factor * value;
@@ -110,10 +118,12 @@ The compiler memoizes specializations by function identity, static arguments,
 target configuration, and relevant effect dependencies. It must enforce a
 specialization budget to prevent accidental code-size explosion.
 
-The current pure-expression implementation caches a call only when every
-argument and the result are Static. Its key contains function identity and the
-typed argument constants; target configuration and effect dependencies join
-the key when those features land. Static recursion is permitted when selected
+The current implementation caches a call only when every argument and the
+result are Static and evaluating the specialized body has no residual work.
+Argument evaluation is preserved separately, including on cache hits. Its key
+contains function identity and the typed argument constants; target
+configuration and effect dependencies join the key when those features land.
+Static recursion is permitted when selected
 Static branches change the arguments and terminate within the configured fuel,
 depth, and specialization limits. Re-entering an active key is a recursive
 specialization cycle. Runtime recursion is not residualized yet and is rejected

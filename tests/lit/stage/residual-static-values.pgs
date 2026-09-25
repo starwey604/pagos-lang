@@ -1,0 +1,11 @@
+// RUN: %run_residual %s 12 1 2 3 4 5 6
+
+fn known() -> u32 { external_input(); return 2; }
+fn flag() -> bool { external_input(); return false; }
+
+// Known values retain work through folding and Static control selection.
+let a = known() + known();
+let b = if !flag() { known() } else { 100 / 0 };
+let c = flag() && (100 / 0 == 1);
+let d = flag() || true;
+let result = a * b + (if d { 4 } else { 0 });

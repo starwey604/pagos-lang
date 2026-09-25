@@ -122,10 +122,11 @@ class Lowerer {
                                                 expression->constant.value())},
                           expression->span);
             break;
+        case hir::Expr::Kind::Reference:
         case hir::Expr::Kind::RuntimeBoundary:
             if (expression->operands.size() != 1) {
                 return std::unexpected(
-                    "HIR runtime boundary requires one operand");
+                    "HIR reference or runtime boundary requires one operand");
             }
             result = lower_expression(expression->operands.front());
             break;

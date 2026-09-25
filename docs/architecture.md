@@ -87,6 +87,16 @@ Important HIR concepts include:
 - structured Runtime ranges and residual sequencing;
 - compile-time capability operations.
 
+The current scalar HIR is a shared expression graph. `Reference` nodes attach
+use-specific diagnostic paths without cloning the referenced computation;
+loop indices and Runtime reads keep their original identity through aliases
+and calls. `Sequence` records ordered residual evaluations plus a result whose
+value stage may still be Static. Statement and argument evaluations are
+retained even when their values are unused. MIR reuses an already lowered
+value only where its definition dominates the use. `emit-hir` includes a
+`residual =` line for sequenced entry work, including top-level loops; repeated
+textual expressions can denote shared nodes rather than repeated evaluations.
+
 ### 5. Binding-time analysis
 
 Solve the `Static <= Runtime` constraints, preserving field and value

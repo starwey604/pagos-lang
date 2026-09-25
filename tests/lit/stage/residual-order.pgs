@@ -1,0 +1,12 @@
+// RUN: %run_residual %s 12345 1 2 3 4 5
+
+fn combine(first: u32, second: u32) -> u32 {
+    let body = external_input();
+    return first * 100 + second * 10 + body;
+}
+
+let first = external_input();
+let alias = first;
+let middle = combine(external_input(), external_input());
+let last = external_input();
+let result = alias * 10000 + middle * 10 + last;

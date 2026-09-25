@@ -1,0 +1,6 @@
+// RUN: %run_residual %s trap 0
+// RUN: %run_residual %s 42 2
+
+runtime let divisor = external_input();
+let ignored = 10 / divisor;
+let result = 42;

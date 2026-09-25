@@ -1,0 +1,19 @@
+// RUN: %run_residual %s 19 2 31 32 2 41 42
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+
+fn mark() -> u32 {
+    for i in 0..external_input() { external_input(); }
+    return 5;
+}
+fn ignore(value: u32) -> u32 { 9 }
+fn next(value: u32) -> u32 { value + 1 }
+
+let warm_ignore = ignore(5);
+let warm_next = next(9);
+// Both cached callees must still evaluate their arguments, even if unused.
+let a = next(ignore(mark()));
+let b = ignore(mark());
+let result = a + b;
+
+// CHECK: result: Static
+// CHECK: cache-hits=3

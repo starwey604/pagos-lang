@@ -1,0 +1,11 @@
+// RUN: %run_residual %s 99 2 10 0
+// RUN: %run_residual %s trap 2 0
+
+runtime let end = external_input();
+for index in 0..end {
+    let sample = external_input();
+    let alias = sample;
+    let divisor = if index == 0 { alias } else { alias + 1 };
+    100 / divisor;
+}
+let result = 99;

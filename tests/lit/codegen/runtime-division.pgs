@@ -4,9 +4,9 @@
 runtime let divisor = external_input();
 let quotient = 10 / divisor;
 
-// MIR: %0: u32 = const 10
-// MIR: %1: u32 = external_input
-// MIR: %2: u32 = udiv.checked %0, %1
+// MIR: %0: u32 = external_input
+// MIR: %1: u32 = const 10
+// MIR: %2: u32 = udiv.checked %1, %0
 // MIR: return %2
 
 // CHECK-LABEL: define i32 @pagos_main()

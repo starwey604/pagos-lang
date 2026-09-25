@@ -122,7 +122,10 @@ let result = first(5, input);
 ```
 
 Expected: `result` is Static `5`; stages propagate through actual data use,
-not by blindly joining every argument.
+not by blindly joining every argument. If the unused argument contains a
+Runtime read or loop, that computation still executes before the call body;
+the result remains Static. A specialization-cache hit also preserves argument
+evaluation.
 
 ### 12. Transitive failure path
 
@@ -215,7 +218,10 @@ for index in 0..end {
 ```
 
 Expected: the loop and `index` are Runtime and are emitted to residual control
-flow.
+flow. An alias such as `let bound = index;` denotes the same iteration value
+and can be passed to a function or used as a nested loop bound. Runtime work
+in the body executes per iteration, including expressions whose results are
+discarded. An empty or reversed range executes no body operations.
 
 ## Effects
 

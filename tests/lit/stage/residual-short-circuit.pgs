@@ -1,0 +1,9 @@
+// RUN: %run_residual %s 7 0 4
+// RUN: %run_residual %s 7 1 3 4
+
+fn seven() -> u32 { external_input(); return 7; }
+let flag = external_input() == 0;
+let skipped = false && (seven() == 7);
+let also_skipped = true || (seven() == 7);
+let selected = flag || (external_input() == 3);
+let result = if flag { seven() } else { seven() };

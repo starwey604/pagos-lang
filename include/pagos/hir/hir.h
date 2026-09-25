@@ -29,12 +29,13 @@ using ExprPtr = std::shared_ptr<const Expr>;
 struct Expr {
     enum class Kind {
         Constant,
+        Reference, // Trace-only use of the same computation identity.
         RuntimeBoundary,
         ExternalInput,
         Unary,
         Binary,
         If,
-        Sequence,
+        Sequence, // Ordered evaluations followed by the result value.
         LoopIndex,
         RangeLoop,
     };

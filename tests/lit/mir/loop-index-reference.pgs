@@ -1,0 +1,18 @@
+// RUN: %run_residual %s 99 4 11 12 13 14 15 16
+// RUN: %pagosc emit-hir %s | %FileCheck %s
+
+fn identity(value: u32) -> u32 { value }
+
+runtime let end = external_input();
+for outer in 0..end {
+    let alias = outer;
+    let bound = identity(alias);
+    for inner in 0..bound {
+        external_input();
+    }
+}
+let result = 99;
+
+// CHECK: residual = sequence(
+// CHECK-SAME: for(outer in
+// CHECK-SAME: for(inner in

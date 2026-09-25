@@ -11,7 +11,7 @@ fn runtime_loop(end: u32) -> u32 {
 runtime let end = external_input();
 let result = runtime_loop(end);
 
-// HIR: binding result: u32 [Static] = sequence(for(index in 0..runtime(external_input())) {}, 9)
+// HIR: binding result: u32 [Static] = sequence(runtime(external_input()), sequence(for(index in 0..runtime(external_input())) {}, 9))
 
 // MIR-LABEL: func @pagos_main() -> u32 {
 // MIR: bb0:

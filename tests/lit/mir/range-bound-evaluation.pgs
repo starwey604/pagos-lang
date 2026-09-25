@@ -1,0 +1,9 @@
+// RUN: %run_residual %s 42 2 5 10 11 12
+// RUN: %run_residual %s 42 5 2
+// RUN: %run_residual %s 42 4294967295 4294967295
+// RUN: %run_residual %s 42 4294967294 4294967295 10
+
+for index in external_input()..external_input() {
+    external_input();
+}
+let result = 42;

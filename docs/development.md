@@ -13,6 +13,7 @@ Required tools and libraries are:
 - LLVM 22 development headers, libraries, tools, and CMake configuration;
 - GoogleTest for C++ unit tests;
 - Python 3, LLVM `lit`, and `FileCheck` for language-level golden tests;
+- Clang 22 and a host C linker/runtime for executing generated LLVM IR;
 - `clang-format` and `clang-tidy` for local quality checks.
 
 LLVM packages differ across distributions. CMake loads `LLVMConfig.cmake`,
@@ -73,3 +74,10 @@ programs, stable diagnostics, typed HIR, residual SSA MIR, and LLVM IR. When a
 restricted environment cannot run LeakSanitizer, pass
 `ASAN_OPTIONS=detect_leaks=0` only for that run; do not disable leak checks in
 normal CI.
+
+The lit substitution `%run_residual %s <result|trap> [input ...]` compiles
+emitted LLVM IR with a small host harness. It checks the result or trap and
+the exact input-read sequence, rejecting missing or extra reads. Execution
+has a timeout to catch broken loop backedges. The harness lives in
+`tests/lit/Inputs/`; it exercises alias identity, evaluation order, short
+circuiting, loop boundaries, discarded results, and specialization-cache hits.
