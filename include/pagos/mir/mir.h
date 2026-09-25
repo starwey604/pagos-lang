@@ -33,7 +33,8 @@ struct Type {
     bool operator==(const Type&) const = default;
     [[nodiscard]] bool is_record() const noexcept { return kind == Record; }
     [[nodiscard]] bool is_array() const noexcept { return kind == Array; }
-    [[nodiscard]] static Type integer(unsigned width, bool is_signed = false) {
+    [[nodiscard]] static Type integer(unsigned width,
+                                      bool is_signed = false) noexcept {
         Type type{Integer};
         type.integer_type = {width, is_signed};
         return type;

@@ -1,4 +1,5 @@
 #include "pagos/codegen/llvm_codegen.h"
+#include "llvm_types.h"
 
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
@@ -12,7 +13,6 @@
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
-#include <llvm/TargetParser/Host.h>
 #include <llvm/TargetParser/Triple.h>
 
 #include <cstdint>
@@ -30,11 +30,11 @@ namespace {
 
 class Generator {
   public:
-    Generator()
+    explicit Generator(const TargetLayout& target)
         : module_(std::make_unique<llvm::Module>("pagos", context_)),
-          builder_(context_) {
-        module_->setTargetTriple(
-            llvm::Triple(llvm::sys::getDefaultTargetTriple()));
+          builder_(context_), config_(target.config()) {
+        module_->setTargetTriple(llvm::Triple(config_.triple));
+        module_->setDataLayout(target.data_layout());
     }
 
     std::expected<std::string, std::string>
@@ -75,6 +75,10 @@ class Generator {
         auto* function = llvm::Function::Create(function_type,
                                                 llvm::Function::ExternalLinkage,
                                                 mir_function.name, *module_);
+        function->addFnAttr("target-cpu", config_.cpu);
+        if (!config_.features.empty()) {
+            function->addFnAttr("target-features", config_.features);
+        }
         for (const auto& block : mir_function.blocks) {
             blocks_.emplace(block.id, llvm::BasicBlock::Create(
                                           context_, block.name, function));
@@ -161,21 +165,7 @@ class Generator {
     }
 
     llvm::Type* llvm_type(const mir::Type& type) {
-        if (type.is_record()) {
-            std::vector<llvm::Type*> fields;
-            fields.reserve(type.fields.size());
-            for (const auto& field : type.fields) {
-                fields.push_back(llvm_type(field));
-            }
-            return llvm::StructType::get(context_, fields);
-        }
-        if (type.is_array()) {
-            return llvm::ArrayType::get(llvm_type(type.element_type()),
-                                        type.length);
-        }
-        return type == mir::Type::Bool
-                   ? builder_.getInt1Ty()
-                   : builder_.getIntNTy(type.integer_type.width);
+        return detail::storage_type(type, context_);
     }
 
     llvm::Value* emit_instruction(const mir::Instruction& instruction) {
@@ -441,6 +431,7 @@ class Generator {
     llvm::LLVMContext context_;
     std::unique_ptr<llvm::Module> module_;
     llvm::IRBuilder<> builder_;
+    TargetConfig config_;
     std::unordered_map<mir::ValueId, llvm::Value*> values_;
     std::unordered_map<mir::BlockId, llvm::BasicBlock*> blocks_;
     std::unordered_map<mir::BlockId, llvm::BasicBlock*> exits_;
@@ -450,8 +441,12 @@ class Generator {
 } // namespace
 
 std::expected<std::string, std::string>
-LLVMCodegen::emit(const mir::Module& mir_module) {
-    return Generator().emit(mir_module);
+LLVMCodegen::emit(const mir::Module& mir_module, TargetConfig config) {
+    const auto target = TargetLayout::create(std::move(config));
+    if (!target) {
+        return std::unexpected(target.error());
+    }
+    return Generator(*target).emit(mir_module);
 }
 
 } // namespace pagos::codegen

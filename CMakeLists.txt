@@ -9,6 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(PAGOS_ENABLE_SANITIZERS "Enable AddressSanitizer and UBSanitizer" OFF)
 option(PAGOS_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
+option(PAGOS_USE_LLVM_DYLIB "Prefer the monolithic LLVM shared library" ON)
 
 find_package(LLVM REQUIRED CONFIG)
 if(NOT LLVM_VERSION_MAJOR EQUAL 22)
@@ -17,6 +18,11 @@ if(NOT LLVM_VERSION_MAJOR EQUAL 22)
 endif()
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION} in ${LLVM_DIR}")
+foreach(PAGOS_TARGET X86 RISCV ARM)
+    if(NOT PAGOS_TARGET IN_LIST LLVM_TARGETS_TO_BUILD)
+        message(FATAL_ERROR "Pagos preparation requires LLVM ${PAGOS_TARGET} backend")
+    endif()
+endforeach()
 
 separate_arguments(PAGOS_LLVM_DEFINITIONS
     NATIVE_COMMAND "${LLVM_DEFINITIONS}")
@@ -78,10 +84,15 @@ target_include_directories(pagos_values PUBLIC include)
 target_include_directories(pagos_values SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
 target_compile_options(pagos_values PRIVATE ${PAGOS_LLVM_DEFINITIONS})
 target_link_libraries(pagos_values PUBLIC pagos_project_options)
-if(TARGET LLVM AND LLVM_LINK_LLVM_DYLIB)
+if(PAGOS_USE_LLVM_DYLIB AND TARGET LLVM AND LLVM_LINK_LLVM_DYLIB)
     target_link_libraries(pagos_values PRIVATE LLVM)
 else()
     llvm_map_components_to_libnames(PAGOS_SUPPORT_LIBRARIES Support)
+    foreach(PAGOS_LIBRARY IN LISTS PAGOS_SUPPORT_LIBRARIES)
+        if(NOT TARGET ${PAGOS_LIBRARY})
+            message(FATAL_ERROR "Missing LLVM component ${PAGOS_LIBRARY}; use PAGOS_USE_LLVM_DYLIB=ON or a complete LLVM component SDK")
+        endif()
+    endforeach()
     target_link_libraries(pagos_values PRIVATE ${PAGOS_SUPPORT_LIBRARIES})
 endif()
 
@@ -114,7 +125,7 @@ add_library(Pagos::mir ALIAS pagos_mir)
 target_include_directories(pagos_mir PUBLIC include)
 target_link_libraries(pagos_mir PUBLIC Pagos::hir pagos_project_options)
 
-add_library(pagos_codegen lib/codegen/llvm_codegen.cpp)
+add_library(pagos_codegen lib/codegen/llvm_codegen.cpp lib/codegen/target.cpp)
 add_library(Pagos::codegen ALIAS pagos_codegen)
 target_include_directories(pagos_codegen PUBLIC include)
 target_include_directories(pagos_codegen SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
@@ -122,12 +133,23 @@ target_compile_options(pagos_codegen PRIVATE ${PAGOS_LLVM_DEFINITIONS})
 target_link_libraries(pagos_codegen
     PUBLIC Pagos::mir pagos_project_options)
 
-if(TARGET LLVM AND LLVM_LINK_LLVM_DYLIB)
+if(PAGOS_USE_LLVM_DYLIB AND TARGET LLVM AND LLVM_LINK_LLVM_DYLIB)
     target_link_libraries(pagos_codegen PRIVATE LLVM)
 else()
     llvm_map_components_to_libnames(PAGOS_LLVM_LIBRARIES
         Core
-        Support)
+        Support
+        Target
+        TargetParser
+        MC
+        X86
+        RISCV
+        ARM)
+    foreach(PAGOS_LIBRARY IN LISTS PAGOS_LLVM_LIBRARIES)
+        if(NOT TARGET ${PAGOS_LIBRARY})
+            message(FATAL_ERROR "Missing LLVM component ${PAGOS_LIBRARY}; use PAGOS_USE_LLVM_DYLIB=ON or a complete LLVM component SDK")
+        endif()
+    endforeach()
     target_link_libraries(pagos_codegen PRIVATE ${PAGOS_LLVM_LIBRARIES})
 endif()
 

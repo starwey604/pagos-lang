@@ -49,6 +49,14 @@ No constant pool, shared aggregate payload, or arena migration is introduced
 without a measured benefit. This is an explicit remaining optimization point,
 not a claim of zero-copy evaluation.
 
+`codegen::TargetConfig` carries the triple, CPU, and feature string for each
+emission session. `TargetLayout` obtains DataLayout from LLVM TargetMachine
+and queries pointer width, allocation size, ABI alignment, and record field
+offsets. Layout and LLVM emission share one private storage-type conversion.
+No target-specific layout cache is global, and board MMIO addresses remain
+outside the compiler. A storage layout is not a C ABI argument/return
+classification; target ABI lowering remains M3 work.
+
 ```mermaid
 flowchart TB
     Inputs["Pagos source and configuration"] --> Parse["Lexer, parser, and AST"]

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pagos/codegen/target.h"
 #include "pagos/mir/mir.h"
 
 #include <expected>
@@ -10,7 +11,7 @@ namespace pagos::codegen {
 class LLVMCodegen {
   public:
     [[nodiscard]] static std::expected<std::string, std::string>
-    emit(const mir::Module& mir_module);
+    emit(const mir::Module& mir_module, TargetConfig config = {});
 };
 
 } // namespace pagos::codegen

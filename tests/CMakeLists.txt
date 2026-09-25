@@ -4,6 +4,7 @@ add_executable(pagos_unit_tests
     unit/integer_test.cpp
     unit/value_test.cpp
     unit/type_test.cpp
+    unit/target_test.cpp
     unit/evaluator_test.cpp
     unit/lexer_test.cpp
     unit/mir_test.cpp
@@ -11,7 +12,7 @@ add_executable(pagos_unit_tests
     unit/stage_test.cpp
     unit/source_manager_test.cpp)
 target_link_libraries(pagos_unit_tests
-    PRIVATE Pagos::syntax Pagos::vm Pagos::mir Pagos::stage GTest::gtest_main
+    PRIVATE Pagos::syntax Pagos::vm Pagos::mir Pagos::stage Pagos::codegen GTest::gtest_main
             pagos_project_options)
 
 include(GoogleTest)

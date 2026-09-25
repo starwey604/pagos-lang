@@ -26,6 +26,7 @@ struct Options {
     Command command;
     std::string source_path;
     pagos::stage::AnalysisLimits limits;
+    pagos::codegen::TargetConfig target;
 };
 
 void print_usage() {
@@ -35,6 +36,7 @@ void print_usage() {
                  "[--max-specializations=N] "
                  "[--max-array-elements=N] [--max-array-bytes=N] "
                  "[--max-aggregate-members=N] [--max-aggregate-bytes=N] "
+                 "[--target=TRIPLE] [--cpu=CPU] [--features=FEATURES] "
                  "<check|emit-hir|emit-mir|emit-llvm|explain-stage> "
                  "<source.pgs>");
 }
@@ -77,6 +79,8 @@ std::expected<Options, std::string> parse_options(int argument_count,
     std::optional<Command> command;
     std::optional<std::string> source_path;
     pagos::stage::AnalysisLimits limits;
+    pagos::codegen::TargetConfig target;
+    bool explicit_target = false;
 
     for (int index = 1; index < argument_count; ++index) {
         const std::string_view argument{arguments[index]};
@@ -91,7 +95,21 @@ std::expected<Options, std::string> parse_options(int argument_count,
             "--max-aggregate-members=";
         constexpr std::string_view aggregate_bytes_prefix =
             "--max-aggregate-bytes=";
-        if (argument.starts_with(fuel_prefix)) {
+        if (argument.starts_with("--target=") ||
+            argument.starts_with("--cpu=") ||
+            argument.starts_with("--features=")) {
+            const auto value = argument.substr(argument.find('=') + 1);
+            if (value.empty())
+                return std::unexpected("empty target option: " +
+                                       std::string(argument));
+            explicit_target = true;
+            if (argument.starts_with("--target="))
+                target.triple = value;
+            else if (argument.starts_with("--cpu="))
+                target.cpu = value;
+            else
+                target.features = value;
+        } else if (argument.starts_with(fuel_prefix)) {
             auto value = parse_limit(argument, fuel_prefix);
             if (!value) {
                 return std::unexpected(value.error());
@@ -152,9 +170,13 @@ std::expected<Options, std::string> parse_options(int argument_count,
     if (!command || !source_path) {
         return std::unexpected("a command and source file are required");
     }
+    if (explicit_target && *command != Command::EmitLlvm) {
+        return std::unexpected("target options currently require emit-llvm");
+    }
     return Options{.command = *command,
                    .source_path = std::move(*source_path),
-                   .limits = limits};
+                   .limits = limits,
+                   .target = std::move(target)};
 }
 
 } // namespace
@@ -239,7 +261,8 @@ int main(int argument_count, char** arguments) {
         return 0;
     }
 
-    auto llvm_ir = pagos::codegen::LLVMCodegen::emit(*mir_module);
+    auto llvm_ir =
+        pagos::codegen::LLVMCodegen::emit(*mir_module, options->target);
     if (!llvm_ir) {
         std::println(stderr, "error: {}", llvm_ir.error());
         return 1;

@@ -1,0 +1,19 @@
+// RUN: %pagosc --target=riscv32-unknown-elf --cpu=generic-rv32 --features=+m,+a,+c emit-llvm %s | %FileCheck %s --check-prefix=RV32
+// RUN: %pagosc emit-llvm %s --target=riscv64-unknown-elf | %FileCheck %s --check-prefix=RV64
+// RUN: not %pagosc emit-llvm %s --target=unknown-none-elf 2>&1 | %FileCheck %s --check-prefix=BAD
+// RUN: not %pagosc emit-llvm %s --target=riscv32-unknown-elf --cpu=wrong 2>&1 | %FileCheck %s --check-prefix=CPU
+// RUN: not %pagosc emit-llvm %s --target=riscv32-unknown-elf --features=+wrong 2>&1 | %FileCheck %s --check-prefix=FEATURE
+// RUN: not %pagosc check %s --target=riscv32-unknown-elf 2>&1 | %FileCheck %s --check-prefix=COMMAND
+// RUN: not %pagosc emit-llvm %s --target= 2>&1 | %FileCheck %s --check-prefix=EMPTY
+let result = 42;
+// RV32: target datalayout = "{{.*}}p:32:32
+// RV32: target triple = "riscv32-unknown-unknown-elf"
+// RV32: "target-cpu"="generic-rv32"
+// RV32-SAME: "target-features"="+m,+a,+c"
+// RV64: target datalayout = "{{.*}}p:64:64
+// RV64: target triple = "riscv64-unknown-unknown-elf"
+// BAD: error: unsupported target triple:
+// CPU: error: unsupported CPU
+// FEATURE: error: unsupported target feature: wrong
+// COMMAND: error: target options currently require emit-llvm
+// EMPTY: error: empty target option:
