@@ -1,0 +1,14 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=LLVM
+// RUN: %run_residual %s 9
+fn square(x: u32) -> u32 { x * x }
+fn table() -> [u32; 4] { [square(0), square(1), square(2), square(3),] }
+fn lookup(a: [u32; 4], i: u32) -> u32 { a[i] }
+static let values: [u32; 4] = table();
+static let result = lookup(values, 3);
+// HIR: binding values: [u32; 4] [Static] = [0, 1, 4, 9]
+// HIR: binding result: u32 [Static] = 9
+// MIR: %0: u32 = const 9
+// MIR-NOT: index.checked
+// LLVM: ret i32 9

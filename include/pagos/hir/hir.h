@@ -15,7 +15,8 @@
 namespace pagos::hir {
 
 enum class Stage { Static, Runtime };
-using Constant = std::variant<std::uint32_t, bool>;
+using Constant = std::variant<std::uint32_t, bool, std::vector<std::uint32_t>,
+                              std::vector<bool>>;
 
 struct RuntimeTrace {
     source::Span origin_span;
@@ -40,10 +41,12 @@ struct Expr {
         RangeLoop,
         Return,
         ReturnScope, // Inline call boundary; returns target this scope.
+        Array,
+        Index,
     };
 
     Kind kind{Kind::Constant};
-    syntax::TypeKind type{syntax::TypeKind::Error};
+    syntax::Type type{syntax::TypeKind::Error};
     Stage stage{Stage::Static};
     bool falls_through{true};
     bool may_return{};
@@ -59,7 +62,7 @@ struct Expr {
 struct Binding {
     std::string name;
     source::Span name_span;
-    syntax::TypeKind type{syntax::TypeKind::Error};
+    syntax::Type type{syntax::TypeKind::Error};
     Stage stage{Stage::Static};
     ExprPtr value;
     std::optional<RuntimeTrace> trace;
@@ -67,8 +70,8 @@ struct Binding {
 
 struct FunctionSummary {
     std::string name;
-    std::vector<syntax::TypeKind> parameters;
-    syntax::TypeKind result{syntax::TypeKind::Error};
+    std::vector<syntax::Type> parameters;
+    syntax::Type result{syntax::TypeKind::Error};
 };
 
 struct Module {
@@ -78,7 +81,7 @@ struct Module {
 };
 
 [[nodiscard]] std::string_view stage_name(Stage stage) noexcept;
-[[nodiscard]] ExprPtr make_constant(Constant value, syntax::TypeKind type,
+[[nodiscard]] ExprPtr make_constant(Constant value, syntax::Type type,
                                     source::Span span);
 [[nodiscard]] ExprPtr with_trace_step(const ExprPtr& expression,
                                       std::string step);

@@ -1,0 +1,5 @@
+// RUN: %run_residual %s 99 3
+// RUN: %run_residual %s trap 4
+static let table = [11, 22, 33];
+for i in 0..external_input() { table[i]; }
+let result = 99;

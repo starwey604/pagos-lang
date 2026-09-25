@@ -2,6 +2,7 @@
 
 #include <ostream>
 #include <string_view>
+#include <type_traits>
 
 namespace pagos::hir {
 namespace {
@@ -49,8 +50,31 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
         const auto& constant = expression->constant.value();
         if (std::holds_alternative<std::uint32_t>(constant)) {
             output << std::get<std::uint32_t>(constant);
-        } else {
+        } else if (std::holds_alternative<bool>(constant)) {
             output << (std::get<bool>(constant) ? "true" : "false");
+        } else {
+            std::visit(
+                [&](const auto& values) {
+                    if constexpr (requires { values.size(); }) {
+                        output << '[';
+                        for (std::size_t index = 0; index < values.size();
+                             ++index) {
+                            if (index != 0) {
+                                output << ", ";
+                            }
+                            if constexpr (std::is_same_v<
+                                              typename std::decay_t<
+                                                  decltype(values)>::value_type,
+                                              bool>) {
+                                output << (values[index] ? "true" : "false");
+                            } else {
+                                output << values[index];
+                            }
+                        }
+                        output << ']';
+                    }
+                },
+                constant);
         }
         break;
     }
@@ -94,7 +118,11 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
         output << ')';
         break;
     case Expr::Kind::Sequence:
-        output << "sequence(";
+    case Expr::Kind::Array:
+    case Expr::Kind::Index:
+        output << (expression->kind == Expr::Kind::Sequence ? "sequence("
+                   : expression->kind == Expr::Kind::Array  ? "array("
+                                                            : "index(");
         for (std::size_t index = 0; index < expression->operands.size();
              ++index) {
             if (index != 0) {
@@ -132,14 +160,13 @@ std::string_view stage_name(Stage stage) noexcept {
     return stage == Stage::Static ? "Static" : "Runtime";
 }
 
-ExprPtr make_constant(Constant value, syntax::TypeKind type,
-                      source::Span span) {
+ExprPtr make_constant(Constant value, syntax::Type type, source::Span span) {
     auto expression = std::make_shared<Expr>();
     expression->kind = Expr::Kind::Constant;
     expression->type = type;
     expression->stage = Stage::Static;
     expression->span = span;
-    expression->constant = value;
+    expression->constant = std::move(value);
     return expression;
 }
 

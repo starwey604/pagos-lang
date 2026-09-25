@@ -1,0 +1,7 @@
+// RUN: %run_residual %s 99 2 7 8 0 9 10 1
+// RUN: %run_residual %s trap 1 7 8 2
+for i in 0..external_input() {
+    let a = [external_input(), external_input()];
+    a[external_input()] + i;
+}
+let result = 99;

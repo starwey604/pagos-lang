@@ -1,5 +1,7 @@
 #include "pagos/syntax/parser.h"
 
+#include <algorithm>
+#include <charconv>
 #include <string>
 #include <utility>
 
@@ -76,15 +78,52 @@ std::unique_ptr<Module> Parser::parse_module() {
     return module;
 }
 
-std::optional<TypeKind> Parser::parse_type() {
+std::optional<Type> Parser::parse_type() {
+    if (match(TokenKind::LeftBracket)) {
+        const auto element_span = current().span;
+        if (!check(TokenKind::KwBool) && !check(TokenKind::KwU32)) {
+            diagnostics_.error("E1002",
+                               "array elements must be `bool` or `u32`",
+                               element_span);
+            return std::nullopt;
+        }
+        const auto element = parse_type();
+        if (!consume(TokenKind::Semicolon,
+                     "expected `;` before array length")) {
+            return std::nullopt;
+        }
+        const auto* size =
+            consume(TokenKind::Integer, "expected literal array length");
+        if (!size) {
+            return std::nullopt;
+        }
+        std::string digits(size->lexeme);
+        std::erase(digits, '_');
+        std::uint32_t length{};
+        const auto parsed = std::from_chars(
+            digits.data(), digits.data() + digits.size(), length);
+        if (parsed.ec != std::errc{} ||
+            parsed.ptr != digits.data() + digits.size() || length == 0) {
+            diagnostics_.error("E1005",
+                               "array length must be a positive `u32` literal",
+                               size->span);
+            return std::nullopt;
+        }
+        if (!consume(TokenKind::RightBracket,
+                     "expected `]` after array type")) {
+            return std::nullopt;
+        }
+        return Type::array(*element, length);
+    }
     if (match(TokenKind::KwBool)) {
         return TypeKind::Bool;
     }
     if (match(TokenKind::KwU32)) {
         return TypeKind::U32;
     }
-    diagnostics_.error("E1002", "expected type", current().span,
-                       "the core language supports `bool` and `u32`");
+    diagnostics_.error(
+        "E1002", "expected type", current().span,
+        "expected `bool`, `u32`, or a fixed-length scalar array");
     return std::nullopt;
 }
 
@@ -231,7 +270,7 @@ std::unique_ptr<Stmt> Parser::parse_binding(BindingKind kind,
     if (!name) {
         return nullptr;
     }
-    std::optional<TypeKind> annotation;
+    std::optional<Type> annotation;
     if (match(TokenKind::Colon)) {
         annotation = parse_type();
         if (!annotation) {
@@ -446,7 +485,26 @@ std::unique_ptr<Expr> Parser::parse_unary() {
 
 std::unique_ptr<Expr> Parser::parse_call() {
     auto expression = parse_primary();
-    while (expression && match(TokenKind::LeftParen)) {
+    while (expression) {
+        if (match(TokenKind::LeftBracket)) {
+            auto index = parse_expression();
+            if (!index) {
+                return nullptr;
+            }
+            const auto* right =
+                consume(TokenKind::RightBracket, "expected `]` after index");
+            if (!right) {
+                return nullptr;
+            }
+            const auto span = source::Span{.begin = expression->span.begin,
+                                           .end = right->span.end};
+            expression = std::make_unique<IndexExpr>(std::move(expression),
+                                                     std::move(index), span);
+            continue;
+        }
+        if (!match(TokenKind::LeftParen)) {
+            break;
+        }
         auto* name = dynamic_cast<NameExpr*>(expression.get());
         if (!name) {
             diagnostics_.error("E1002", "only named functions can be called",
@@ -479,6 +537,28 @@ std::unique_ptr<Expr> Parser::parse_call() {
 }
 
 std::unique_ptr<Expr> Parser::parse_primary() {
+    if (match(TokenKind::LeftBracket)) {
+        const auto start = previous().span.begin;
+        std::vector<std::unique_ptr<Expr>> elements;
+        if (!check(TokenKind::RightBracket)) {
+            do {
+                auto element = parse_expression();
+                if (!element) {
+                    return nullptr;
+                }
+                elements.push_back(std::move(element));
+            } while (match(TokenKind::Comma) &&
+                     !check(TokenKind::RightBracket));
+        }
+        const auto* right = consume(TokenKind::RightBracket,
+                                    "expected `]` after array literal");
+        if (!right) {
+            return nullptr;
+        }
+        return std::make_unique<ArrayExpr>(
+            std::move(elements),
+            source::Span{.begin = start, .end = right->span.end});
+    }
     if (match(TokenKind::Integer)) {
         return std::make_unique<IntegerExpr>(std::string(previous().lexeme),
                                              previous().span);

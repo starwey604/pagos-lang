@@ -1,0 +1,6 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+runtime let index = external_input();
+let table = [11, 22];
+static let result = table[index];
+// CHECK: error[E2001]: static binding
+// CHECK: index -> array index -> result

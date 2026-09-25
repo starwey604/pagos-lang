@@ -2,6 +2,7 @@
 
 #include <ostream>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -21,6 +22,9 @@ std::string block_name(BlockId block) { return "bb" + std::to_string(block); }
 std::string value_name(ValueId value) { return "%" + std::to_string(value); }
 
 std::expected<void, std::string> verify_function(const Function& function) {
+    if (!function.result_type.valid()) {
+        return std::unexpected("invalid MIR result type");
+    }
     if (function.blocks.empty()) {
         return std::unexpected("MIR function `" + function.name +
                                "` has no blocks");
@@ -42,6 +46,9 @@ std::expected<void, std::string> verify_function(const Function& function) {
         for (std::size_t index = 0; index < block.instructions.size();
              ++index) {
             const auto& instruction = block.instructions[index];
+            if (!instruction.type.valid()) {
+                return std::unexpected("invalid MIR value type");
+            }
             const bool is_phi =
                 std::holds_alternative<PhiOperation>(instruction.operation);
             if (is_phi && saw_non_phi) {
@@ -199,7 +206,15 @@ std::expected<void, std::string> verify_function(const Function& function) {
             const auto& instruction = block.instructions[index];
             if (const auto* constant =
                     std::get_if<ConstantOperation>(&instruction.operation)) {
+                const auto* integers =
+                    std::get_if<std::vector<std::uint32_t>>(&constant->value);
+                const auto* booleans =
+                    std::get_if<std::vector<bool>>(&constant->value);
                 const bool valid =
+                    (instruction.type.kind == Type::ArrayU32 && integers &&
+                     integers->size() == instruction.type.length) ||
+                    (instruction.type.kind == Type::ArrayBool && booleans &&
+                     booleans->size() == instruction.type.length) ||
                     (instruction.type == Type::U32 &&
                      std::holds_alternative<std::uint32_t>(constant->value)) ||
                     (instruction.type == Type::Bool &&
@@ -258,7 +273,8 @@ std::expected<void, std::string> verify_function(const Function& function) {
                 using enum BinaryOperator;
                 if (binary->operation == Equal ||
                     binary->operation == NotEqual) {
-                    if (*left != *right || instruction.type != Type::Bool) {
+                    if (left->is_array() || *left != *right ||
+                        instruction.type != Type::Bool) {
                         return std::unexpected(
                             "invalid MIR equality operation");
                     }
@@ -290,6 +306,57 @@ std::expected<void, std::string> verify_function(const Function& function) {
                 }
                 if (*operand != Type::Bool || instruction.type != Type::U32) {
                     return std::unexpected("invalid MIR bool-to-u32 cast");
+                }
+                continue;
+            }
+
+            if (const auto* array =
+                    std::get_if<ArrayOperation>(&instruction.operation)) {
+                if (!instruction.type.is_array() ||
+                    array->elements.size() != instruction.type.length) {
+                    return std::unexpected(
+                        "invalid MIR array length or result type");
+                }
+                for (const auto element : array->elements) {
+                    const auto operand = value_type(element);
+                    if (!operand) {
+                        return std::unexpected(operand.error());
+                    }
+                    if (*operand != instruction.type.element_type()) {
+                        return std::unexpected(
+                            "MIR array element type mismatch");
+                    }
+                    if (auto valid =
+                            require_dominance(element, block.id, index);
+                        !valid) {
+                        return valid;
+                    }
+                }
+                continue;
+            }
+            if (const auto* access =
+                    std::get_if<IndexOperation>(&instruction.operation)) {
+                const auto array = value_type(access->array);
+                const auto offset = value_type(access->index);
+                if (!array) {
+                    return std::unexpected(array.error());
+                }
+                if (!offset) {
+                    return std::unexpected(offset.error());
+                }
+                if (!array->is_array() || *offset != Type::U32 ||
+                    instruction.type != array->element_type()) {
+                    return std::unexpected("invalid MIR checked index types");
+                }
+                if (auto valid =
+                        require_dominance(access->array, block.id, index);
+                    !valid) {
+                    return valid;
+                }
+                if (auto valid =
+                        require_dominance(access->index, block.id, index);
+                    !valid) {
+                    return valid;
                 }
                 continue;
             }
@@ -359,8 +426,31 @@ void print_instruction(const Instruction& instruction, std::ostream& output) {
         output << "const ";
         if (std::holds_alternative<std::uint32_t>(constant->value)) {
             output << std::get<std::uint32_t>(constant->value);
-        } else {
+        } else if (std::holds_alternative<bool>(constant->value)) {
             output << (std::get<bool>(constant->value) ? "true" : "false");
+        } else {
+            std::visit(
+                [&](const auto& values) {
+                    if constexpr (requires { values.size(); }) {
+                        output << '[';
+                        for (std::size_t index = 0; index < values.size();
+                             ++index) {
+                            if (index != 0) {
+                                output << ", ";
+                            }
+                            if constexpr (std::is_same_v<
+                                              typename std::decay_t<
+                                                  decltype(values)>::value_type,
+                                              bool>) {
+                                output << (values[index] ? "true" : "false");
+                            } else {
+                                output << values[index];
+                            }
+                        }
+                        output << ']';
+                    }
+                },
+                constant->value);
         }
     } else if (std::holds_alternative<ExternalInputOperation>(
                    instruction.operation)) {
@@ -375,6 +465,19 @@ void print_instruction(const Instruction& instruction, std::ostream& output) {
     } else if (const auto* cast =
                    std::get_if<BoolToU32Operation>(&instruction.operation)) {
         output << "bool_to_u32 " << value_name(cast->operand);
+    } else if (const auto* array =
+                   std::get_if<ArrayOperation>(&instruction.operation)) {
+        output << "array ";
+        for (std::size_t index = 0; index < array->elements.size(); ++index) {
+            if (index != 0) {
+                output << ", ";
+            }
+            output << value_name(array->elements[index]);
+        }
+    } else if (const auto* access =
+                   std::get_if<IndexOperation>(&instruction.operation)) {
+        output << "index.checked " << value_name(access->array) << ", "
+               << value_name(access->index);
     } else {
         const auto& phi = std::get<PhiOperation>(instruction.operation);
         output << "phi ";
@@ -391,7 +494,11 @@ void print_instruction(const Instruction& instruction, std::ostream& output) {
 
 } // namespace
 
-std::string_view type_name(Type type) noexcept {
+std::string type_name(Type type) {
+    if (type.is_array()) {
+        return "[" + type_name(type.element_type()) + "; " +
+               std::to_string(type.length) + "]";
+    }
     return type == Type::Bool ? "bool" : "u32";
 }
 

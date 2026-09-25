@@ -1,0 +1,5 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let a = [external_input(), 22];
+let result = a[4294967295];
+// CHECK: error[E4007]: array index out of bounds
+// CHECK: index 4294967295, length 2

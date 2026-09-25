@@ -1,0 +1,11 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %run_residual %s 20 10 20 1
+// RUN: %run_residual %s 10 10 20 0
+// RUN: %run_residual %s trap 10 20 2
+fn make(a: u32, b: u32) -> [u32; 2] { [a, b] }
+let values = make(external_input(), external_input());
+let result = values[external_input()];
+// HIR: binding values: [u32; 2] [Runtime]
+// MIR: [u32; 2] = array
+// MIR: index.checked

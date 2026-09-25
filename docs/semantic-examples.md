@@ -331,6 +331,34 @@ is `101`. The loop return exits `first`, and the caller still adds `100`.
 Without the fallthrough `return 9`, result-completeness checking reports
 `E1007`. A `static let result` reports the Runtime control dependency.
 
+### 30. Fixed-length static lookup table
+
+```pagos
+fn square(x: u32) -> u32 { x * x }
+static let table: [u32; 3] = [square(0), square(1), square(2)];
+static let folded = table[2];
+let selected = table[external_input()];
+```
+
+Expected: `table` is Static `[0, 1, 4]`, `folded` is Static `4`, and `selected`
+is Runtime. Residual LLVM contains a read-only table and a bounds-checked
+load, not calls to `square`. Index `3` or larger traps. Replacing the Runtime
+index with Static `3` reports `E4007` instead.
+
+### 31. Whole-array staging and immutable values
+
+```pagos
+fn pair(value: u32) -> [u32; 2] { [11, value] }
+let values = pair(external_input());
+let first = values[0];
+```
+
+Expected: both `values` and `first` are Runtime in the current whole-array
+slice. The input read executes exactly once, even though `first` selects the
+known element. `static let first` fails with a dependency path through the
+array element and index. `[u32; 3]` cannot receive this pair: array length is
+part of the type. Arrays cannot be compared for equality or mutated yet.
+
 ## Acceptance Use
 
 Each example becomes a fixture when its feature enters an implementation

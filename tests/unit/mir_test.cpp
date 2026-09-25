@@ -195,4 +195,116 @@ TEST(MirVerifier, AcceptsLoopBackedgeAndIndexPhi) {
     EXPECT_TRUE(verify(module).has_value());
 }
 
+pagos::mir::Module array_module() {
+    using namespace pagos::mir;
+    auto module = constant_module();
+    auto& block = module.functions[0].blocks[0];
+    block.instructions[0].operation =
+        ConstantOperation{.value = std::uint32_t{0}};
+    block.instructions.push_back(
+        {.result = 1,
+         .type = Type::U32,
+         .operation = ConstantOperation{.value = std::uint32_t{42}},
+         .span = {}});
+    block.instructions.push_back(
+        {.result = 2,
+         .type = {Type::ArrayU32, 2},
+         .operation = ArrayOperation{.elements = {0, 1}},
+         .span = {}});
+    block.instructions.push_back(
+        {.result = 3,
+         .type = Type::U32,
+         .operation = IndexOperation{.array = 2, .index = 0},
+         .span = {}});
+    block.terminator = Return{.value = 3};
+    return module;
+}
+
+TEST(MirVerifier, AcceptsArraysAndCheckedIndexing) {
+    using namespace pagos::mir;
+    auto module = array_module();
+    EXPECT_TRUE(verify(module));
+    auto& array = module.functions[0].blocks[0].instructions[2];
+    array.operation =
+        ConstantOperation{.value = std::vector<std::uint32_t>{0, 42}};
+    EXPECT_TRUE(verify(module));
+}
+
+TEST(MirVerifier, RejectsMalformedArrayConstants) {
+    using namespace pagos::mir;
+    auto module = array_module();
+    auto& array = module.functions[0].blocks[0].instructions[2];
+    array.operation =
+        ConstantOperation{.value = std::vector<std::uint32_t>{42}};
+    EXPECT_FALSE(verify(module));
+    array.operation =
+        ConstantOperation{.value = std::vector<bool>{true, false}};
+    EXPECT_FALSE(verify(module));
+    array.type = {Type::ArrayU32, 0};
+    array.operation = ConstantOperation{.value = std::vector<std::uint32_t>{}};
+    EXPECT_FALSE(verify(module));
+}
+
+TEST(MirVerifier, RejectsMalformedArrayConstruction) {
+    using namespace pagos::mir;
+    auto module = array_module();
+    auto& instructions = module.functions[0].blocks[0].instructions;
+    instructions[2].operation = ArrayOperation{.elements = {0}};
+    EXPECT_FALSE(verify(module));
+    instructions[2].operation = ArrayOperation{.elements = {0, 7}};
+    EXPECT_FALSE(verify(module));
+    instructions[2].operation = ArrayOperation{.elements = {0, 3}};
+    auto result = verify(module);
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error(), "MIR value `%3` does not dominate its use");
+    instructions[2].operation = ArrayOperation{.elements = {0, 1}};
+    instructions[2].type = {Type::ArrayBool, 2};
+    EXPECT_FALSE(verify(module));
+}
+
+TEST(MirVerifier, RejectsMalformedCheckedIndexing) {
+    using namespace pagos::mir;
+    auto module = array_module();
+    auto& access = module.functions[0].blocks[0].instructions[3];
+    access.operation = IndexOperation{.array = 0, .index = 1};
+    EXPECT_FALSE(verify(module));
+    access.operation = IndexOperation{.array = 2, .index = 2};
+    EXPECT_FALSE(verify(module));
+    access.operation = IndexOperation{.array = 2, .index = 9};
+    EXPECT_FALSE(verify(module));
+    access.operation = IndexOperation{.array = 9, .index = 0};
+    EXPECT_FALSE(verify(module));
+    access.operation = IndexOperation{.array = 2, .index = 3};
+    auto result = verify(module);
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error(), "MIR value `%3` does not dominate its use");
+    access.operation = IndexOperation{.array = 2, .index = 0};
+    access.type = Type::Bool;
+    module.functions[0].result_type = Type::Bool;
+    EXPECT_FALSE(verify(module));
+}
+
+TEST(MirVerifier, RejectsArrayEquality) {
+    using namespace pagos::mir;
+    auto module = array_module();
+    module.functions[0].result_type = Type::Bool;
+    auto& access = module.functions[0].blocks[0].instructions[3];
+    access.type = Type::Bool;
+    access.operation = BinaryOperation{
+        .operation = BinaryOperator::Equal, .left = 2, .right = 2};
+    EXPECT_FALSE(verify(module));
+}
+
+TEST(MirVerifier, AcceptsBooleanArrayConstants) {
+    using namespace pagos::mir;
+    auto module = array_module();
+    module.functions[0].result_type = Type::Bool;
+    auto& instructions = module.functions[0].blocks[0].instructions;
+    instructions[2].type = {Type::ArrayBool, 2};
+    instructions[2].operation =
+        ConstantOperation{.value = std::vector<bool>{true, false}};
+    instructions[3].type = Type::Bool;
+    EXPECT_TRUE(verify(module));
+}
+
 } // namespace

@@ -1,0 +1,2 @@
+// RUN: %run_residual %s 7
+let result = if true { 7 } else { [1][1] };

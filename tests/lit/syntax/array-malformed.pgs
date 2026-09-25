@@ -1,0 +1,7 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let a = [1, 2;
+let b = [1][0;
+let c: [[u32; 1]; 1] = [[1]];
+// CHECK: expected
+// CHECK: expected
+// CHECK: array elements must be

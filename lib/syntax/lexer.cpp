@@ -126,6 +126,12 @@ std::vector<Token> Lexer::tokenize() {
 
         advance();
         switch (character) {
+        case '[':
+            add(tokens, TokenKind::LeftBracket, begin, offset_);
+            break;
+        case ']':
+            add(tokens, TokenKind::RightBracket, begin, offset_);
+            break;
         case '(':
             add(tokens, TokenKind::LeftParen, begin, offset_);
             break;

@@ -1,0 +1,10 @@
+// RUN: %pagosc emit-llvm %s | %FileCheck %s
+// RUN: %run_residual %s 42 0 1
+let a = [10, 32];
+let b = [10, 32];
+let result = a[external_input()] + b[external_input()];
+// CHECK: @pagos.table = private unnamed_addr constant [2 x i32]
+// CHECK-NOT: private unnamed_addr constant
+// CHECK: define i32 @pagos_main
+// CHECK: getelementptr inbounds [2 x i32], ptr @pagos.table,
+// CHECK: getelementptr inbounds [2 x i32], ptr @pagos.table,

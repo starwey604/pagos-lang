@@ -1,0 +1,11 @@
+// RUN: %run_residual %s 30 3 1 30
+// RUN: %run_residual %s 99 0 1
+fn table(end: u32) -> [u32; 2] {
+    for i in 0..end {
+        if i == 1 { return [i, external_input()]; } else { 0 };
+    }
+    [98, 99]
+}
+let end = external_input();
+let index = external_input();
+let result = table(end)[index];

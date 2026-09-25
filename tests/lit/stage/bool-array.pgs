@@ -1,0 +1,12 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=LLVM
+// RUN: %run_residual %s 1 0
+// RUN: %run_residual %s 0 1
+// RUN: %run_residual %s trap 3
+static let table: [bool; 3] = [true, false, true];
+static let first = table[0];
+let result = table[external_input()] && first;
+// HIR: binding table: [bool; 3] [Static] = [true, false, true]
+// HIR: binding first: bool [Static] = true
+// LLVM: private unnamed_addr constant [3 x i1] [i1 true, i1 false, i1 true]
+// LLVM: load i1

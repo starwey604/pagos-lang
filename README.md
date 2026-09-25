@@ -108,6 +108,9 @@ dependency paths, and emits verified residual LLVM IR for the host target.
 Milestone 2 is in progress; its first slice adds a typed, verified residual SSA
 MIR between partial evaluation and LLVM. Static recursion and pure Static
 specializations are memoized under explicit evaluation limits.
+Static and Runtime loops, per-call early returns, and immutable fixed-length
+arrays are supported. Static lookup tables embed as read-only constants, with
+bounds-checked Runtime indexing.
 
 ## Development
 

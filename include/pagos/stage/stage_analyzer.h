@@ -69,11 +69,13 @@ class StageAnalyzer {
     hir::ExprPtr analyze_binary(const syntax::BinaryExpr& expression);
     hir::ExprPtr analyze_call(const syntax::CallExpr& expression);
     hir::ExprPtr analyze_if(const syntax::IfExpr& expression);
+    hir::ExprPtr analyze_array(const syntax::ArrayExpr& expression);
+    hir::ExprPtr analyze_index(const syntax::IndexExpr& expression);
 
     void define(const std::string& name, hir::ExprPtr value);
     [[nodiscard]] hir::ExprPtr lookup(const std::string& name) const;
     [[nodiscard]] hir::ExprPtr make_runtime(
-        hir::Expr::Kind kind, syntax::TypeKind type, source::Span span,
+        hir::Expr::Kind kind, syntax::Type type, source::Span span,
         std::vector<hir::ExprPtr> operands, hir::RuntimeTrace trace,
         std::optional<syntax::UnaryOperator> unary = std::nullopt,
         std::optional<syntax::BinaryOperator> binary = std::nullopt) const;
@@ -83,8 +85,7 @@ class StageAnalyzer {
     [[nodiscard]] hir::ExprPtr resolve_return(const hir::ExprPtr& value) const;
     void report_static_failure(const syntax::BindingStmt& binding,
                                const hir::RuntimeTrace& trace);
-    [[nodiscard]] syntax::TypeKind
-    type_of(const syntax::Expr& expression) const;
+    [[nodiscard]] syntax::Type type_of(const syntax::Expr& expression) const;
     [[nodiscard]] bool consume_fuel(source::Span span);
     [[nodiscard]] std::optional<SpecializationKey>
     specialization_key(const syntax::Function& function,

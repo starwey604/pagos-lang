@@ -1,0 +1,11 @@
+// RUN: %pagosc emit-mir %s | %FileCheck %s
+// RUN: %run_residual %s 11 1 0
+// RUN: %run_residual %s 22 0 1
+// RUN: %run_residual %s trap 1 2
+fn choose(flag: bool) -> [u32; 2] {
+    if flag { return [11, 12]; } else { 0 };
+    [21, 22]
+}
+let result = choose(external_input() == 1)[external_input()];
+// CHECK: [u32; 2] = phi
+// CHECK: index.checked

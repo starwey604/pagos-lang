@@ -10,7 +10,7 @@
 namespace pagos::sema {
 namespace {
 
-bool compatible(syntax::TypeKind expected, syntax::TypeKind actual) {
+bool compatible(syntax::Type expected, syntax::Type actual) {
     return expected == syntax::TypeKind::Error ||
            actual == syntax::TypeKind::Never ||
            actual == syntax::TypeKind::Error || expected == actual;
@@ -89,14 +89,14 @@ void TypeChecker::check_function(syntax::Function& function) {
     scopes_.pop_back();
 }
 
-syntax::TypeKind TypeChecker::check_block(syntax::Block& block,
-                                          syntax::TypeKind expected_return,
-                                          bool& saw_return) {
+syntax::Type TypeChecker::check_block(syntax::Block& block,
+                                      syntax::Type expected_return,
+                                      bool& saw_return) {
     scopes_.emplace_back();
     for (auto& statement : block.statements) {
         check_statement(*statement, expected_return, saw_return);
     }
-    auto type = syntax::TypeKind::Void;
+    syntax::Type type = syntax::TypeKind::Void;
     if (block.tail) {
         type = check_expression(*block.tail);
     }
@@ -109,7 +109,7 @@ syntax::TypeKind TypeChecker::check_block(syntax::Block& block,
 }
 
 void TypeChecker::check_statement(syntax::Stmt& statement,
-                                  syntax::TypeKind expected_return,
+                                  syntax::Type expected_return,
                                   bool& saw_return) {
     switch (statement.kind) {
     case syntax::Stmt::Kind::Binding: {
@@ -173,8 +173,8 @@ void TypeChecker::check_statement(syntax::Stmt& statement,
     }
 }
 
-syntax::TypeKind TypeChecker::check_expression(syntax::Expr& expression) {
-    syntax::TypeKind type = syntax::TypeKind::Error;
+syntax::Type TypeChecker::check_expression(syntax::Expr& expression) {
+    syntax::Type type = syntax::TypeKind::Error;
     switch (expression.kind) {
     case syntax::Expr::Kind::Integer: {
         const auto& integer = static_cast<syntax::IntegerExpr&>(expression);
@@ -218,12 +218,73 @@ syntax::TypeKind TypeChecker::check_expression(syntax::Expr& expression) {
     case syntax::Expr::Kind::If:
         type = check_if(static_cast<syntax::IfExpr&>(expression));
         break;
+    case syntax::Expr::Kind::Array: {
+        auto& array = static_cast<syntax::ArrayExpr&>(expression);
+        syntax::Type element_type = syntax::TypeKind::Unknown;
+        bool returns = false;
+        if (array.elements.empty()) {
+            diagnostics_.error("E1008", "empty arrays are not supported",
+                               expression.span);
+        }
+        if (array.elements.size() > std::numeric_limits<std::uint32_t>::max()) {
+            diagnostics_.error("E1008", "array length does not fit `u32`",
+                               expression.span);
+        }
+        for (auto& element : array.elements) {
+            const auto actual = check_expression(*element);
+            returns = returns || actual == syntax::TypeKind::Never;
+            if (actual == syntax::TypeKind::Never ||
+                actual == syntax::TypeKind::Error) {
+                continue;
+            }
+            if (actual != syntax::TypeKind::Bool &&
+                actual != syntax::TypeKind::U32) {
+                diagnostics_.error("E1008",
+                                   "array elements must be `bool` or `u32`",
+                                   element->span);
+                continue;
+            }
+            if (element_type == syntax::TypeKind::Unknown) {
+                element_type = actual;
+            } else if (element_type != actual) {
+                type_mismatch(element->span, element_type, actual,
+                              "array element");
+            }
+        }
+        if (returns) {
+            type = syntax::TypeKind::Never;
+        } else if (element_type != syntax::TypeKind::Unknown) {
+            type = syntax::Type::array(
+                element_type,
+                static_cast<std::uint32_t>(array.elements.size()));
+        }
+        break;
+    }
+    case syntax::Expr::Kind::Index: {
+        auto& index = static_cast<syntax::IndexExpr&>(expression);
+        const auto array_type = check_expression(*index.array);
+        const auto index_type = check_expression(*index.index);
+        if (!compatible(syntax::TypeKind::U32, index_type)) {
+            type_mismatch(index.index->span, syntax::TypeKind::U32, index_type,
+                          "array index");
+        }
+        if (array_type == syntax::TypeKind::Never ||
+            index_type == syntax::TypeKind::Never) {
+            type = syntax::TypeKind::Never;
+        } else if (array_type.is_array()) {
+            type = array_type.element_type();
+        } else if (array_type != syntax::TypeKind::Error) {
+            diagnostics_.error("E1008", "indexing requires an array",
+                               index.array->span);
+        }
+        break;
+    }
     }
     types_.insert_or_assign(&expression, type);
     return type;
 }
 
-syntax::TypeKind TypeChecker::check_binary(syntax::BinaryExpr& expression) {
+syntax::Type TypeChecker::check_binary(syntax::BinaryExpr& expression) {
     const auto left = check_expression(*expression.left);
     const auto right = check_expression(*expression.right);
     using enum syntax::BinaryOperator;
@@ -245,6 +306,11 @@ syntax::TypeKind TypeChecker::check_binary(syntax::BinaryExpr& expression) {
         return syntax::TypeKind::Bool;
     }
     if (operation == Equal || operation == NotEqual) {
+        if (left.is_array() || right.is_array()) {
+            diagnostics_.error("E1008", "array equality is not supported",
+                               expression.span);
+            return syntax::TypeKind::Error;
+        }
         if (!compatible(left, right)) {
             type_mismatch(expression.right->span, left, right,
                           "equality operand");
@@ -266,7 +332,7 @@ syntax::TypeKind TypeChecker::check_binary(syntax::BinaryExpr& expression) {
     return syntax::TypeKind::U32;
 }
 
-syntax::TypeKind TypeChecker::check_call(syntax::CallExpr& expression) {
+syntax::Type TypeChecker::check_call(syntax::CallExpr& expression) {
     if (expression.callee == "external_input") {
         if (!expression.arguments.empty()) {
             diagnostics_.error("E1006", "`external_input` takes no arguments",
@@ -312,7 +378,7 @@ syntax::TypeKind TypeChecker::check_call(syntax::CallExpr& expression) {
     return argument_returns ? syntax::TypeKind::Never : function.result;
 }
 
-syntax::TypeKind TypeChecker::check_if(syntax::IfExpr& expression) {
+syntax::Type TypeChecker::check_if(syntax::IfExpr& expression) {
     const auto condition = check_expression(*expression.condition);
     if (!compatible(syntax::TypeKind::Bool, condition)) {
         type_mismatch(expression.condition->span, syntax::TypeKind::Bool,
@@ -349,7 +415,7 @@ syntax::TypeKind TypeChecker::check_if(syntax::IfExpr& expression) {
     return then_type;
 }
 
-bool TypeChecker::define(std::string name, syntax::TypeKind type,
+bool TypeChecker::define(std::string name, syntax::Type type,
                          source::Span name_span) {
     auto& scope = scopes_.back();
     const auto [iterator, inserted] = scope.emplace(std::move(name), type);
@@ -361,8 +427,7 @@ bool TypeChecker::define(std::string name, syntax::TypeKind type,
     return inserted;
 }
 
-syntax::TypeKind TypeChecker::lookup(const std::string& name,
-                                     source::Span span) {
+syntax::Type TypeChecker::lookup(const std::string& name, source::Span span) {
     for (auto iterator = scopes_.rbegin(); iterator != scopes_.rend();
          ++iterator) {
         if (const auto found = iterator->find(name); found != iterator->end()) {
@@ -373,8 +438,8 @@ syntax::TypeKind TypeChecker::lookup(const std::string& name,
     return syntax::TypeKind::Error;
 }
 
-void TypeChecker::type_mismatch(source::Span span, syntax::TypeKind expected,
-                                syntax::TypeKind actual, std::string context) {
+void TypeChecker::type_mismatch(source::Span span, syntax::Type expected,
+                                syntax::Type actual, std::string context) {
     diagnostics_.error("E1008", "type mismatch in " + std::move(context), span,
                        "expected `" + std::string(syntax::type_name(expected)) +
                            "`, found `" +

@@ -1,0 +1,5 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let a = [11, 22];
+let result = a[2];
+// CHECK: error[E4007]: array index out of bounds
+// CHECK: index 2, length 2

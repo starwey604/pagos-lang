@@ -1,0 +1,12 @@
+// RUN: %run_residual %s 17 3
+// RUN: %run_residual %s 99 0
+// RUN: %run_residual %s 17 4
+fn find(end: u32) -> u32 {
+    let table = [7, 11, 17];
+    for i in 0..end {
+        if table[i] == 17 { return table[i]; } else { 0 };
+    }
+    99
+}
+let result = find(external_input());
+// For end=4 an early return at i=2 wins over the unreachable out-of-bounds read.

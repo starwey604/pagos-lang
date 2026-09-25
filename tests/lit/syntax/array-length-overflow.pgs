@@ -1,0 +1,3 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let a: [u32; 4294967296] = [1];
+// CHECK: error[E1005]: array length must be a positive

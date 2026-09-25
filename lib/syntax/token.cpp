@@ -4,6 +4,10 @@ namespace pagos::syntax {
 
 std::string_view token_kind_name(TokenKind kind) noexcept {
     switch (kind) {
+    case TokenKind::LeftBracket:
+        return "`[`";
+    case TokenKind::RightBracket:
+        return "`]`";
     case TokenKind::End:
         return "end of file";
     case TokenKind::Identifier:

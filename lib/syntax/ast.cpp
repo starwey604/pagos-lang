@@ -21,8 +21,12 @@ ForStmt::ForStmt(std::string variable, source::Span variable_span,
 
 ForStmt::~ForStmt() = default;
 
-std::string_view type_name(TypeKind type) noexcept {
-    switch (type) {
+std::string type_name(Type type) {
+    switch (type.kind) {
+    case TypeKind::ArrayBool:
+    case TypeKind::ArrayU32:
+        return "[" + type_name(type.element_type()) + "; " +
+               std::to_string(type.length) + "]";
     case TypeKind::Unknown:
         return "<unknown>";
     case TypeKind::Void:

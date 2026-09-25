@@ -1,0 +1,8 @@
+// RUN: %run_residual %s 10
+fn first(a: [u32; 2]) -> u32 { a[0] }
+fn last(a: [bool; 2]) -> bool { a[1] }
+static let a = first([1, 2]);
+static let b = first([9, 2]);
+static let flag = last([true, false]);
+static let other = last([true, true]);
+let result = if !flag && other { a + b } else { 99 };

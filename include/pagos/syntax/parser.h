@@ -49,7 +49,7 @@ class Parser {
                                        BinaryOperator operation,
                                        std::unique_ptr<Expr> right);
 
-    std::optional<TypeKind> parse_type();
+    std::optional<Type> parse_type();
 
     const std::vector<Token>& tokens_;
     source::DiagnosticEngine& diagnostics_;

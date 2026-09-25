@@ -1,0 +1,9 @@
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 30 7 8 9 10
+fn known() -> u32 { external_input(); 5 }
+fn sum(a: [u32; 2]) -> u32 { a[0] + a[1] }
+let first = sum([known(), known()]);
+let second = sum([known(), known()]);
+let third = sum([5, 5]);
+let result = first + second + third;
+// CHECK: result: Static

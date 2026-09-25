@@ -81,6 +81,11 @@ specialization cycle, `E4004` to fuel exhaustion, `E4005` to recursion depth,
 and `E4006` to the specialization budget. The corresponding CLI controls are
 `--max-fuel`, `--max-recursion-depth`, and `--max-specializations`.
 
+`E4007` reports an analyzed Static array index outside the fixed length,
+including the index and length in its label. Runtime indices instead trap
+before memory access. Array shape, element, and index-type errors use `E1008`;
+invalid literal lengths use `E1005`.
+
 ## Testing Rules
 
 Golden tests normalize only platform path separators and explicitly unstable

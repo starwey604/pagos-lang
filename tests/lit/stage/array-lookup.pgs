@@ -1,0 +1,20 @@
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=LLVM --implicit-check-not=alloca
+// RUN: %run_residual %s 11 0
+// RUN: %run_residual %s 33 2
+// RUN: %run_residual %s trap 3
+// RUN: %run_residual %s trap 4294967295
+static let table: [u32; 3] = [11, 22, 33];
+let result = table[external_input()];
+// MIR: [u32; 3] = const [11, 22, 33]
+// MIR: index.checked
+// LLVM: @pagos.table = private unnamed_addr constant [3 x i32] [i32 11, i32 22, i32 33]
+// LLVM: icmp ult i32 {{.*}}, 3
+// LLVM: br i1 {{.*}}, label %index.cont, label %index.oob
+// LLVM: index.oob:
+// LLVM: call void @llvm.trap()
+// LLVM: unreachable
+// LLVM: index.cont:
+// LLVM: zext i32 {{.*}} to i64
+// LLVM: getelementptr inbounds [3 x i32], ptr @pagos.table
+// LLVM: load i32

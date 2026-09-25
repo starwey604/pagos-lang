@@ -69,7 +69,24 @@ std::size_t StageAnalyzer::SpecializationKeyHash::operator()(
     const SpecializationKey& key) const noexcept {
     auto hash = std::hash<const syntax::Function*>{}(key.function);
     for (const auto& argument : key.arguments) {
-        const auto argument_hash = std::hash<hir::Constant>{}(argument);
+        auto argument_hash = argument.index();
+        std::visit(
+            [&](const auto& value) {
+                const auto mix = [&](std::size_t part) {
+                    argument_hash ^= part + 0x9e3779b9U +
+                                     (argument_hash << 6U) +
+                                     (argument_hash >> 2U);
+                };
+                if constexpr (requires { value.size(); }) {
+                    mix(value.size());
+                    for (auto element : value) {
+                        mix(static_cast<std::size_t>(element));
+                    }
+                } else {
+                    mix(static_cast<std::size_t>(value));
+                }
+            },
+            argument);
         hash ^= argument_hash + 0x9e3779b9U + (hash << 6U) + (hash >> 2U);
     }
     return hash;
@@ -343,8 +360,110 @@ hir::ExprPtr StageAnalyzer::analyze_expression(const syntax::Expr& expression) {
         return analyze_call(static_cast<const syntax::CallExpr&>(expression));
     case syntax::Expr::Kind::If:
         return analyze_if(static_cast<const syntax::IfExpr&>(expression));
+    case syntax::Expr::Kind::Array:
+        return analyze_array(static_cast<const syntax::ArrayExpr&>(expression));
+    case syntax::Expr::Kind::Index:
+        return analyze_index(static_cast<const syntax::IndexExpr&>(expression));
     }
     return nullptr;
+}
+
+hir::ExprPtr StageAnalyzer::analyze_array(const syntax::ArrayExpr& expression) {
+    std::vector<hir::ExprPtr> elements;
+    elements.reserve(expression.elements.size());
+    std::optional<hir::RuntimeTrace> trace;
+    for (const auto& element : expression.elements) {
+        auto value = analyze_expression(*element);
+        if (!value) {
+            return nullptr;
+        }
+        if (!value->falls_through) {
+            return make_sequence(std::move(elements), value, expression.span);
+        }
+        if (value->stage == hir::Stage::Runtime && !trace) {
+            trace = value->trace;
+        }
+        elements.push_back(std::move(value));
+    }
+    const auto type = type_of(expression);
+    if (trace) {
+        trace->path.push_back("array element");
+        return make_runtime(hir::Expr::Kind::Array, type, expression.span,
+                            std::move(elements), std::move(*trace));
+    }
+    hir::Constant constant;
+    if (type.element_type() == syntax::TypeKind::Bool) {
+        std::vector<bool> values;
+        values.reserve(elements.size());
+        for (const auto& element : elements) {
+            values.push_back(std::get<bool>(*element->constant));
+        }
+        constant = std::move(values);
+    } else {
+        std::vector<std::uint32_t> values;
+        values.reserve(elements.size());
+        for (const auto& element : elements) {
+            values.push_back(std::get<std::uint32_t>(*element->constant));
+        }
+        constant = std::move(values);
+    }
+    std::erase_if(elements, [](const auto& element) {
+        return !has_residual_work(element);
+    });
+    return make_sequence(
+        std::move(elements),
+        hir::make_constant(std::move(constant), type, expression.span),
+        expression.span);
+}
+
+hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
+    auto array = analyze_expression(*expression.array);
+    if (!array || !array->falls_through) {
+        return array;
+    }
+    auto index = analyze_expression(*expression.index);
+    if (!index) {
+        return nullptr;
+    }
+    if (!index->falls_through) {
+        return make_sequence({array}, index, expression.span);
+    }
+    if (index->stage == hir::Stage::Static) {
+        const auto offset = std::get<std::uint32_t>(*index->constant);
+        if (offset >= array->type.length) {
+            diagnostics_.error("E4007", "array index out of bounds",
+                               expression.index->span,
+                               "index " + std::to_string(offset) + ", length " +
+                                   std::to_string(array->type.length));
+            return nullptr;
+        }
+        if (array->stage == hir::Stage::Static) {
+            hir::Constant value;
+            if (array->type.element_type() == syntax::TypeKind::Bool) {
+                value = static_cast<bool>(
+                    std::get<std::vector<bool>>(*array->constant)[offset]);
+            } else {
+                value = std::get<std::vector<std::uint32_t>>(
+                    *array->constant)[offset];
+            }
+            std::vector<hir::ExprPtr> effects;
+            if (has_residual_work(array)) {
+                effects.push_back(array);
+            }
+            if (has_residual_work(index)) {
+                effects.push_back(index);
+            }
+            return make_sequence(std::move(effects),
+                                 hir::make_constant(std::move(value),
+                                                    type_of(expression),
+                                                    expression.span),
+                                 expression.span);
+        }
+    }
+    auto trace = first_trace(array, index);
+    trace.path.push_back("array index");
+    return make_runtime(hir::Expr::Kind::Index, type_of(expression),
+                        expression.span, {array, index}, std::move(trace));
 }
 
 hir::ExprPtr StageAnalyzer::analyze_unary(const syntax::UnaryExpr& expression) {
@@ -647,7 +766,7 @@ hir::ExprPtr StageAnalyzer::lookup(const std::string& name) const {
 }
 
 hir::ExprPtr StageAnalyzer::make_runtime(
-    hir::Expr::Kind kind, syntax::TypeKind type, source::Span span,
+    hir::Expr::Kind kind, syntax::Type type, source::Span span,
     std::vector<hir::ExprPtr> operands, hir::RuntimeTrace trace,
     std::optional<syntax::UnaryOperator> unary,
     std::optional<syntax::BinaryOperator> binary) const {
@@ -742,7 +861,7 @@ void StageAnalyzer::report_static_failure(const syntax::BindingStmt& binding,
     diagnostics_.report(std::move(diagnostic));
 }
 
-syntax::TypeKind StageAnalyzer::type_of(const syntax::Expr& expression) const {
+syntax::Type StageAnalyzer::type_of(const syntax::Expr& expression) const {
     if (const auto iterator = types_.find(&expression);
         iterator != types_.end()) {
         return iterator->second;

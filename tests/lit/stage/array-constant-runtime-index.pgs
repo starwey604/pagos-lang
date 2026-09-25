@@ -1,0 +1,5 @@
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s trap
+runtime let index = 2;
+let result = [11, 22][index];
+// CHECK: result: Runtime (index -> array index -> result)

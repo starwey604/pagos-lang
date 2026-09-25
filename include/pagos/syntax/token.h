@@ -27,6 +27,8 @@ enum class TokenKind {
     RightParen,
     LeftBrace,
     RightBrace,
+    LeftBracket,
+    RightBracket,
     Colon,
     Comma,
     Semicolon,

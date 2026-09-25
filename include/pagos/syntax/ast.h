@@ -11,7 +11,37 @@
 
 namespace pagos::syntax {
 
-enum class TypeKind { Unknown, Void, Bool, U32, Never, Error };
+enum class TypeKind {
+    Unknown,
+    Void,
+    Bool,
+    U32,
+    Never,
+    Error,
+    ArrayBool,
+    ArrayU32
+};
+
+struct Type {
+    TypeKind kind{TypeKind::Error};
+    std::uint32_t length{};
+
+    Type() = default;
+    Type(TypeKind kind, std::uint32_t length = 0)
+        : kind(kind), length(length) {}
+    bool operator==(const Type&) const = default;
+    [[nodiscard]] bool is_array() const noexcept {
+        return kind == TypeKind::ArrayBool || kind == TypeKind::ArrayU32;
+    }
+    [[nodiscard]] Type element_type() const noexcept {
+        return kind == TypeKind::ArrayBool ? TypeKind::Bool : TypeKind::U32;
+    }
+    [[nodiscard]] static Type array(Type element, std::uint32_t length) {
+        return {element == TypeKind::Bool ? TypeKind::ArrayBool
+                                          : TypeKind::ArrayU32,
+                length};
+    }
+};
 enum class BindingKind { Inferred, Static, Runtime };
 enum class UnaryOperator { Not };
 enum class BinaryOperator {
@@ -33,7 +63,17 @@ enum class BinaryOperator {
 struct Block;
 
 struct Expr {
-    enum class Kind { Integer, Boolean, Name, Unary, Binary, Call, If };
+    enum class Kind {
+        Integer,
+        Boolean,
+        Name,
+        Unary,
+        Binary,
+        Call,
+        If,
+        Array,
+        Index
+    };
 
     Expr(Kind kind, source::Span span) : kind(kind), span(span) {}
     virtual ~Expr() = default;
@@ -99,6 +139,21 @@ struct IfExpr final : Expr {
     std::unique_ptr<Block> else_block;
 };
 
+struct ArrayExpr final : Expr {
+    ArrayExpr(std::vector<std::unique_ptr<Expr>> elements, source::Span span)
+        : Expr(Kind::Array, span), elements(std::move(elements)) {}
+    std::vector<std::unique_ptr<Expr>> elements;
+};
+
+struct IndexExpr final : Expr {
+    IndexExpr(std::unique_ptr<Expr> array, std::unique_ptr<Expr> index,
+              source::Span span)
+        : Expr(Kind::Index, span), array(std::move(array)),
+          index(std::move(index)) {}
+    std::unique_ptr<Expr> array;
+    std::unique_ptr<Expr> index;
+};
+
 struct Stmt {
     enum class Kind { Binding, Return, Expression, For };
 
@@ -111,7 +166,7 @@ struct Stmt {
 
 struct BindingStmt final : Stmt {
     BindingStmt(BindingKind binding_kind, std::string name,
-                source::Span name_span, std::optional<TypeKind> annotation,
+                source::Span name_span, std::optional<Type> annotation,
                 std::unique_ptr<Expr> initializer, source::Span span)
         : Stmt(Kind::Binding, span), binding_kind(binding_kind),
           name(std::move(name)), name_span(name_span), annotation(annotation),
@@ -120,7 +175,7 @@ struct BindingStmt final : Stmt {
     BindingKind binding_kind;
     std::string name;
     source::Span name_span;
-    std::optional<TypeKind> annotation;
+    std::optional<Type> annotation;
     std::unique_ptr<Expr> initializer;
 };
 
@@ -158,14 +213,14 @@ struct Block {
 struct Parameter {
     std::string name;
     source::Span name_span;
-    TypeKind type{TypeKind::Error};
+    Type type{TypeKind::Error};
 };
 
 struct Function {
     std::string name;
     source::Span name_span;
     std::vector<Parameter> parameters;
-    TypeKind result{TypeKind::Error};
+    Type result{TypeKind::Error};
     std::unique_ptr<Block> body;
     source::Span span;
 };
@@ -175,6 +230,6 @@ struct Module {
     std::vector<std::unique_ptr<Stmt>> statements;
 };
 
-[[nodiscard]] std::string_view type_name(TypeKind type) noexcept;
+[[nodiscard]] std::string type_name(Type type);
 
 } // namespace pagos::syntax

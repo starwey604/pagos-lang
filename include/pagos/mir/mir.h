@@ -15,7 +15,24 @@ namespace pagos::mir {
 using ValueId = std::uint32_t;
 using BlockId = std::uint32_t;
 
-enum class Type { Bool, U32 };
+struct Type {
+    enum Kind { Bool, U32, ArrayBool, ArrayU32 };
+    Kind kind{U32};
+    std::uint32_t length{};
+    Type() = default;
+    Type(Kind kind, std::uint32_t length = 0) : kind(kind), length(length) {}
+    bool operator==(const Type&) const = default;
+    [[nodiscard]] bool is_array() const noexcept {
+        return kind == ArrayBool || kind == ArrayU32;
+    }
+    [[nodiscard]] Type element_type() const noexcept {
+        return kind == ArrayBool ? Bool : U32;
+    }
+    [[nodiscard]] bool valid() const noexcept {
+        return is_array() ? length > 0
+                          : (kind == Bool || kind == U32) && length == 0;
+    }
+};
 enum class UnaryOperator { Not };
 enum class BinaryOperator {
     Add,
@@ -31,13 +48,24 @@ enum class BinaryOperator {
     GreaterEqual,
 };
 
-using Constant = std::variant<std::uint32_t, bool>;
+using Constant = std::variant<std::uint32_t, bool, std::vector<std::uint32_t>,
+                              std::vector<bool>>;
 
 struct ConstantOperation {
     Constant value;
 };
 
 struct ExternalInputOperation {};
+
+struct ArrayOperation {
+    std::vector<ValueId> elements;
+};
+
+struct IndexOperation {
+    // Unsigned bounds check before element access; an invalid index traps.
+    ValueId array;
+    ValueId index;
+};
 
 struct UnaryOperation {
     UnaryOperator operation;
@@ -65,7 +93,8 @@ struct PhiOperation {
 
 using Operation =
     std::variant<ConstantOperation, ExternalInputOperation, UnaryOperation,
-                 BinaryOperation, BoolToU32Operation, PhiOperation>;
+                 BinaryOperation, BoolToU32Operation, PhiOperation,
+                 ArrayOperation, IndexOperation>;
 
 struct Instruction {
     ValueId result;
@@ -109,7 +138,7 @@ struct Module {
     std::vector<Function> functions;
 };
 
-[[nodiscard]] std::string_view type_name(Type type) noexcept;
+[[nodiscard]] std::string type_name(Type type);
 [[nodiscard]] std::string_view binary_name(BinaryOperator operation) noexcept;
 [[nodiscard]] std::expected<void, std::string> verify(const Module& module);
 void print(const Module& module, std::ostream& output);

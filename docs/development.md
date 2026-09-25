@@ -58,6 +58,18 @@ specializations, cache hits, and maximum recursion depth.
 `external_input()` is the temporary Milestone 1 runtime-source intrinsic. It
 returns `u32` and lowers to a declaration of `pagos_external_input` in LLVM IR.
 
+For the fixed-length array slice, inspect the folded and residual examples:
+
+```sh
+build/debug/pagosc emit-hir tests/lit/stage/static-array.pgs
+build/debug/pagosc emit-mir tests/lit/stage/array-lookup.pgs
+build/debug/pagosc emit-llvm tests/lit/stage/array-lookup.pgs
+```
+
+The lookup example embeds one read-only table and retains a checked Runtime
+index. Arrays currently support nonempty one-dimensional `u32`/`bool` values;
+nested arrays, element mutation, and element-sensitive staging are deferred.
+
 ## Test and Check
 
 ```sh

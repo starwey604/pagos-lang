@@ -1,0 +1,5 @@
+// RUN: %run_residual %s 1 0 1 1
+// RUN: %run_residual %s 0 0 1 0
+// RUN: %run_residual %s trap 0 1 2
+let a: [bool; 2] = [external_input() == 1, external_input() == 1];
+let result = a[external_input()];

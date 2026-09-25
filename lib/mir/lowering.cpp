@@ -29,6 +29,10 @@ class Lowerer {
             if (hir_module.result->type == syntax::TypeKind::Bool) {
                 result = emit(Type::U32, BoolToU32Operation{.operand = result},
                               hir_module.result->span);
+            } else if (hir_module.result->type.is_array()) {
+                result = emit(Type::U32,
+                              ConstantOperation{.value = std::uint32_t{0}},
+                              hir_module.result->span);
             }
         } else {
             result = emit(Type::U32,
@@ -161,6 +165,10 @@ class Lowerer {
             break;
         case hir::Expr::Kind::ReturnScope:
             result = lower_return_scope(expression);
+            break;
+        case hir::Expr::Kind::Array:
+        case hir::Expr::Kind::Index:
+            result = lower_array_operation(expression);
             break;
         }
         if (result && live_) {
@@ -401,15 +409,42 @@ class Lowerer {
                     expression->span);
     }
 
-    static Type type_of(syntax::TypeKind type) {
+    std::expected<ValueId, std::string>
+    lower_array_operation(const hir::ExprPtr& expression) {
+        std::vector<ValueId> values;
+        values.reserve(expression->operands.size());
+        for (const auto& operand : expression->operands) {
+            auto value = lower_expression(operand);
+            if (!value || !live_) {
+                return value;
+            }
+            values.push_back(*value);
+        }
+        if (expression->kind == hir::Expr::Kind::Array) {
+            return emit(type_of(expression->type),
+                        ArrayOperation{.elements = std::move(values)},
+                        expression->span);
+        }
+        if (values.size() != 2) {
+            return std::unexpected("HIR index requires array and index");
+        }
+        return emit(type_of(expression->type),
+                    IndexOperation{.array = values[0], .index = values[1]},
+                    expression->span);
+    }
+
+    static Type type_of(syntax::Type type) {
+        if (type.is_array()) {
+            return {type.element_type() == syntax::TypeKind::Bool
+                        ? Type::ArrayBool
+                        : Type::ArrayU32,
+                    type.length};
+        }
         return type == syntax::TypeKind::Bool ? Type::Bool : Type::U32;
     }
 
     static Constant to_constant(const hir::Constant& constant) {
-        if (std::holds_alternative<std::uint32_t>(constant)) {
-            return std::get<std::uint32_t>(constant);
-        }
-        return std::get<bool>(constant);
+        return constant;
     }
 
     static std::optional<BinaryOperator>

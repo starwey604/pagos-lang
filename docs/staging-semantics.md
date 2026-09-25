@@ -78,7 +78,16 @@ let config = {
 ```
 
 The runtime `revision` field must not thaw `clock_hz` or unrelated device
-topology. Exact aggregate syntax remains undecided.
+topology. Exact record syntax remains undecided.
+
+The current fixed-length array slice is deliberately whole-array staged:
+every element must be Static for the array to be Static. A Runtime element,
+Runtime branch selection, or explicit `runtime let` thaws the entire array,
+including reads at Static indices. Array construction and index evaluation
+preserve all residual work in source order, even when the selected value is
+Static. See [Core Grammar](grammar.md#fixed-length-arrays-milestone-2) for
+syntax, length rules, and checked bounds behavior. Element-sensitive staging
+remains future work rather than an implicit guarantee of this slice.
 
 The compiler converts control flow to SSA-like values before final stage
 propagation. A merge is Runtime when a reachable incoming value is Runtime or

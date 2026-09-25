@@ -87,8 +87,8 @@ Important HIR concepts include:
 - structured Runtime ranges and residual sequencing;
 - compile-time capability operations.
 
-The current scalar HIR is a shared expression graph. `Reference` nodes attach
-use-specific diagnostic paths without cloning the referenced computation;
+The current scalar/array HIR is a shared expression graph. `Reference` nodes
+attach use-specific diagnostic paths without cloning the referenced computation;
 loop indices and Runtime reads keep their original identity through aliases
 and calls. `Sequence` records ordered residual evaluations plus a result whose
 value stage may still be Static. Statement and argument evaluations are
@@ -145,7 +145,14 @@ and convenient to verify and lower.
 
 The current MIR has explicit basic blocks, SSA values, typed operations,
 conditional and unconditional branches, phi nodes, range-loop backedges,
-checked division and remainder, and returns. Its verifier rejects invalid
+checked division, remainder, array construction and indexing, and returns.
+Array types carry scalar element kind and fixed length; constants and
+specialization keys contain array values, never host addresses. The verifier
+checks array lengths, element types, index types, and operand dominance.
+LLVM lowers known tables to deduplicated private read-only globals. Dynamic
+array values use SSA aggregates; dynamic indexing uses entry-block storage
+reused across loop iterations. Bounds checks precede address calculation and
+loads; failure calls `llvm.trap`. MIR verification also rejects invalid
 types, undefined values, unreachable blocks, incomplete phi inputs, and
 non-dominating uses before LLVM lowering. `pagosc emit-mir` provides a stable
 textual form for golden tests.

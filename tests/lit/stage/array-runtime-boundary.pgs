@@ -1,0 +1,6 @@
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 22
+runtime let a: [u32; 2] = [11, 22];
+let result = a[1];
+// CHECK: a: Runtime (a)
+// CHECK: result: Runtime (a -> array index -> result)

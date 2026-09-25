@@ -1,0 +1,4 @@
+// RUN: %run_residual %s 12 1 1
+// RUN: %run_residual %s 21 0 0
+let a = if external_input() == 1 { [11, 12] } else { [21, 22] };
+let result = a[external_input()];

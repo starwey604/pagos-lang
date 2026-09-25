@@ -1,0 +1,23 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let a: [u32; 3] = [1, 2];
+let mixed = [1, true];
+let indexed = [1, 2][true];
+let scalar = 4[0];
+let equal = [1] == [1];
+let empty = [];
+let nested = [[1]];
+fn wrong(a: [bool; 2]) -> [u32; 2] { a }
+let argument = wrong([true]);
+let branch = if true { [1] } else { [1, 2] };
+// CHECK: type mismatch in function tail expression
+// CHECK: expected `[u32; 2]`, found `[bool; 2]`
+// CHECK: type mismatch in initializer
+// CHECK: expected `[u32; 3]`, found `[u32; 2]`
+// CHECK: type mismatch in array element
+// CHECK: type mismatch in array index
+// CHECK: indexing requires an array
+// CHECK: array equality is not supported
+// CHECK: empty arrays are not supported
+// CHECK: array elements must be
+// CHECK: type mismatch in argument
+// CHECK: type mismatch in `if` arm
