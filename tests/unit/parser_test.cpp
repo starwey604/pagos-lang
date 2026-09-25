@@ -64,4 +64,24 @@ TEST(SyntaxType, ArrayLengthAndElementTypeParticipateInEquality) {
     EXPECT_EQ(type_name(Type::array(TypeKind::Bool, 2)), "[bool; 2]");
 }
 
+TEST(Parser, EqualityBindsMoreTightlyThanBitwiseAnd) {
+    using namespace pagos::syntax;
+    const auto source = pagos::source::SourceFile::from_text(
+        "bits.pgs", "let value = 1 & 2 == 3;");
+    pagos::source::DiagnosticEngine diagnostics(source);
+    Lexer lexer(source, diagnostics);
+    const auto tokens = lexer.tokenize();
+    Parser parser(tokens, diagnostics);
+    const auto module = parser.parse_module();
+    ASSERT_FALSE(diagnostics.has_error());
+    const auto& binding =
+        static_cast<const BindingStmt&>(*module->statements.at(0));
+    ASSERT_EQ(binding.initializer->kind, Expr::Kind::Binary);
+    const auto& bit = static_cast<const BinaryExpr&>(*binding.initializer);
+    EXPECT_EQ(bit.operation, BinaryOperator::BitAnd);
+    ASSERT_EQ(bit.right->kind, Expr::Kind::Binary);
+    EXPECT_EQ(static_cast<const BinaryExpr&>(*bit.right).operation,
+              BinaryOperator::Equal);
+}
+
 } // namespace

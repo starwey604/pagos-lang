@@ -7,7 +7,12 @@ import tempfile
 
 
 def main():
-    pagosc, clang, source, expected, *inputs = sys.argv[1:]
+    arguments = sys.argv[1:]
+    optimization = []
+    if arguments[0] == "--optimize":
+        optimization = ["-O2"]
+        arguments = arguments[1:]
+    pagosc, clang, source, expected, *inputs = arguments
     emitted = subprocess.run(
         [pagosc, "emit-llvm", source], capture_output=True, text=True, timeout=10
     )
@@ -18,7 +23,8 @@ def main():
         ir.write_text(emitted.stdout)
         executable = root / "program"
         subprocess.run(
-            [clang, str(ir), str(pathlib.Path(__file__).with_name("runtime.c")),
+            [clang, *optimization, str(ir),
+             str(pathlib.Path(__file__).with_name("runtime.c")),
              "-o", str(executable)],
             check=True,
         )

@@ -157,6 +157,14 @@ Quota checks use remaining capacity and division before multiplication to
 avoid overflow; counters reset for each analysis. These quotas do not measure
 HIR overhead, cache copies, or backend allocations.
 
+The CRC-32 demonstration exercises this path with recursive Static table
+construction and residual checked lookups. `u32` bitwise operators preserve
+the same stages and sequencing as other strict primitives. MIR names shifts
+`shl.checked` / `lshr.checked`; LLVM lowering guards Runtime counts before
+shifting to avoid poison. Right shift is logical, and no overflow/exact flags
+are attached. Known valid counts need no residual guard. See the
+[CRC walkthrough](crc32.md) for the differential test and current scope.
+
 ### 7. Residual SSA MIR
 
 MIR contains only target-runtime work. It should be small, typed, target-aware,

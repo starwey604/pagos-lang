@@ -186,10 +186,14 @@ class Lowerer {
         if (!operand || !live_) {
             return operand;
         }
-        return emit(Type::Bool,
-                    UnaryOperation{.operation = UnaryOperator::Not,
-                                   .operand = *operand},
-                    expression->span);
+        return emit(
+            type_of(expression->type),
+            UnaryOperation{.operation = *expression->unary_operation ==
+                                                syntax::UnaryOperator::Not
+                                            ? UnaryOperator::Not
+                                            : UnaryOperator::BitNot,
+                           .operand = *operand},
+            expression->span);
     }
 
     std::expected<ValueId, std::string>
@@ -461,6 +465,16 @@ class Lowerer {
             return BinaryOperator::DivideChecked;
         case Remainder:
             return BinaryOperator::RemainderChecked;
+        case BitAnd:
+            return BinaryOperator::BitAnd;
+        case BitOr:
+            return BinaryOperator::BitOr;
+        case BitXor:
+            return BinaryOperator::BitXor;
+        case ShiftLeft:
+            return BinaryOperator::ShiftLeftChecked;
+        case ShiftRight:
+            return BinaryOperator::ShiftRightChecked;
         case Equal:
             return BinaryOperator::Equal;
         case NotEqual:

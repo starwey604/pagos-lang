@@ -394,10 +394,38 @@ std::unique_ptr<Expr> Parser::parse_logical_or() {
 }
 
 std::unique_ptr<Expr> Parser::parse_logical_and() {
-    auto expression = parse_equality();
+    auto expression = parse_bitwise_or();
     while (match(TokenKind::AndAnd)) {
-        expression = parse_binary(std::move(expression),
-                                  BinaryOperator::LogicalAnd, parse_equality());
+        expression =
+            parse_binary(std::move(expression), BinaryOperator::LogicalAnd,
+                         parse_bitwise_or());
+    }
+    return expression;
+}
+
+std::unique_ptr<Expr> Parser::parse_bitwise_or() {
+    auto expression = parse_bitwise_xor();
+    while (match(TokenKind::Pipe)) {
+        expression = parse_binary(std::move(expression), BinaryOperator::BitOr,
+                                  parse_bitwise_xor());
+    }
+    return expression;
+}
+
+std::unique_ptr<Expr> Parser::parse_bitwise_xor() {
+    auto expression = parse_bitwise_and();
+    while (match(TokenKind::Caret)) {
+        expression = parse_binary(std::move(expression), BinaryOperator::BitXor,
+                                  parse_bitwise_and());
+    }
+    return expression;
+}
+
+std::unique_ptr<Expr> Parser::parse_bitwise_and() {
+    auto expression = parse_equality();
+    while (match(TokenKind::Ampersand)) {
+        expression = parse_binary(std::move(expression), BinaryOperator::BitAnd,
+                                  parse_equality());
     }
     return expression;
 }
@@ -417,7 +445,7 @@ std::unique_ptr<Expr> Parser::parse_equality() {
 }
 
 std::unique_ptr<Expr> Parser::parse_comparison() {
-    auto expression = parse_additive();
+    auto expression = parse_shift();
     while (check(TokenKind::Less) || check(TokenKind::LessEqual) ||
            check(TokenKind::Greater) || check(TokenKind::GreaterEqual)) {
         const auto kind = current().kind;
@@ -431,7 +459,21 @@ std::unique_ptr<Expr> Parser::parse_comparison() {
             operation = BinaryOperator::GreaterEqual;
         }
         expression =
-            parse_binary(std::move(expression), operation, parse_additive());
+            parse_binary(std::move(expression), operation, parse_shift());
+    }
+    return expression;
+}
+
+std::unique_ptr<Expr> Parser::parse_shift() {
+    auto expression = parse_additive();
+    while (check(TokenKind::ShiftLeft) || check(TokenKind::ShiftRight)) {
+        const auto kind = current().kind;
+        ++index_;
+        expression = parse_binary(std::move(expression),
+                                  kind == TokenKind::ShiftLeft
+                                      ? BinaryOperator::ShiftLeft
+                                      : BinaryOperator::ShiftRight,
+                                  parse_additive());
     }
     return expression;
 }
@@ -469,7 +511,10 @@ std::unique_ptr<Expr> Parser::parse_multiplicative() {
 }
 
 std::unique_ptr<Expr> Parser::parse_unary() {
-    if (match(TokenKind::Bang)) {
+    if (match(TokenKind::Bang) || match(TokenKind::Tilde)) {
+        const auto operation = previous().kind == TokenKind::Bang
+                                   ? UnaryOperator::Not
+                                   : UnaryOperator::BitNot;
         const auto start = previous().span;
         auto operand = parse_unary();
         if (!operand) {
@@ -477,8 +522,7 @@ std::unique_ptr<Expr> Parser::parse_unary() {
         }
         const auto span =
             source::Span{.begin = start.begin, .end = operand->span.end};
-        return std::make_unique<UnaryExpr>(UnaryOperator::Not,
-                                           std::move(operand), span);
+        return std::make_unique<UnaryExpr>(operation, std::move(operand), span);
     }
     return parse_call();
 }

@@ -33,13 +33,19 @@ struct Type {
                           : (kind == Bool || kind == U32) && length == 0;
     }
 };
-enum class UnaryOperator { Not };
+enum class UnaryOperator { Not, BitNot };
 enum class BinaryOperator {
     Add,
     Subtract,
     Multiply,
     DivideChecked,
     RemainderChecked,
+    BitAnd,
+    BitOr,
+    BitXor,
+    // Counts >= 32 trap before the shift; right shift fills with zeros.
+    ShiftLeftChecked,
+    ShiftRightChecked,
     Equal,
     NotEqual,
     Less,

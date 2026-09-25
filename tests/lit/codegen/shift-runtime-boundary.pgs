@@ -1,0 +1,5 @@
+// RUN: %run_residual %s trap
+// RUN: %run_optimized %s trap
+runtime let count = 32;
+let ignored = 1 >> count;
+let result = 7;

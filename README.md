@@ -115,6 +115,10 @@ Static-index reads of mixed arrays retain the selected element's stage while
 preserving evaluation of the entire array.
 Bulk generation uses `[for i in 0..256 { i * i }]`, with fuel and cumulative
 array-construction quotas checked before expansion.
+`u32` bitwise operations and checked shifts support the representative
+[CRC-32 example](tests/lit/stage/crc32.pgs): compile-time table generation and
+Runtime checksums verified against zlib. See the
+[CRC walkthrough](docs/crc32.md) for commands and current limitations.
 
 ## Development
 

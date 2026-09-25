@@ -301,6 +301,16 @@ class Generator {
             return builder_.CreateSub(left, right, "sub");
         case Multiply:
             return builder_.CreateMul(left, right, "mul");
+        case BitAnd:
+            return builder_.CreateAnd(left, right, "bit.and");
+        case BitOr:
+            return builder_.CreateOr(left, right, "bit.or");
+        case BitXor:
+            return builder_.CreateXor(left, right, "bit.xor");
+        case ShiftLeftChecked:
+            return emit_shift(left, right, false);
+        case ShiftRightChecked:
+            return emit_shift(left, right, true);
         case DivideChecked:
             return emit_division(left, right, false);
         case RemainderChecked:
@@ -319,6 +329,31 @@ class Generator {
             return builder_.CreateICmpUGE(left, right, "ge");
         }
         return nullptr;
+    }
+
+    llvm::Value* emit_shift(llvm::Value* left, llvm::Value* right,
+                            bool shift_right) {
+        // A known valid count needs no guard. Never emit an out-of-range
+        // LLVM shift on an executed path: it would produce poison.
+        const auto* count = llvm::dyn_cast<llvm::ConstantInt>(right);
+        if (!count || count->getZExtValue() >= 32) {
+            auto* function = builder_.GetInsertBlock()->getParent();
+            auto* trap_block =
+                llvm::BasicBlock::Create(context_, "shift.oob", function);
+            auto* continue_block =
+                llvm::BasicBlock::Create(context_, "shift.cont", function);
+            auto* valid = builder_.CreateICmpULT(right, builder_.getInt32(32),
+                                                 "shift.valid");
+            builder_.CreateCondBr(valid, continue_block, trap_block);
+            builder_.SetInsertPoint(trap_block);
+            auto* trap = llvm::Intrinsic::getOrInsertDeclaration(
+                module_.get(), llvm::Intrinsic::trap);
+            builder_.CreateCall(trap);
+            builder_.CreateUnreachable();
+            builder_.SetInsertPoint(continue_block);
+        }
+        return shift_right ? builder_.CreateLShr(left, right, "lshr")
+                           : builder_.CreateShl(left, right, "shl");
     }
 
     llvm::Value* emit_division(llvm::Value* left, llvm::Value* right,

@@ -1,0 +1,3 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let result = 1 >> 4294967295;
+// CHECK: error[E4009]: shift count must be less than 32

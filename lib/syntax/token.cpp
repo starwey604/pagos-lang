@@ -68,6 +68,18 @@ std::string_view token_kind_name(TokenKind kind) noexcept {
         return "`/`";
     case TokenKind::Percent:
         return "`%`";
+    case TokenKind::Tilde:
+        return "`~`";
+    case TokenKind::Ampersand:
+        return "`&`";
+    case TokenKind::Pipe:
+        return "`|`";
+    case TokenKind::Caret:
+        return "`^`";
+    case TokenKind::ShiftLeft:
+        return "`<<`";
+    case TokenKind::ShiftRight:
+        return "`>>`";
     case TokenKind::Bang:
         return "`!`";
     case TokenKind::Equal:

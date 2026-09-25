@@ -414,6 +414,31 @@ Several smaller constructions accumulate; unused results and early returns
 do not refund reservations. Aliases and cached results are not new arrays.
 Full compiler-memory accounting remains separate from these quotas.
 
+### 36. Bitwise operations and checked shifts
+
+```pagos
+static let high = 1 << 31;
+static let wrapped = 2 << 31;
+static let low = high >> 31;
+let result = ~external_input() & 255;
+```
+
+Expected: `high` is `2147483648`, `wrapped` is zero, and `low` is one.
+`result` is Runtime and retains one input read. All bitwise operands must be
+`u32`. An analyzed `external_input() << 32` reports `E4009`; with a Runtime
+count instead, 32 or greater traps before shifting, even if unused. A skipped
+Static branch does not evaluate its invalid shift. Use `(value & 1) != 0`
+to test a bit because equality binds more tightly than bitwise AND.
+
+### 37. CRC-32 representative case
+
+The [CRC example](../tests/lit/stage/crc32.pgs) generates a 256-entry table using
+eight Static recursive bit steps per entry. The same checksum functions fold
+ASCII `123456789` to `3421780262` and process nine Runtime inputs with checked
+table loads. Each input contributes its low eight bits. The whole table and
+Runtime results agree with Python zlib at external Clang `-O0` and `-O2`.
+The [walkthrough](crc32.md) records commands, budgets, and fixed-length scope.
+
 ## Acceptance Use
 
 Each example becomes a fixture when its feature enters an implementation

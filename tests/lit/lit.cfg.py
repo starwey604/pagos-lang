@@ -24,3 +24,22 @@ config.substitutions.append((
 config.environment["PATH"] = os.pathsep.join(
     [config.llvm_tools_dir, config.environment.get("PATH", "")]
 )
+config.substitutions.append((
+    "%run_crc32",
+    " ".join(shlex.quote(value) for value in [
+        config.python,
+        os.path.join(config.pagos_test_source_root, "Inputs", "run_crc32.py"),
+        config.pagosc,
+        config.test_clang,
+    ]),
+))
+config.substitutions.append((
+    "%run_optimized",
+    " ".join(shlex.quote(value) for value in [
+        config.python,
+        os.path.join(config.pagos_test_source_root, "Inputs", "run_residual.py"),
+        "--optimize",
+        config.pagosc,
+        config.test_clang,
+    ]),
+))

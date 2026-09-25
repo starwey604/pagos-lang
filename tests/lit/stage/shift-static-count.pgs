@@ -1,0 +1,4 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let result = external_input() << 32;
+// CHECK: error[E4009]: shift count must be less than 32
+// CHECK: << 32

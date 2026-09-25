@@ -1,0 +1,5 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+runtime let input = external_input();
+static let result = (~input >> 1) & 255;
+// CHECK: error[E2001]
+// CHECK: dependency path: input -> result

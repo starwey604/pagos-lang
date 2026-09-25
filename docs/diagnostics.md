@@ -94,6 +94,11 @@ construction data, not peak host memory. Generator bound/range errors use
 `E1005` (or `E1002` for nonliteral bounds); invalid generator body types use
 `E1008`. Generator iterations also participate in existing fuel limits.
 
+`E4009` reports an analyzed Static shift count of 32 or more, with the count
+expression as its primary span. This also applies with a Runtime left operand.
+Runtime counts instead trap before shifting. Bitwise operand-type errors use
+`E1008`; unselected Static branches do not produce evaluation failures.
+
 ## Testing Rules
 
 Golden tests normalize only platform path separators and explicitly unstable

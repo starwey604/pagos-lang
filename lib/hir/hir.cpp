@@ -20,6 +20,16 @@ std::string_view binary_name(syntax::BinaryOperator operation) {
         return "div";
     case Remainder:
         return "rem";
+    case BitAnd:
+        return "bit.and";
+    case BitOr:
+        return "bit.or";
+    case BitXor:
+        return "bit.xor";
+    case ShiftLeft:
+        return "shl";
+    case ShiftRight:
+        return "lshr";
     case Equal:
         return "eq";
     case NotEqual:
@@ -97,7 +107,9 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
         output << "external_input()";
         break;
     case Expr::Kind::Unary:
-        output << "not(";
+        output << (expression->unary_operation == syntax::UnaryOperator::Not
+                       ? "not("
+                       : "bit.not(");
         print_expression(expression->operands.at(0), output);
         output << ')';
         break;

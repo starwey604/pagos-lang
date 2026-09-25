@@ -1,0 +1,23 @@
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=LLVM
+// RUN: %run_residual %s 4294967288 240 15 3
+let left = external_input();
+let right = external_input();
+let count = external_input();
+let value = ((left & right) | (left ^ right)) << count;
+let result = ~(value >> 8);
+// MIR: bit.and
+// MIR: bit.xor
+// MIR: bit.or
+// MIR: shl.checked
+// MIR: lshr.checked
+// MIR: bit.not
+// LLVM: and i32
+// LLVM: xor i32
+// LLVM: or i32
+// LLVM: icmp ult i32 {{.*}}, 32
+// LLVM: br i1
+// LLVM: call void @llvm.trap()
+// LLVM: shl i32
+// LLVM: lshr i32
+// LLVM: xor i32 {{.*}}, -1

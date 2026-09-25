@@ -1,0 +1,7 @@
+// RUN: %run_residual %s 0
+// RUN: %pagosc emit-hir %s | %FileCheck %s
+static let skipped = if true { 0 } else { 1 << 32 };
+static let shorted = false && ((1 >> 32) == 0);
+let result = skipped;
+// CHECK: binding skipped: u32 [Static] = 0
+// CHECK: binding shorted: bool [Static] = false

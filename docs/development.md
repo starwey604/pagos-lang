@@ -96,6 +96,11 @@ limits deliberately. AST, HIR, cache copies, and LLVM memory are not counted.
 
 ## Test and Check
 
+The [CRC-32 walkthrough](crc32.md) demonstrates a complete generated table,
+Static check vector, Runtime checksum, and budget failures. Its differential
+test requires only the existing Python standard library (`zlib`) and host Clang;
+no additional package is needed. It checks external `-O0` and `-O2` execution.
+
 ```sh
 ctest --preset debug
 ctest --preset gcc-debug

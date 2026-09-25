@@ -1,0 +1,6 @@
+// RUN: %run_residual %s 10 5
+fn choose() -> u32 {
+    let ignored = external_input() << (if true { return 9; } else { 32 });
+    0
+}
+let result = choose() + 1;

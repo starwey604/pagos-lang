@@ -254,6 +254,17 @@ a defined runtime trap in residual code. Comparisons produce `bool`. The
 evaluator must implement these rules explicitly and must not inherit the host
 C++ integer model.
 
+Milestone 2 adds strict `u32` bitwise `&`, `|`, `^`, and complement `~`.
+`<<` shifts left modulo 2^32; `>>` is logical (zero-filling), not arithmetic.
+Both operands are `u32` and evaluate left-to-right. A Static shift count of
+32 or more reports `E4009` when the operation is analyzed, even if the left
+operand is Runtime. A Runtime count is checked against 32 before execution;
+invalid counts trap, including in discarded expressions. Counts are never
+implicitly masked. Explicit Runtime boundaries remain opaque to staging.
+The LLVM backend must not execute an out-of-range shift or add overflow/exact
+flags that contradict these rules. Static and residual evaluation agree at
+counts 0 and 31 and on discarded high bits.
+
 Signed integers, floating point, implicit conversions, and `usize` are outside
 the core grammar. Before introduction, each must define overflow and target
 layout behavior; `usize` must follow the selected target data layout even when

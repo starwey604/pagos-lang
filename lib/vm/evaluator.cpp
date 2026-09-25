@@ -11,6 +11,9 @@ Evaluator::unary(syntax::UnaryOperator operation,
     switch (operation) {
     case syntax::UnaryOperator::Not:
         return hir::Constant{!std::get<bool>(operand)};
+    case syntax::UnaryOperator::BitNot:
+        return hir::Constant{
+            static_cast<std::uint32_t>(~std::get<std::uint32_t>(operand))};
     }
     return std::unexpected(
         EvaluationError{.code = "E4002", .message = "unknown unary operation"});
@@ -39,6 +42,22 @@ Evaluator::binary(syntax::BinaryOperator operation, const hir::Constant& left,
         return hir::Constant{static_cast<std::uint32_t>(lhs - rhs)};
     case Multiply:
         return hir::Constant{static_cast<std::uint32_t>(lhs * rhs)};
+    case BitAnd:
+        return hir::Constant{lhs & rhs};
+    case BitOr:
+        return hir::Constant{lhs | rhs};
+    case BitXor:
+        return hir::Constant{lhs ^ rhs};
+    case ShiftLeft:
+    case ShiftRight:
+        if (rhs >= 32) {
+            return std::unexpected(
+                EvaluationError{.code = "E4009",
+                                .message = "shift count must be less than 32"});
+        }
+        return hir::Constant{operation == ShiftLeft
+                                 ? static_cast<std::uint32_t>(lhs << rhs)
+                                 : static_cast<std::uint32_t>(lhs >> rhs)};
     case Divide:
         if (rhs == 0) {
             return std::unexpected(EvaluationError{

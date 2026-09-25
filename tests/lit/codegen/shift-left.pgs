@@ -1,0 +1,9 @@
+// RUN: %run_residual %s 2147483648 1 31
+// RUN: %run_residual %s 0 2 31
+// RUN: %run_residual %s 4294967295 4294967295 0
+// RUN: %run_residual %s trap 1 32
+// RUN: %run_residual %s trap 1 4294967295
+// RUN: %run_optimized %s 0 2 31
+// RUN: %run_optimized %s trap 1 32
+// RUN: %run_optimized %s trap 1 4294967295
+let result = external_input() << external_input();

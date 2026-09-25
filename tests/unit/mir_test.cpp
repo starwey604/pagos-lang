@@ -32,6 +32,51 @@ TEST(MirVerifier, AcceptsTypedConstantFunction) {
     EXPECT_TRUE(result.has_value());
 }
 
+TEST(MirVerifier, BitwiseUnaryRequiresU32) {
+    using namespace pagos::mir;
+    auto module = constant_module();
+    auto& block = module.functions.front().blocks.front();
+    block.instructions.push_back(
+        {.result = 1,
+         .type = Type::U32,
+         .operation =
+             UnaryOperation{.operation = UnaryOperator::BitNot, .operand = 0},
+         .span = {}});
+    block.terminator = Return{.value = 1};
+    EXPECT_TRUE(verify(module).has_value());
+    block.instructions[1].type = Type::Bool;
+    EXPECT_FALSE(verify(module).has_value());
+    block.instructions[1].type = Type::U32;
+    block.instructions[0].type = Type::Bool;
+    block.instructions[0].operation = ConstantOperation{.value = true};
+    EXPECT_FALSE(verify(module).has_value());
+}
+
+TEST(MirVerifier, BitwiseBinaryRequiresU32OperandsAndResult) {
+    using namespace pagos::mir;
+    for (const auto operation :
+         {BinaryOperator::BitAnd, BinaryOperator::BitOr, BinaryOperator::BitXor,
+          BinaryOperator::ShiftLeftChecked,
+          BinaryOperator::ShiftRightChecked}) {
+        auto module = constant_module();
+        auto& block = module.functions.front().blocks.front();
+        block.instructions.push_back(
+            {.result = 1,
+             .type = Type::U32,
+             .operation =
+                 BinaryOperation{.operation = operation, .left = 0, .right = 0},
+             .span = {}});
+        block.terminator = Return{.value = 1};
+        EXPECT_TRUE(verify(module).has_value());
+        block.instructions[1].type = Type::Bool;
+        EXPECT_FALSE(verify(module).has_value());
+        block.instructions[1].type = Type::U32;
+        block.instructions[0].type = Type::Bool;
+        block.instructions[0].operation = ConstantOperation{.value = true};
+        EXPECT_FALSE(verify(module).has_value());
+    }
+}
+
 TEST(MirVerifier, RejectsUndefinedOperands) {
     auto module = constant_module();
     auto& instruction = module.functions.front().blocks.front().instructions[0];

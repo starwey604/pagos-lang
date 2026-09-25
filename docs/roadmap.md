@@ -78,9 +78,13 @@ into deduplicated read-only tables. Static-index reads now retain individual
 element stages through aliases and direct calls, without discarding residual
 array evaluation or crossing explicit Runtime/control boundaries. Literal-range
 array generators now build bulk lookup tables under fuel and cumulative array
-construction quotas, checked before expansion. Records, computed generator
-lengths, bitwise operations for CRC algorithms, effect-aware keys, and full
-host-memory accounting remain.
+construction quotas, checked before expansion. Strict `u32` bitwise operations
+and checked shifts now close the representative CRC-32 case: a generated
+256-entry table, a folded standard check vector, and a nine-byte Runtime
+checksum agree with zlib, including external Clang `-O0`/`-O2` execution.
+The representative case is complete, not the entire milestone. Records,
+computed generator lengths, effect-aware keys, and full host-memory accounting
+remain; arbitrary-length streaming CRC also needs additional language support.
 
 Add:
 

@@ -43,13 +43,18 @@ struct Type {
     }
 };
 enum class BindingKind { Inferred, Static, Runtime };
-enum class UnaryOperator { Not };
+enum class UnaryOperator { Not, BitNot };
 enum class BinaryOperator {
     Add,
     Subtract,
     Multiply,
     Divide,
     Remainder,
+    BitAnd,
+    BitOr,
+    BitXor,
+    ShiftLeft,
+    ShiftRight,
     Equal,
     NotEqual,
     Less,

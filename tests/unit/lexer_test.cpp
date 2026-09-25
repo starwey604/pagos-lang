@@ -52,4 +52,23 @@ TEST(Lexer, IgnoresLineCommentsAndTracksSpans) {
     EXPECT_EQ(source.position(tokens[0].span.begin).line, 2U);
 }
 
+TEST(Lexer, DistinguishesBitwiseLogicalAndComparisonTokens) {
+    using enum pagos::syntax::TokenKind;
+    const auto source = pagos::source::SourceFile::from_text(
+        "bits.pgs", "& && | || ^ ~ << < <= >> > >= ! !=");
+    pagos::source::DiagnosticEngine diagnostics(source);
+    pagos::syntax::Lexer lexer(source, diagnostics);
+    const auto tokens = lexer.tokenize();
+    const std::vector expected{Ampersand, AndAnd,     Pipe,      OrOr,
+                               Caret,     Tilde,      ShiftLeft, Less,
+                               LessEqual, ShiftRight, Greater,   GreaterEqual,
+                               Bang,      BangEqual,  End};
+    ASSERT_FALSE(diagnostics.has_error());
+    ASSERT_EQ(tokens.size(), expected.size());
+    for (std::size_t index = 0; index < tokens.size(); ++index) {
+        EXPECT_EQ(tokens[index].kind, expected[index]);
+        EXPECT_NE(pagos::syntax::token_kind_name(tokens[index].kind), "token");
+    }
+}
+
 } // namespace

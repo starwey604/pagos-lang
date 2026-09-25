@@ -1,0 +1,29 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s
+// RUN: %run_residual %s 1
+static let complement = ~0;
+static let mask = 240 & 170;
+static let either = 240 | 15;
+static let toggled = 255 ^ 170;
+static let high = 1 << 31;
+static let zero = 2 << 31;
+static let low = 2147483648 >> 31;
+static let unchanged = 4294967295 >> 0;
+static let precedence = 1 | 2 ^ 3 & 6;
+static let additive = 1 << 2 + 1;
+static let associative = 128 >> 2 >> 1;
+static let comparison = 1 << 3 < 9;
+static let unary = ~0 >> 31;
+let result = low;
+// CHECK: binding complement: u32 [Static] = 4294967295
+// CHECK: binding mask: u32 [Static] = 160
+// CHECK: binding either: u32 [Static] = 255
+// CHECK: binding toggled: u32 [Static] = 85
+// CHECK: binding high: u32 [Static] = 2147483648
+// CHECK: binding zero: u32 [Static] = 0
+// CHECK: binding low: u32 [Static] = 1
+// CHECK: binding unchanged: u32 [Static] = 4294967295
+// CHECK: binding precedence: u32 [Static] = 1
+// CHECK: binding additive: u32 [Static] = 8
+// CHECK: binding associative: u32 [Static] = 16
+// CHECK: binding comparison: bool [Static] = true
+// CHECK: binding unary: u32 [Static] = 1

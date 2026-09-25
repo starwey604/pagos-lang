@@ -169,6 +169,12 @@ std::vector<Token> Lexer::tokenize() {
         case '%':
             add(tokens, TokenKind::Percent, begin, offset_);
             break;
+        case '~':
+            add(tokens, TokenKind::Tilde, begin, offset_);
+            break;
+        case '^':
+            add(tokens, TokenKind::Caret, begin, offset_);
+            break;
         case '!':
             add(tokens, match('=') ? TokenKind::BangEqual : TokenKind::Bang,
                 begin, offset_);
@@ -178,31 +184,26 @@ std::vector<Token> Lexer::tokenize() {
                 begin, offset_);
             break;
         case '<':
-            add(tokens, match('=') ? TokenKind::LessEqual : TokenKind::Less,
+            add(tokens,
+                match('<')   ? TokenKind::ShiftLeft
+                : match('=') ? TokenKind::LessEqual
+                             : TokenKind::Less,
                 begin, offset_);
             break;
         case '>':
             add(tokens,
-                match('=') ? TokenKind::GreaterEqual : TokenKind::Greater,
+                match('>')   ? TokenKind::ShiftRight
+                : match('=') ? TokenKind::GreaterEqual
+                             : TokenKind::Greater,
                 begin, offset_);
             break;
         case '&':
-            if (match('&')) {
-                add(tokens, TokenKind::AndAnd, begin, offset_);
-            } else {
-                diagnostics_.error("E1001", "unexpected character `&`",
-                                   {.begin = begin, .end = offset_},
-                                   "use `&&` for logical conjunction");
-            }
+            add(tokens, match('&') ? TokenKind::AndAnd : TokenKind::Ampersand,
+                begin, offset_);
             break;
         case '|':
-            if (match('|')) {
-                add(tokens, TokenKind::OrOr, begin, offset_);
-            } else {
-                diagnostics_.error("E1001", "unexpected character `|`",
-                                   {.begin = begin, .end = offset_},
-                                   "use `||` for logical disjunction");
-            }
+            add(tokens, match('|') ? TokenKind::OrOr : TokenKind::Pipe, begin,
+                offset_);
             break;
         case '.':
             if (match('.')) {

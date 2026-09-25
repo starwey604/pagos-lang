@@ -1,0 +1,18 @@
+// RUN: %pagosc emit-llvm %s | %FileCheck %s
+// RUN: %run_residual %s 9 2 3
+// RUN: %run_residual %s 8 2 0
+// RUN: %run_residual %s trap 2 32
+// RUN: %run_residual %s 8 0 32
+fn choose(end: u32, count: u32) -> u32 {
+    for i in 0..end {
+        let value = if count == 0 { 7 } else { 1 << count };
+        if i == 1 { return value; } else { 0 };
+    }
+    7
+}
+let result = choose(external_input(), external_input()) + 1;
+// CHECK: phi i32
+// CHECK: shift.valid
+// CHECK: phi i32 [ 7, %if.then ], [ %shl, %shift.cont ]
+// CHECK: shl i32
+// CHECK-NEXT: br label %if.merge

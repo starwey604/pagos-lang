@@ -201,11 +201,16 @@ syntax::Type TypeChecker::check_expression(syntax::Expr& expression) {
             type = syntax::TypeKind::Never;
             break;
         }
-        if (!compatible(syntax::TypeKind::Bool, operand_type)) {
-            type_mismatch(unary.operand->span, syntax::TypeKind::Bool,
-                          operand_type, "operand of `!`");
+        const auto expected = unary.operation == syntax::UnaryOperator::Not
+                                  ? syntax::TypeKind::Bool
+                                  : syntax::TypeKind::U32;
+        if (!compatible(expected, operand_type)) {
+            type_mismatch(unary.operand->span, expected, operand_type,
+                          unary.operation == syntax::UnaryOperator::Not
+                              ? "operand of `!`"
+                              : "operand of `~`");
         } else {
-            type = syntax::TypeKind::Bool;
+            type = expected;
         }
         break;
     }

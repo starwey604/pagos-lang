@@ -654,6 +654,14 @@ StageAnalyzer::analyze_binary(const syntax::BinaryExpr& expression) {
     if (!right->falls_through && left->stage == hir::Stage::Static) {
         return make_sequence({left}, right, expression.span);
     }
+    if ((expression.operation == ShiftLeft ||
+         expression.operation == ShiftRight) &&
+        right->stage == hir::Stage::Static &&
+        std::get<std::uint32_t>(*right->constant) >= 32) {
+        diagnostics_.error("E4009", "shift count must be less than 32",
+                           expression.right->span);
+        return nullptr;
+    }
     if (left->stage == hir::Stage::Static &&
         right->stage == hir::Stage::Static) {
         const auto result =

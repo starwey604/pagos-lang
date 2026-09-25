@@ -45,12 +45,16 @@ expression      = if-expression | logical-or ;
 if-expression   = "if" expression block "else"
                   ( block | if-expression ) ;
 logical-or      = logical-and { "||" logical-and } ;
-logical-and     = equality { "&&" equality } ;
+logical-and     = bitwise-or { "&&" bitwise-or } ;
+bitwise-or      = bitwise-xor { "|" bitwise-xor } ;
+bitwise-xor     = bitwise-and { "^" bitwise-and } ;
+bitwise-and     = equality { "&" equality } ;
 equality        = comparison { ( "==" | "!=" ) comparison } ;
-comparison      = additive { ( "<" | "<=" | ">" | ">=" ) additive } ;
+comparison      = shift { ( "<" | "<=" | ">" | ">=" ) shift } ;
+shift           = additive { ( "<<" | ">>" ) additive } ;
 additive        = multiplicative { ( "+" | "-" ) multiplicative } ;
 multiplicative  = unary { ( "*" | "/" | "%" ) unary } ;
-unary           = "!" unary | call ;
+unary           = ( "!" | "~" ) unary | call ;
 call            = primary { "(" [ arguments ] ")" | "[" expression "]" } ;
 arguments       = expression { "," expression } ;
 primary         = integer | "true" | "false" | identifier
@@ -79,6 +83,13 @@ and return `bool`; equality requires two scalar operands of the same type.
 range's bounds must be `u32`. Initializers and return expressions must match
 their declared or inferred type. There are no implicit conversions in the
 core language.
+
+`~`, `&`, `|`, `^`, `<<`, and `>>` require `u32` operands and return `u32`.
+Bitwise binary operators are strict, not short-circuiting. Right shift fills
+with zeros; left shift discards high bits. Shift counts must be below 32:
+an analyzed Static count outside this range reports `E4009`, even with a Runtime
+left operand; a Runtime count is checked before shifting and traps if invalid.
+Unselected Static branches and skipped short-circuit operands are not evaluated.
 
 ## Fixed-Length Arrays (Milestone 2)
 
@@ -160,6 +171,11 @@ associate left-to-right. Function arguments and binary operands are evaluated
 left-to-right, as do array elements. `&&` and `||` short-circuit. Pagos does not
 reorder observable effects, although pure residual expressions may later be
 optimized under the language's arithmetic rules.
+
+Bitwise precedence follows C: from low to high, `||`, `&&`, `|`, `^`, `&`,
+equality, ordering, shifts, addition/subtraction, multiplication/division,
+unary operators, and calls/indexing. Write `(value & 1) != 0` for a bit test;
+`value & 1 != 0` instead attempts to combine `u32` and `bool` and is rejected.
 
 ## Reserved Decisions
 

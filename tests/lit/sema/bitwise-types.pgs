@@ -1,0 +1,14 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let a = ~true;
+let b = true & false;
+let c = 1 | false;
+let d = true ^ 1;
+let e = 1 << false;
+let f = [1] >> 1;
+// CHECK: error[E1008]
+// CHECK: operand of `~`
+// CHECK: error[E1008]
+// CHECK: error[E1008]
+// CHECK: error[E1008]
+// CHECK: error[E1008]
+// CHECK: error[E1008]

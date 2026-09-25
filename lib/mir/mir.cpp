@@ -244,8 +244,12 @@ std::expected<void, std::string> verify_function(const Function& function) {
                     !valid) {
                     return valid;
                 }
-                if (unary->operation != UnaryOperator::Not ||
-                    *operand != Type::Bool || instruction.type != Type::Bool) {
+                const auto expected = unary->operation == UnaryOperator::Not
+                                          ? Type::Bool
+                                          : Type::U32;
+                if ((unary->operation != UnaryOperator::Not &&
+                     unary->operation != UnaryOperator::BitNot) ||
+                    *operand != expected || instruction.type != expected) {
                     return std::unexpected("invalid MIR unary operation");
                 }
                 continue;
@@ -457,7 +461,8 @@ void print_instruction(const Instruction& instruction, std::ostream& output) {
         output << "external_input";
     } else if (const auto* unary =
                    std::get_if<UnaryOperation>(&instruction.operation)) {
-        output << "not " << value_name(unary->operand);
+        output << (unary->operation == UnaryOperator::Not ? "not " : "bit.not ")
+               << value_name(unary->operand);
     } else if (const auto* binary =
                    std::get_if<BinaryOperation>(&instruction.operation)) {
         output << binary_name(binary->operation) << ' '
@@ -515,6 +520,16 @@ std::string_view binary_name(BinaryOperator operation) noexcept {
         return "udiv.checked";
     case RemainderChecked:
         return "urem.checked";
+    case BitAnd:
+        return "bit.and";
+    case BitOr:
+        return "bit.or";
+    case BitXor:
+        return "bit.xor";
+    case ShiftLeftChecked:
+        return "shl.checked";
+    case ShiftRightChecked:
+        return "lshr.checked";
     case Equal:
         return "eq";
     case NotEqual:
