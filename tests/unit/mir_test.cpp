@@ -134,7 +134,7 @@ TEST(MirVerifier, RecordTypesRejectEmptyAndNonscalarFields) {
     EXPECT_FALSE(type.valid());
     type.record_name = "Config";
     EXPECT_FALSE(type.valid());
-    type.fields = {Type::ArrayU32};
+    type.fields = {Type::array(Type::U32, 1)};
     EXPECT_FALSE(type.valid());
     type.fields = {Type::U32};
     EXPECT_TRUE(type.valid());
@@ -363,7 +363,7 @@ pagos::mir::Module array_module() {
          .span = {}});
     block.instructions.push_back(
         {.result = 2,
-         .type = {Type::ArrayU32, 2},
+         .type = Type::array(Type::U32, 2),
          .operation = ArrayOperation{.elements = {0, 1}},
          .span = {}});
     block.instructions.push_back(
@@ -395,7 +395,7 @@ TEST(MirVerifier, RejectsMalformedArrayConstants) {
     array.operation =
         ConstantOperation{.value = std::vector<bool>{true, false}};
     EXPECT_FALSE(verify(module));
-    array.type = {Type::ArrayU32, 0};
+    array.type = Type::array(Type::U32, 0);
     array.operation = ConstantOperation{.value = std::vector<std::uint32_t>{}};
     EXPECT_FALSE(verify(module));
 }
@@ -413,7 +413,7 @@ TEST(MirVerifier, RejectsMalformedArrayConstruction) {
     ASSERT_FALSE(result);
     EXPECT_EQ(result.error(), "MIR value `%3` does not dominate its use");
     instructions[2].operation = ArrayOperation{.elements = {0, 1}};
-    instructions[2].type = {Type::ArrayBool, 2};
+    instructions[2].type = Type::array(Type::Bool, 2);
     EXPECT_FALSE(verify(module));
 }
 
@@ -455,7 +455,7 @@ TEST(MirVerifier, AcceptsBooleanArrayConstants) {
     auto module = array_module();
     module.functions[0].result_type = Type::Bool;
     auto& instructions = module.functions[0].blocks[0].instructions;
-    instructions[2].type = {Type::ArrayBool, 2};
+    instructions[2].type = Type::array(Type::Bool, 2);
     instructions[2].operation =
         ConstantOperation{.value = std::vector<bool>{true, false}};
     instructions[3].type = Type::Bool;

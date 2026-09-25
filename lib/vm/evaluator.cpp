@@ -1,9 +1,40 @@
 #include "pagos/vm/evaluator.h"
+#include "pagos/integer.h"
 
 #include <cstdint>
-#include <utility>
+#include <optional>
 
 namespace pagos::vm {
+namespace {
+std::optional<IntegerOperation>
+integer_operation(syntax::BinaryOperator operation) {
+    using enum syntax::BinaryOperator;
+    switch (operation) {
+    case Add:
+        return IntegerOperation::Add;
+    case Subtract:
+        return IntegerOperation::Subtract;
+    case Multiply:
+        return IntegerOperation::Multiply;
+    case Divide:
+        return IntegerOperation::Divide;
+    case Remainder:
+        return IntegerOperation::Remainder;
+    case BitAnd:
+        return IntegerOperation::BitAnd;
+    case BitOr:
+        return IntegerOperation::BitOr;
+    case BitXor:
+        return IntegerOperation::BitXor;
+    case ShiftLeft:
+        return IntegerOperation::ShiftLeft;
+    case ShiftRight:
+        return IntegerOperation::ShiftRight;
+    default:
+        return std::nullopt;
+    }
+}
+} // namespace
 
 std::expected<hir::Constant, EvaluationError>
 Evaluator::unary(syntax::UnaryOperator operation,
@@ -12,8 +43,10 @@ Evaluator::unary(syntax::UnaryOperator operation,
     case syntax::UnaryOperator::Not:
         return hir::Constant{!std::get<bool>(operand)};
     case syntax::UnaryOperator::BitNot:
-        return hir::Constant{
-            static_cast<std::uint32_t>(~std::get<std::uint32_t>(operand))};
+        return hir::Constant{static_cast<std::uint32_t>(
+            IntegerValue::from_u32(std::get<std::uint32_t>(operand))
+                .bit_not()
+                .bits())};
     }
     return std::unexpected(
         EvaluationError{.code = "E4002", .message = "unknown unary operation"});
@@ -29,59 +62,41 @@ Evaluator::binary(syntax::BinaryOperator operation, const hir::Constant& left,
         return hir::Constant{operation == LogicalAnd ? lhs && rhs : lhs || rhs};
     }
     if (operation == Equal || operation == NotEqual) {
-        const auto equal = left == right;
+        const auto equal = constant_equal(left, right);
         return hir::Constant{operation == Equal ? equal : !equal};
     }
-
-    const auto lhs = std::get<std::uint32_t>(left);
-    const auto rhs = std::get<std::uint32_t>(right);
+    const auto lhs = IntegerValue::from_u32(std::get<std::uint32_t>(left));
+    const auto rhs = IntegerValue::from_u32(std::get<std::uint32_t>(right));
+    if (const auto integer_op = integer_operation(operation)) {
+        const auto result = lhs.apply(*integer_op, rhs);
+        if (!result) {
+            if (result.error() == IntegerError::InvalidShift) {
+                return std::unexpected(EvaluationError{
+                    .code = "E4009",
+                    .message = "shift count must be less than 32"});
+            }
+            if (result.error() == IntegerError::DivideByZero) {
+                return std::unexpected(EvaluationError{
+                    .code = "E4001",
+                    .message = operation == Divide ? "division by zero"
+                                                   : "remainder by zero"});
+            }
+            return std::unexpected(EvaluationError{
+                .code = "E4002", .message = "invalid integer operation"});
+        }
+        return hir::Constant{static_cast<std::uint32_t>(result->bits())};
+    }
+    const auto order = lhs.compare(rhs).value();
     switch (operation) {
-    case Add:
-        return hir::Constant{static_cast<std::uint32_t>(lhs + rhs)};
-    case Subtract:
-        return hir::Constant{static_cast<std::uint32_t>(lhs - rhs)};
-    case Multiply:
-        return hir::Constant{static_cast<std::uint32_t>(lhs * rhs)};
-    case BitAnd:
-        return hir::Constant{lhs & rhs};
-    case BitOr:
-        return hir::Constant{lhs | rhs};
-    case BitXor:
-        return hir::Constant{lhs ^ rhs};
-    case ShiftLeft:
-    case ShiftRight:
-        if (rhs >= 32) {
-            return std::unexpected(
-                EvaluationError{.code = "E4009",
-                                .message = "shift count must be less than 32"});
-        }
-        return hir::Constant{operation == ShiftLeft
-                                 ? static_cast<std::uint32_t>(lhs << rhs)
-                                 : static_cast<std::uint32_t>(lhs >> rhs)};
-    case Divide:
-        if (rhs == 0) {
-            return std::unexpected(EvaluationError{
-                .code = "E4001", .message = "division by zero"});
-        }
-        return hir::Constant{lhs / rhs};
-    case Remainder:
-        if (rhs == 0) {
-            return std::unexpected(EvaluationError{
-                .code = "E4001", .message = "remainder by zero"});
-        }
-        return hir::Constant{lhs % rhs};
     case Less:
-        return hir::Constant{lhs < rhs};
+        return hir::Constant{order < 0};
     case LessEqual:
-        return hir::Constant{lhs <= rhs};
+        return hir::Constant{order <= 0};
     case Greater:
-        return hir::Constant{lhs > rhs};
+        return hir::Constant{order > 0};
     case GreaterEqual:
-        return hir::Constant{lhs >= rhs};
-    case Equal:
-    case NotEqual:
-    case LogicalAnd:
-    case LogicalOr:
+        return hir::Constant{order >= 0};
+    default:
         break;
     }
     return std::unexpected(EvaluationError{

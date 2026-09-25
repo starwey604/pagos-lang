@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <iosfwd>
 #include <string>
 #include <variant>
 #include <vector>
@@ -17,5 +18,10 @@ struct RecordConstant {
 };
 using Constant = std::variant<std::uint32_t, bool, std::vector<std::uint32_t>,
                               std::vector<bool>, RecordConstant>;
+
+[[nodiscard]] std::size_t constant_hash(const Constant& value) noexcept;
+[[nodiscard]] bool constant_equal(const Constant& left, const Constant& right);
+[[nodiscard]] Constant from_scalar(const ScalarConstant& value);
+void print_constant(const Constant& value, std::ostream& output);
 
 } // namespace pagos

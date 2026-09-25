@@ -83,8 +83,8 @@ class StageAnalyzer {
     hir::ExprPtr
     analyze_array_generator(const syntax::ArrayGeneratorExpr& expression);
     hir::ExprPtr finish_array(std::vector<hir::ExprPtr> elements,
-                              const syntax::Type& type, source::Span span);
-    bool reserve_array(std::size_t count, const syntax::Type& type,
+                              const sema::Type& type, source::Span span);
+    bool reserve_array(std::size_t count, const sema::Type& type,
                        source::Span span);
     bool reserve_aggregate(std::size_t bool_members, std::size_t u32_members,
                            source::Span span);
@@ -95,7 +95,7 @@ class StageAnalyzer {
     void define(const std::string& name, hir::ExprPtr value);
     [[nodiscard]] hir::ExprPtr lookup(const std::string& name) const;
     [[nodiscard]] hir::ExprPtr make_runtime(
-        hir::Expr::Kind kind, syntax::Type type, source::Span span,
+        hir::Expr::Kind kind, sema::Type type, source::Span span,
         std::vector<hir::ExprPtr> operands, hir::RuntimeTrace trace,
         std::optional<syntax::UnaryOperator> unary = std::nullopt,
         std::optional<syntax::BinaryOperator> binary = std::nullopt) const;
@@ -105,10 +105,10 @@ class StageAnalyzer {
     [[nodiscard]] hir::ExprPtr resolve_return(const hir::ExprPtr& value) const;
     void report_static_failure(const syntax::BindingStmt& binding,
                                const hir::RuntimeTrace& trace);
-    bool check_resolved_type(const syntax::Type& expected,
+    bool check_resolved_type(const sema::Type& expected,
                              const hir::ExprPtr& value, source::Span span,
                              const std::string& context);
-    [[nodiscard]] syntax::Type type_of(const syntax::Expr& expression) const;
+    [[nodiscard]] sema::Type type_of(const syntax::Expr& expression) const;
     [[nodiscard]] bool consume_fuel(source::Span span);
     [[nodiscard]] std::optional<SpecializationKey>
     specialization_key(const syntax::Function& function,

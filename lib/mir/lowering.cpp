@@ -23,8 +23,7 @@ class Lowerer {
             Type type{Type::Record};
             type.record_name = record.name;
             for (const auto& field : record.fields) {
-                type.fields.push_back(
-                    field == syntax::TypeKind::Bool ? Type::Bool : Type::U32);
+                type.fields.push_back(type_of(field));
             }
             records_.emplace(record.name, std::move(type));
         }
@@ -35,7 +34,7 @@ class Lowerer {
                 return std::unexpected(lowered.error());
             }
             result = *lowered;
-            if (hir_module.result->type == syntax::TypeKind::Bool) {
+            if (hir_module.result->type == sema::TypeKind::Bool) {
                 result = emit(Type::U32, BoolToU32Operation{.operand = result},
                               hir_module.result->span);
             } else if (hir_module.result->type.is_array() ||
@@ -475,17 +474,20 @@ class Lowerer {
                     expression->span);
     }
 
-    Type type_of(const syntax::Type& type) const {
+    Type type_of(const sema::Type& type) const {
         if (type.is_record()) {
-            return records_.at(type.record_name);
+            const auto found = records_.find(type.record_name);
+            return found == records_.end() ? Type{Type::Invalid}
+                                           : found->second;
         }
         if (type.is_array()) {
-            return {type.element_type() == syntax::TypeKind::Bool
-                        ? Type::ArrayBool
-                        : Type::ArrayU32,
-                    type.length};
+            return Type::array(type_of(type.element_type()), type.length);
         }
-        return type == syntax::TypeKind::Bool ? Type::Bool : Type::U32;
+        if (type.kind == sema::TypeKind::Integer) {
+            return Type::integer(type.integer_type.width,
+                                 type.integer_type.is_signed);
+        }
+        return type == sema::TypeKind::Bool ? Type::Bool : Type::Invalid;
     }
 
     static Constant to_constant(const hir::Constant& constant) {

@@ -2,7 +2,6 @@
 
 #include <ostream>
 #include <string>
-#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -233,10 +232,12 @@ std::expected<void, std::string> verify_function(const Function& function) {
                     continue;
                 }
                 const bool valid =
-                    (instruction.type.kind == Type::ArrayU32 && integers &&
+                    (instruction.type.is_array() &&
+                     instruction.type.element_type() == Type::U32 && integers &&
                      integers->size() == instruction.type.length) ||
-                    (instruction.type.kind == Type::ArrayBool && booleans &&
-                     booleans->size() == instruction.type.length) ||
+                    (instruction.type.is_array() &&
+                     instruction.type.element_type() == Type::Bool &&
+                     booleans && booleans->size() == instruction.type.length) ||
                     (instruction.type == Type::U32 &&
                      std::holds_alternative<std::uint32_t>(constant->value)) ||
                     (instruction.type == Type::Bool &&
@@ -493,53 +494,7 @@ void print_instruction(const Instruction& instruction, std::ostream& output) {
     if (const auto* constant =
             std::get_if<ConstantOperation>(&instruction.operation)) {
         output << "const ";
-        if (std::holds_alternative<std::uint32_t>(constant->value)) {
-            output << std::get<std::uint32_t>(constant->value);
-        } else if (std::holds_alternative<bool>(constant->value)) {
-            output << (std::get<bool>(constant->value) ? "true" : "false");
-        } else if (const auto* record =
-                       std::get_if<RecordConstant>(&constant->value)) {
-            output << record->name << '(';
-            for (std::size_t index = 0; index < record->fields.size();
-                 ++index) {
-                if (index != 0) {
-                    output << ", ";
-                }
-                std::visit(
-                    [&](auto value) {
-                        if constexpr (std::is_same_v<decltype(value), bool>) {
-                            output << (value ? "true" : "false");
-                        } else {
-                            output << value;
-                        }
-                    },
-                    record->fields[index]);
-            }
-            output << ')';
-        } else {
-            std::visit(
-                [&](const auto& values) {
-                    if constexpr (requires { values.size(); }) {
-                        output << '[';
-                        for (std::size_t index = 0; index < values.size();
-                             ++index) {
-                            if (index != 0) {
-                                output << ", ";
-                            }
-                            if constexpr (std::is_same_v<
-                                              typename std::decay_t<
-                                                  decltype(values)>::value_type,
-                                              bool>) {
-                                output << (values[index] ? "true" : "false");
-                            } else {
-                                output << values[index];
-                            }
-                        }
-                        output << ']';
-                    }
-                },
-                constant->value);
-        }
+        print_constant(constant->value, output);
     } else if (std::holds_alternative<ExternalInputOperation>(
                    instruction.operation)) {
         output << "external_input";
@@ -603,7 +558,11 @@ std::string type_name(const Type& type) {
         return "[" + type_name(type.element_type()) + "; " +
                std::to_string(type.length) + "]";
     }
-    return type == Type::Bool ? "bool" : "u32";
+    if (type.kind == Type::Integer) {
+        return std::string(type.integer_type.is_signed ? "i" : "u") +
+               std::to_string(type.integer_type.width);
+    }
+    return type == Type::Bool ? "bool" : "<invalid>";
 }
 
 std::string_view binary_name(BinaryOperator operation) noexcept {

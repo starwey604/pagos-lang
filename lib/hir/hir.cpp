@@ -2,7 +2,6 @@
 
 #include <ostream>
 #include <string_view>
-#include <type_traits>
 
 namespace pagos::hir {
 namespace {
@@ -57,54 +56,7 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
     }
     switch (expression->kind) {
     case Expr::Kind::Constant: {
-        const auto& constant = expression->constant.value();
-        if (std::holds_alternative<std::uint32_t>(constant)) {
-            output << std::get<std::uint32_t>(constant);
-        } else if (std::holds_alternative<bool>(constant)) {
-            output << (std::get<bool>(constant) ? "true" : "false");
-        } else if (const auto* record =
-                       std::get_if<RecordConstant>(&constant)) {
-            output << record->name << '(';
-            for (std::size_t index = 0; index < record->fields.size();
-                 ++index) {
-                if (index != 0) {
-                    output << ", ";
-                }
-                std::visit(
-                    [&](auto value) {
-                        if constexpr (std::is_same_v<decltype(value), bool>) {
-                            output << (value ? "true" : "false");
-                        } else {
-                            output << value;
-                        }
-                    },
-                    record->fields[index]);
-            }
-            output << ')';
-        } else {
-            std::visit(
-                [&](const auto& values) {
-                    if constexpr (requires { values.size(); }) {
-                        output << '[';
-                        for (std::size_t index = 0; index < values.size();
-                             ++index) {
-                            if (index != 0) {
-                                output << ", ";
-                            }
-                            if constexpr (std::is_same_v<
-                                              typename std::decay_t<
-                                                  decltype(values)>::value_type,
-                                              bool>) {
-                                output << (values[index] ? "true" : "false");
-                            } else {
-                                output << values[index];
-                            }
-                        }
-                        output << ']';
-                    }
-                },
-                constant);
-        }
+        print_constant(expression->constant.value(), output);
         break;
     }
     case Expr::Kind::Reference:
@@ -154,7 +106,7 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
         output << ", " << expression->variable_name.value() << ')';
         break;
     case Expr::Kind::Record:
-        output << syntax::type_name(expression->type);
+        output << sema::type_name(expression->type);
         [[fallthrough]];
     case Expr::Kind::Sequence:
     case Expr::Kind::Array:
@@ -200,7 +152,7 @@ std::string_view stage_name(Stage stage) noexcept {
     return stage == Stage::Static ? "Static" : "Runtime";
 }
 
-ExprPtr make_constant(Constant value, syntax::Type type, source::Span span) {
+ExprPtr make_constant(Constant value, sema::Type type, source::Span span) {
     auto expression = std::make_shared<Expr>();
     expression->kind = Expr::Kind::Constant;
     expression->type = std::move(type);
@@ -231,7 +183,7 @@ void print(const Module& module, std::ostream& output) {
                 output << ", ";
             }
             output << record.names[index] << ": "
-                   << syntax::type_name(record.fields[index]);
+                   << sema::type_name(record.fields[index]);
         }
         output << "}\n";
     }
@@ -242,13 +194,13 @@ void print(const Module& module, std::ostream& output) {
             if (index != 0) {
                 output << ", ";
             }
-            output << syntax::type_name(function.parameters[index]);
+            output << sema::type_name(function.parameters[index]);
         }
-        output << ") -> " << syntax::type_name(function.result) << '\n';
+        output << ") -> " << sema::type_name(function.result) << '\n';
     }
     for (const auto& binding : module.bindings) {
         output << "binding " << binding.name << ": "
-               << syntax::type_name(binding.type) << " ["
+               << sema::type_name(binding.type) << " ["
                << stage_name(binding.stage) << "] = ";
         print_expression(binding.value, output);
         output << '\n';

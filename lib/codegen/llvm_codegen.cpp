@@ -164,7 +164,7 @@ class Generator {
         if (type.is_record()) {
             std::vector<llvm::Type*> fields;
             fields.reserve(type.fields.size());
-            for (const auto field : type.fields) {
+            for (const auto& field : type.fields) {
                 fields.push_back(llvm_type(field));
             }
             return llvm::StructType::get(context_, fields);
@@ -173,8 +173,9 @@ class Generator {
             return llvm::ArrayType::get(llvm_type(type.element_type()),
                                         type.length);
         }
-        return type == mir::Type::Bool ? builder_.getInt1Ty()
-                                       : builder_.getInt32Ty();
+        return type == mir::Type::Bool
+                   ? builder_.getInt1Ty()
+                   : builder_.getIntNTy(type.integer_type.width);
     }
 
     llvm::Value* emit_instruction(const mir::Instruction& instruction) {

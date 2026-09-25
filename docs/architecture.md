@@ -22,8 +22,32 @@ table feeds stage analysis.
 
 Milestone 1 initially lowered residual typed HIR directly to LLVM IR as a
 vertical-slice shortcut. The first Milestone 2 slice replaces that shortcut
-with the residual SSA MIR boundary shown below. No LLVM values or APIs appear
-in the AST, type checker, stage analyzer, evaluator, or MIR lowering layer.
+with the residual SSA MIR boundary shown below. No LLVM IR types or values
+appear in syntax, semantic, HIR, evaluator, or MIR interfaces. The private
+integer implementation may use LLVM Support/ADT (`APInt`); binding-time rules,
+checked-operation diagnostics, and target semantics remain Pagos-owned.
+
+M3 preparation separates source annotations (`syntax::Type`) from semantic
+facts (`sema::Type`) and concrete residual descriptors (`mir::Type`). Semantic
+and MIR integers carry width/signedness, arrays carry a scalar element type
+and length, and record fields retain ordered types plus nominal identity.
+Deferred semantic lengths and error/unknown types cannot become valid MIR.
+Source syntax still admits only the M2 subset; representation support does
+not enable additional language types or generalize every MIR operation.
+
+`IntegerValue` stores up to 64 bits inline and delegates checked arithmetic
+to a private APInt adapter. Wider values are rejected explicitly. Existing
+M2 constant payloads remain compact u32/bool vectors; their evaluator ingress
+uses the integer adapter. Multi-width constant payload admission and signed
+source-language rules belong to M3. Shared constant equality, hashing, scalar
+conversion, and printing preserve nominal record identity and scalar types.
+
+HIR nodes are shared immutable computations, but their `Constant` payloads
+are currently owned values. Specialization keys copy argument payloads;
+Sequence construction and HIR-to-MIR constant emission can also copy vectors.
+No constant pool, shared aggregate payload, or arena migration is introduced
+without a measured benefit. This is an explicit remaining optimization point,
+not a claim of zero-copy evaluation.
 
 ```mermaid
 flowchart TB

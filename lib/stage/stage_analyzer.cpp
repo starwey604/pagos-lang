@@ -107,35 +107,7 @@ std::size_t StageAnalyzer::SpecializationKeyHash::operator()(
     const SpecializationKey& key) const noexcept {
     auto hash = std::hash<const syntax::Function*>{}(key.function);
     for (const auto& argument : key.arguments) {
-        auto argument_hash = argument.index();
-        std::visit(
-            [&](const auto& value) {
-                const auto mix = [&](std::size_t part) {
-                    argument_hash ^= part + 0x9e3779b9U +
-                                     (argument_hash << 6U) +
-                                     (argument_hash >> 2U);
-                };
-                if constexpr (requires { value.fields; }) {
-                    mix(std::hash<std::string>{}(value.name));
-                    mix(value.fields.size());
-                    for (const auto& field : value.fields) {
-                        mix(field.index());
-                        std::visit(
-                            [&](auto scalar) {
-                                mix(static_cast<std::size_t>(scalar));
-                            },
-                            field);
-                    }
-                } else if constexpr (requires { value.size(); }) {
-                    mix(value.size());
-                    for (auto element : value) {
-                        mix(static_cast<std::size_t>(element));
-                    }
-                } else {
-                    mix(static_cast<std::size_t>(value));
-                }
-            },
-            argument);
+        const auto argument_hash = constant_hash(argument);
         hash ^= argument_hash + 0x9e3779b9U + (hash << 6U) + (hash >> 2U);
     }
     return hash;
@@ -187,8 +159,8 @@ StageAnalyzer::analyze(const syntax::Module& module) {
     if (!effects.empty()) {
         auto value = result->result;
         if (!value) {
-            value =
-                hir::make_constant(std::uint32_t{0}, syntax::TypeKind::U32, {});
+            value = hir::make_constant(std::uint32_t{0},
+                                       sema::TypeKind::Integer, {});
         }
         const auto span = value->span;
         result->result =
@@ -302,7 +274,7 @@ StageAnalyzer::analyze_for(const syntax::ForStmt& loop_statement) {
             }
             scopes_.emplace_back();
             define(loop_statement.variable,
-                   hir::make_constant(index, syntax::TypeKind::U32,
+                   hir::make_constant(index, sema::TypeKind::Integer,
                                       loop_statement.variable_span));
             auto body_result = analyze_block(*loop_statement.body);
             scopes_.pop_back();
@@ -323,7 +295,7 @@ StageAnalyzer::analyze_for(const syntax::ForStmt& loop_statement) {
     trace.path.push_back(loop_statement.variable);
     auto index = std::make_shared<hir::Expr>();
     index->kind = hir::Expr::Kind::LoopIndex;
-    index->type = syntax::TypeKind::U32;
+    index->type = sema::TypeKind::Integer;
     index->stage = hir::Stage::Runtime;
     index->span = loop_statement.variable_span;
     index->trace = trace;
@@ -336,7 +308,7 @@ StageAnalyzer::analyze_for(const syntax::ForStmt& loop_statement) {
 
     auto loop = std::make_shared<hir::Expr>();
     loop->kind = hir::Expr::Kind::RangeLoop;
-    loop->type = syntax::TypeKind::Void;
+    loop->type = sema::TypeKind::Void;
     loop->stage = hir::Stage::Runtime;
     loop->span = loop_statement.span;
     loop->trace = std::move(trace);
@@ -411,12 +383,12 @@ hir::ExprPtr StageAnalyzer::analyze_expression(const syntax::Expr& expression) {
         const auto& integer =
             static_cast<const syntax::IntegerExpr&>(expression);
         return hir::make_constant(parse_u32(integer.spelling),
-                                  syntax::TypeKind::U32, expression.span);
+                                  sema::TypeKind::Integer, expression.span);
     }
     case syntax::Expr::Kind::Boolean: {
         const auto& boolean =
             static_cast<const syntax::BooleanExpr&>(expression);
-        return hir::make_constant(boolean.value, syntax::TypeKind::Bool,
+        return hir::make_constant(boolean.value, sema::TypeKind::Bool,
                                   expression.span);
     }
     case syntax::Expr::Kind::Name: {
@@ -453,7 +425,7 @@ StageAnalyzer::analyze_record(const syntax::RecordExpr& expression) {
     const auto& declaration = *records_.at(expression.name);
     const auto bool_members = static_cast<std::size_t>(
         std::ranges::count_if(declaration.fields, [](const auto& field) {
-            return field.type == syntax::TypeKind::Bool;
+            return sema::Type(field.type) == sema::TypeKind::Bool;
         }));
     if (!reserve_aggregate(bool_members,
                            declaration.fields.size() - bool_members,
@@ -491,7 +463,7 @@ StageAnalyzer::analyze_record(const syntax::RecordExpr& expression) {
     } else {
         RecordConstant constant{.name = expression.name};
         for (const auto& value : fields) {
-            if (value->type == syntax::TypeKind::Bool) {
+            if (value->type == sema::TypeKind::Bool) {
                 constant.fields.emplace_back(std::get<bool>(*value->constant));
             } else {
                 constant.fields.emplace_back(
@@ -519,8 +491,7 @@ hir::ExprPtr StageAnalyzer::analyze_field(const syntax::FieldExpr& expression) {
     std::optional<hir::Constant> constant;
     std::optional<hir::RuntimeTrace> trace;
     if (record->stage == hir::Stage::Static) {
-        std::visit(
-            [&](auto value) { constant = value; },
+        constant = from_scalar(
             std::get<RecordConstant>(*record->constant).fields.at(offset));
     } else if (const auto projected =
                    project_aggregate_member(record, offset, expression.name)) {
@@ -567,13 +538,13 @@ hir::ExprPtr StageAnalyzer::analyze_array(const syntax::ArrayExpr& expression) {
                         expression.span);
 }
 
-bool StageAnalyzer::reserve_array(std::size_t count, const syntax::Type& type,
+bool StageAnalyzer::reserve_array(std::size_t count, const sema::Type& type,
                                   source::Span span) {
     if (construction_budget_exhausted_) {
         return false;
     }
     const std::size_t width =
-        type.element_type() == syntax::TypeKind::Bool ? 1 : 4;
+        type.element_type() == sema::TypeKind::Bool ? 1 : 4;
     const auto element_room =
         limits_.array_elements - stats_.array_elements_reserved;
     const auto byte_room = limits_.array_bytes - stats_.array_bytes_reserved;
@@ -725,7 +696,7 @@ hir::ExprPtr StageAnalyzer::analyze_array_generator(
         }
         scopes_.emplace_back();
         define(expression.variable,
-               hir::make_constant(index, syntax::TypeKind::U32,
+               hir::make_constant(index, sema::TypeKind::Integer,
                                   expression.variable_span));
         auto body = analyze_block(*expression.body);
         scopes_.pop_back();
@@ -751,7 +722,7 @@ hir::ExprPtr StageAnalyzer::analyze_array_generator(
 }
 
 hir::ExprPtr StageAnalyzer::finish_array(std::vector<hir::ExprPtr> elements,
-                                         const syntax::Type& type,
+                                         const sema::Type& type,
                                          source::Span span) {
     std::optional<hir::RuntimeTrace> trace;
     for (const auto& element : elements) {
@@ -766,7 +737,7 @@ hir::ExprPtr StageAnalyzer::finish_array(std::vector<hir::ExprPtr> elements,
                             std::move(elements), std::move(*trace));
     }
     hir::Constant constant;
-    if (type.element_type() == syntax::TypeKind::Bool) {
+    if (type.element_type() == sema::TypeKind::Bool) {
         std::vector<bool> values;
         values.reserve(elements.size());
         for (const auto& element : elements) {
@@ -813,7 +784,7 @@ hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
         }
         std::optional<hir::Constant> value;
         if (array->stage == hir::Stage::Static) {
-            if (array->type.element_type() == syntax::TypeKind::Bool) {
+            if (array->type.element_type() == sema::TypeKind::Bool) {
                 value = static_cast<bool>(
                     std::get<std::vector<bool>>(*array->constant)[offset]);
             } else {
@@ -886,7 +857,7 @@ StageAnalyzer::analyze_binary(const syntax::BinaryExpr& expression) {
         const auto left_value = std::get<bool>(left->constant.value());
         if ((expression.operation == LogicalAnd && !left_value) ||
             (expression.operation == LogicalOr && left_value)) {
-            auto value = hir::make_constant(left_value, syntax::TypeKind::Bool,
+            auto value = hir::make_constant(left_value, sema::TypeKind::Bool,
                                             expression.span);
             if (has_residual_work(left)) {
                 return make_sequence({std::move(left)}, std::move(value),
@@ -942,14 +913,14 @@ StageAnalyzer::analyze_binary(const syntax::BinaryExpr& expression) {
         expression.operation == LogicalOr) {
         const auto fallback =
             hir::make_constant(expression.operation == LogicalOr,
-                               syntax::TypeKind::Bool, expression.span);
+                               sema::TypeKind::Bool, expression.span);
         const auto then_value =
             expression.operation == LogicalAnd ? right : fallback;
         const auto else_value =
             expression.operation == LogicalAnd ? fallback : right;
         const auto trace =
             left->trace ? left->trace.value() : right->trace.value();
-        return make_runtime(hir::Expr::Kind::If, syntax::TypeKind::Bool,
+        return make_runtime(hir::Expr::Kind::If, sema::TypeKind::Bool,
                             expression.span, {left, then_value, else_value},
                             trace);
     }
@@ -963,7 +934,7 @@ StageAnalyzer::analyze_binary(const syntax::BinaryExpr& expression) {
 hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
     if (expression.callee == "external_input") {
         return make_runtime(hir::Expr::Kind::ExternalInput,
-                            syntax::TypeKind::U32, expression.span, {},
+                            sema::TypeKind::Integer, expression.span, {},
                             {.origin_span = expression.callee_span,
                              .origin_name = "external_input",
                              .path = {"external_input"}});
@@ -1177,7 +1148,7 @@ hir::ExprPtr StageAnalyzer::lookup(const std::string& name) const {
 }
 
 hir::ExprPtr StageAnalyzer::make_runtime(
-    hir::Expr::Kind kind, syntax::Type type, source::Span span,
+    hir::Expr::Kind kind, sema::Type type, source::Span span,
     std::vector<hir::ExprPtr> operands, hir::RuntimeTrace trace,
     std::optional<syntax::UnaryOperator> unary,
     std::optional<syntax::BinaryOperator> binary) const {
@@ -1255,7 +1226,7 @@ hir::ExprPtr StageAnalyzer::resolve_return(const hir::ExprPtr& value) const {
     return nullptr;
 }
 
-bool StageAnalyzer::check_resolved_type(const syntax::Type& expected,
+bool StageAnalyzer::check_resolved_type(const sema::Type& expected,
                                         const hir::ExprPtr& value,
                                         source::Span span,
                                         const std::string& context) {
@@ -1264,8 +1235,8 @@ bool StageAnalyzer::check_resolved_type(const syntax::Type& expected,
         return true;
     }
     diagnostics_.error("E1008", "type mismatch in " + context, span,
-                       "expected `" + syntax::type_name(expected) +
-                           "`, found `" + syntax::type_name(value->type) + "`");
+                       "expected `" + sema::type_name(expected) + "`, found `" +
+                           sema::type_name(value->type) + "`");
     return false;
 }
 
@@ -1286,12 +1257,12 @@ void StageAnalyzer::report_static_failure(const syntax::BindingStmt& binding,
     diagnostics_.report(std::move(diagnostic));
 }
 
-syntax::Type StageAnalyzer::type_of(const syntax::Expr& expression) const {
+sema::Type StageAnalyzer::type_of(const syntax::Expr& expression) const {
     if (const auto iterator = types_.find(&expression);
         iterator != types_.end()) {
         return iterator->second;
     }
-    return syntax::TypeKind::Error;
+    return sema::TypeKind::Error;
 }
 
 bool StageAnalyzer::consume_fuel(source::Span span) {

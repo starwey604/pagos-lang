@@ -1,5 +1,7 @@
 #pragma once
 
+#include "pagos/sema/type.h"
+
 #include "pagos/source/span.h"
 #include "pagos/syntax/ast.h"
 #include "pagos/value.h"
@@ -48,7 +50,7 @@ struct Expr {
     };
 
     Kind kind{Kind::Constant};
-    syntax::Type type{syntax::TypeKind::Error};
+    sema::Type type{sema::TypeKind::Error};
     Stage stage{Stage::Static};
     bool falls_through{true};
     bool may_return{};
@@ -65,7 +67,7 @@ struct Expr {
 struct Binding {
     std::string name;
     source::Span name_span;
-    syntax::Type type{syntax::TypeKind::Error};
+    sema::Type type{sema::TypeKind::Error};
     Stage stage{Stage::Static};
     ExprPtr value;
     std::optional<RuntimeTrace> trace;
@@ -73,15 +75,15 @@ struct Binding {
 
 struct FunctionSummary {
     std::string name;
-    std::vector<syntax::Type> parameters;
-    syntax::Type result{syntax::TypeKind::Error};
+    std::vector<sema::Type> parameters;
+    sema::Type result{sema::TypeKind::Error};
 };
 
 struct Module {
     struct RecordType {
         std::string name;
         std::vector<std::string> names;
-        std::vector<syntax::Type> fields;
+        std::vector<sema::Type> fields;
     };
     std::vector<RecordType> records;
     std::vector<FunctionSummary> functions;
@@ -90,7 +92,7 @@ struct Module {
 };
 
 [[nodiscard]] std::string_view stage_name(Stage stage) noexcept;
-[[nodiscard]] ExprPtr make_constant(Constant value, syntax::Type type,
+[[nodiscard]] ExprPtr make_constant(Constant value, sema::Type type,
                                     source::Span span);
 [[nodiscard]] ExprPtr with_trace_step(const ExprPtr& expression,
                                       std::string step);

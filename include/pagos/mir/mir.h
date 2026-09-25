@@ -1,5 +1,7 @@
 #pragma once
 
+#include "pagos/integer.h"
+
 #include "pagos/source/span.h"
 #include "pagos/value.h"
 
@@ -17,40 +19,64 @@ using ValueId = std::uint32_t;
 using BlockId = std::uint32_t;
 
 struct Type {
-    enum Kind { Bool, U32, ArrayBool, ArrayU32, Record };
-    Kind kind{U32};
+    enum Kind { Invalid, Bool, Integer, Array, Record };
+    // Convenience descriptor, not a separate integer kind.
+    static const Type U32;
+    Kind kind{Integer};
+    IntegerType integer_type;
+    Kind element_kind{Invalid};
     std::uint32_t length{};
     std::string record_name;
-    std::vector<Kind> fields;
+    std::vector<Type> fields;
     Type() = default;
-    Type(Kind kind, std::uint32_t length = 0) : kind(kind), length(length) {}
+    Type(Kind kind) : kind(kind) {}
     bool operator==(const Type&) const = default;
     [[nodiscard]] bool is_record() const noexcept { return kind == Record; }
-    [[nodiscard]] bool is_array() const noexcept {
-        return kind == ArrayBool || kind == ArrayU32;
+    [[nodiscard]] bool is_array() const noexcept { return kind == Array; }
+    [[nodiscard]] static Type integer(unsigned width, bool is_signed = false) {
+        Type type{Integer};
+        type.integer_type = {width, is_signed};
+        return type;
+    }
+    [[nodiscard]] static Type array(const Type& element, std::uint32_t length) {
+        if (element.kind != Bool && element.kind != Integer)
+            return Invalid;
+        Type type{Array};
+        type.element_kind = element.kind;
+        type.integer_type = element.integer_type;
+        type.length = length;
+        return type;
     }
     [[nodiscard]] Type element_type() const noexcept {
-        return kind == ArrayBool ? Bool : U32;
+        if (!is_array())
+            return Invalid;
+        Type type{element_kind};
+        type.integer_type = integer_type;
+        return type;
     }
     [[nodiscard]] bool valid() const noexcept {
         if (is_record()) {
-            if (record_name.empty() || fields.empty() || length != 0) {
+            if (record_name.empty() || fields.empty() || length != 0 ||
+                element_kind != Invalid)
                 return false;
-            }
-            for (const auto field : fields) {
-                if (field != Bool && field != U32) {
+            for (const auto& field : fields) {
+                if ((field.kind != Bool && field.kind != Integer) ||
+                    !field.valid())
                     return false;
-                }
             }
             return true;
         }
-        if (!record_name.empty() || !fields.empty()) {
+        if (!record_name.empty() || !fields.empty())
             return false;
-        }
-        return is_array() ? length > 0
-                          : (kind == Bool || kind == U32) && length == 0;
+        if (is_array())
+            return length > 0 &&
+                   (element_kind == Bool || element_kind == Integer) &&
+                   element_type().valid();
+        return element_kind == Invalid && length == 0 &&
+               (kind == Bool || (kind == Integer && integer_type.valid()));
     }
 };
+inline const Type Type::U32 = Type::integer(32);
 enum class UnaryOperator { Not, BitNot };
 enum class BinaryOperator {
     Add,
