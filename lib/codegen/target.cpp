@@ -79,6 +79,11 @@ TargetLayout::create(TargetConfig config) {
             return std::unexpected("invalid target feature: " + feature);
         }
         const auto name = feature.substr(1);
+        if (triple.isRISCV() && name == "64bit" &&
+            (feature.front() == '+') != triple.isRISCV64()) {
+            return std::unexpected(
+                "target feature conflicts with triple width: " + feature);
+        }
         if (!seen.insert(name).second)
             return std::unexpected("duplicate target feature: " + name);
         if (std::ranges::none_of(

@@ -53,6 +53,12 @@ TEST(Target, ScalarArrayAndRecordLayoutUsesTargetAlignment) {
 TEST(Target, RejectsUnknownTargetsCpuAndFeatures) {
     EXPECT_FALSE(TargetLayout::create({.triple = "not-a-target"}));
     EXPECT_FALSE(TargetLayout::create(
+        {.triple = "riscv32-unknown-elf", .features = "+64bit"}));
+    EXPECT_FALSE(TargetLayout::create(
+        {.triple = "riscv64-unknown-elf", .features = "-64bit"}));
+    EXPECT_FALSE(TargetLayout::create(
+        {.triple = "riscv32-unknown-elf", .features = "+zfinx,+f"}));
+    EXPECT_FALSE(TargetLayout::create(
         {.triple = "riscv32-unknown-elf", .cpu = "generic-rv64"}));
     EXPECT_FALSE(TargetLayout::create(
         {.triple = "riscv32-unknown-elf", .cpu = "cortex-m3"}));
