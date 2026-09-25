@@ -92,6 +92,10 @@ Acceptance criteria:
 
 ## Milestone 3: Bare-metal systems slice
 
+Before implementation, follow the [M3 preparation plan](m3-preparation.md).
+It covers measurement, automated regression, type/value foundations, and target
+and effect interfaces without treating full M3 features as prerequisites.
+
 Add the minimum systems features needed for real firmware:
 
 - explicit-width integer types and target `usize`;
@@ -103,17 +107,26 @@ Add the minimum systems features needed for real firmware:
 - target triples, CPU features, object emission, and linker integration;
 - a minimal freestanding core library.
 
-Initial targets:
+Target order:
 
-- one Cortex-M board used by the project owner;
-- one RISC-V target when it adds coverage rather than just another demo.
+- QEMU RV32 `virt` first: single-core bare-metal validation without Linux,
+  a vendor HAL, or a physical-board prerequisite;
+- Cortex-M or another architecture when it adds portability coverage;
+- physical MCUs selected for a concrete project, not required to begin M3.
 
-Acceptance criteria:
+Simulator baseline acceptance:
 
-- blink and UART examples run on hardware;
-- generated code is compared with a C implementation;
-- flash, RAM, compile time, and relevant cycle counts are recorded;
-- no host pointer or host layout leaks into target output.
+- startup, linking, C interoperability, and UART/MMIO tests run automatically
+  with explicit output, failure, and timeout checks;
+- generated code is compared with C for the same target and optimization mode;
+- ELF section sizes and compile costs are recorded; emulator wall time is not
+  presented as hardware cycle, timing, or power evidence;
+- no host pointer or host layout leaks into target output, and virtual-board
+  addresses remain in platform support rather than the compiler core.
+
+Hardware follow-up remains distinct: validate blink/UART, chip-specific startup
+and peripherals, flash/RAM usage, and relevant real cycle counts. A simulator
+baseline does not imply that any particular CH32, STM32, or other MCU is supported.
 
 ## Milestone 4: Typed board configuration experiment
 

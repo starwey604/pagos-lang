@@ -21,6 +21,34 @@ checks `LLVM_VERSION_MAJOR`, and prefers the monolithic `LLVM` target when the
 package enables `LLVM_LINK_LLVM_DYLIB`. Component libraries are the fallback.
 Override discovery with `-DLLVM_DIR=/path/to/lib/cmake/llvm` when necessary.
 
+## Dependency Policy
+
+Use system packages for the compiler toolchain, LLVM, LLD, and QEMU. Do not
+download or build these implicitly during normal CMake configuration. Keep
+LLVM on the supported major version. Existing LLVM and GoogleTest discovery
+continues to use `find_package`; no source fallback is currently required.
+
+For future source dependencies, use CMake `FetchContent`, not Git submodules.
+Centralize declarations in `cmake/Dependencies.cmake` when the first such
+dependency is introduced. Pin Git dependencies to full commit hashes, or use
+archives with `URL_HASH SHA256=...`; do not track moving branches. Review
+license, provenance, transitive downloads, and upstream CMake code before
+adoption. Commit dependency updates separately with regression evidence.
+
+Provide explicit system-package and pinned-source modes rather than silently
+choosing whichever version happens to be installed. CI must select and record
+its mode. Keep downloads in the build tree and support pre-fetched checkouts
+through `FETCHCONTENT_SOURCE_DIR_<NAME>`. An offline first configuration needs
+the sources supplied beforehand; `FETCHCONTENT_FULLY_DISCONNECTED` does not
+populate an empty cache. See the
+[FetchContent reference](https://cmake.org/cmake/help/latest/module/FetchContent.html).
+
+Keep project warnings target-scoped; do not impose Pagos `-Werror` on upstream
+targets. Disable unnecessary dependency tests/examples. Vendor only small
+sources that genuinely need repository-local maintenance, retaining licenses
+and origin/version information. Build host dependencies and target runtimes
+in separate configurations: an RV32 builtins archive is not a host library.
+
 ## Configure and Build
 
 The default preset uses Clang and produces `build/debug/pagosc`:

@@ -99,6 +99,8 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
 - [Compiler architecture](docs/architecture.md): the LLVM-based implementation
   plan
 - [Roadmap](docs/roadmap.md): incremental milestones and acceptance criteria
+- [M3 preparation plan](docs/m3-preparation.md): pre-M3 tasks, dependencies,
+  validation gates, and deliberately deferred work
 
 ## Status
 
