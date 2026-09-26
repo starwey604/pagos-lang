@@ -97,6 +97,11 @@ range's bounds must be `u32`. Initializers and return expressions must match
 their declared or inferred type. There are no implicit conversions in the
 core language.
 
+Scalar calls with a Runtime scalar result lower to internal residual functions.
+Static calls still evaluate during analysis; aggregate calls retain the inline
+path. No new source syntax or foreign calling convention is introduced by
+this lowering choice. Runtime recursion remains unsupported.
+
 Unsuffixed literals default to `u32`; annotations do not retarget literals in
 this slice. Use `let byte: u8 = 255u8`, not `let byte: u8 = 255`. A suffixed
 literal must fit its type; `256u8` is an error, not a truncation. The suffix

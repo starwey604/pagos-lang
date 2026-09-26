@@ -1,0 +1,21 @@
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR
+// RUN: %run_residual %s 42 20
+// RUN: %run_optimized %s 42 20
+fn twice(x: u32) -> u32 { x + x }
+fn add_bias(bias: u32, value: u32) -> u32 { twice(value) + bias }
+let result = add_bias(2, external_input());
+// MIR: func @pagos_main() -> u32
+// MIR: call @pagos.add_bias.0
+// MIR: func @pagos.add_bias.0(u32) -> u32
+// MIR: parameter 0
+// MIR: call @pagos.twice.1
+// MIR: const 2
+// MIR: func @pagos.twice.1(u32) -> u32
+// IR-LABEL: define i32 @pagos_main()
+// IR: call i32 @pagos.add_bias.0(i32
+// IR-LABEL: define internal i32 @pagos.add_bias.0(i32
+// IR: call i32 @pagos.twice.1(i32
+// IR: add i32 {{.*}}, 2
+// IR-LABEL: define internal i32 @pagos.twice.1(i32
+// IR: add i32 %0, %0

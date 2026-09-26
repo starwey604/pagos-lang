@@ -117,6 +117,15 @@ struct ConstantOperation {
 
 struct ExternalInputOperation {};
 
+struct ParameterOperation {
+    std::uint32_t index;
+};
+
+struct CallOperation {
+    std::string callee;
+    std::vector<ValueId> arguments;
+};
+
 struct ArrayOperation {
     std::vector<ValueId> elements;
 };
@@ -168,7 +177,7 @@ using Operation =
     std::variant<ConstantOperation, ExternalInputOperation, UnaryOperation,
                  BinaryOperation, BoolToU32Operation, IntegerCastOperation,
                  PhiOperation, ArrayOperation, IndexOperation, RecordOperation,
-                 FieldOperation>;
+                 FieldOperation, ParameterOperation, CallOperation>;
 
 struct Instruction {
     ValueId result;
@@ -206,6 +215,8 @@ struct Function {
     Type result_type;
     BlockId entry;
     std::vector<BasicBlock> blocks;
+    std::vector<Type> parameters;
+    bool internal{};
 };
 
 struct Module {

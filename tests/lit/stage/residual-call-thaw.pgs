@@ -1,0 +1,8 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+fn twice(value: u32) -> u32 { value + value }
+let input = external_input();
+let doubled = twice(input);
+static let result = doubled;
+// CHECK: error[E2001]: static binding `result` was thawed
+// CHECK: dependency path:
+// CHECK: external_input -> input -> twice.value -> doubled -> result

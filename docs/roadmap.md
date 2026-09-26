@@ -106,7 +106,10 @@ wrapping negation, signed comparisons/division/shifts, and signedness-aware
 conversions. MIN/-1 division and remainder have explicit checks at both stages.
 The third slice adds distinct target-dependent `usize`, target-aware checking
 and Static evaluation, and cross-session width consistency checks;
-general Runtime calls, C ABI, object emission, memory, and MMIO remain open.
+the fourth slice emits scalar residual functions with typed parameters and
+direct calls, preserving argument evaluation and early-return boundaries.
+Runtime specialization reuse/recursion, aggregate call lowering, C ABI, object
+emission, memory, and MMIO remain open.
 
 Add the minimum systems features needed for real firmware:
 

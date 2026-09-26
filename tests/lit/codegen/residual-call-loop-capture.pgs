@@ -1,0 +1,9 @@
+// RUN: %run_residual %s 42 3 0 1 2
+// RUN: %run_optimized %s 42 3 0 1 2
+fn check(index: u32) -> bool { index == external_input() }
+for index in 0..external_input() {
+    let valid = check(index);
+    let divisor = if valid { 1 } else { 0 };
+    1 / divisor;
+}
+let result = 42;

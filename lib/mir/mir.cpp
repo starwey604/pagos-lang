@@ -22,7 +22,10 @@ std::string block_name(BlockId block) { return "bb" + std::to_string(block); }
 
 std::string value_name(ValueId value) { return "%" + std::to_string(value); }
 
-std::expected<void, std::string> verify_function(const Function& function) {
+using Functions = std::unordered_map<std::string, const Function*>;
+
+std::expected<void, std::string> verify_function(const Function& function,
+                                                 const Functions& functions) {
     if (!function.result_type.valid()) {
         return std::unexpected("invalid MIR result type");
     }
@@ -205,6 +208,39 @@ std::expected<void, std::string> verify_function(const Function& function) {
         for (std::size_t index = 0; index < block.instructions.size();
              ++index) {
             const auto& instruction = block.instructions[index];
+            if (const auto* parameter =
+                    std::get_if<ParameterOperation>(&instruction.operation)) {
+                if (parameter->index >= function.parameters.size() ||
+                    instruction.type != function.parameters[parameter->index])
+                    return std::unexpected(
+                        "invalid MIR parameter index or type");
+                continue;
+            }
+            if (const auto* call =
+                    std::get_if<CallOperation>(&instruction.operation)) {
+                const auto found = functions.find(call->callee);
+                if (found == functions.end())
+                    return std::unexpected("undefined MIR callee `" +
+                                           call->callee + "`");
+                const auto& callee = *found->second;
+                if (instruction.type != callee.result_type ||
+                    call->arguments.size() != callee.parameters.size())
+                    return std::unexpected("MIR call signature mismatch");
+                for (std::size_t argument = 0;
+                     argument < call->arguments.size(); ++argument) {
+                    const auto value = call->arguments[argument];
+                    const auto type = value_type(value);
+                    if (!type)
+                        return std::unexpected(type.error());
+                    if (*type != callee.parameters[argument])
+                        return std::unexpected(
+                            "MIR call argument type mismatch");
+                    if (auto valid = require_dominance(value, block.id, index);
+                        !valid)
+                        return valid;
+                }
+                continue;
+            }
             if (const auto* constant =
                     std::get_if<ConstantOperation>(&instruction.operation)) {
                 const auto* integers =
@@ -536,6 +572,18 @@ void print_instruction(const Instruction& instruction, std::ostream& output) {
             std::get_if<ConstantOperation>(&instruction.operation)) {
         output << "const ";
         print_constant(constant->value, output);
+    } else if (const auto* parameter =
+                   std::get_if<ParameterOperation>(&instruction.operation)) {
+        output << "parameter " << parameter->index;
+    } else if (const auto* call =
+                   std::get_if<CallOperation>(&instruction.operation)) {
+        output << "call @" << call->callee << '(';
+        for (std::size_t index = 0; index < call->arguments.size(); ++index) {
+            if (index != 0)
+                output << ", ";
+            output << value_name(call->arguments[index]);
+        }
+        output << ')';
     } else if (std::holds_alternative<ExternalInputOperation>(
                    instruction.operation)) {
         output << "external_input";
@@ -659,7 +707,14 @@ std::expected<void, std::string> verify(const Module& module) {
     if (module.functions.empty()) {
         return std::unexpected("MIR module has no functions");
     }
-    std::unordered_set<std::string> names;
+    Functions functions;
+    for (const auto& function : module.functions) {
+        if (function.name.empty() || function.name == "pagos_external_input")
+            return std::unexpected("empty or reserved MIR function name");
+        if (!functions.emplace(function.name, &function).second)
+            return std::unexpected("duplicate MIR function `" + function.name +
+                                   "`");
+    }
     std::unordered_map<std::string, Type> records;
     const auto consistent = [&](const Type& type) {
         if (!type.is_record()) {
@@ -669,6 +724,14 @@ std::expected<void, std::string> verify(const Module& module) {
         return inserted || entry->second == type;
     };
     for (const auto& function : module.functions) {
+        for (const auto& parameter : function.parameters) {
+            if (!parameter.valid() ||
+                !parameter.matches_pointer_width(module.pointer_bits))
+                return std::unexpected(
+                    "invalid MIR parameter type or target width");
+            if (!consistent(parameter))
+                return std::unexpected("inconsistent MIR record definition");
+        }
         if (!function.result_type.matches_pointer_width(module.pointer_bits))
             return std::unexpected(
                 "MIR usize width does not match semantic target");
@@ -687,11 +750,7 @@ std::expected<void, std::string> verify(const Module& module) {
                 }
             }
         }
-        if (!names.insert(function.name).second) {
-            return std::unexpected("duplicate MIR function `" + function.name +
-                                   "`");
-        }
-        if (auto valid = verify_function(function); !valid) {
+        if (auto valid = verify_function(function, functions); !valid) {
             return valid;
         }
     }
@@ -702,8 +761,14 @@ void print(const Module& module, std::ostream& output) {
     if (module.pointer_bits != 0)
         output << "target pointer_bits = " << module.pointer_bits << '\n';
     for (const auto& function : module.functions) {
-        output << "func @" << function.name << "() -> "
-               << type_name(function.result_type) << " {\n";
+        output << "func @" << function.name << '(';
+        for (std::size_t index = 0; index < function.parameters.size();
+             ++index) {
+            if (index != 0)
+                output << ", ";
+            output << type_name(function.parameters[index]);
+        }
+        output << ") -> " << type_name(function.result_type) << " {\n";
         for (const auto& block : function.blocks) {
             output << block_name(block.id) << ":\n";
             for (const auto& instruction : block.instructions) {

@@ -1,0 +1,8 @@
+// RUN: %run_residual %s trap 0
+// RUN: %run_optimized %s trap 0
+// RUN: %run_residual %s 42 2 7
+// RUN: %run_optimized %s 42 2 7
+fn divide(x: u32) -> u32 { 10 / x }
+let discarded = divide(external_input());
+external_input();
+let result = 42;

@@ -9,9 +9,14 @@
 namespace pagos::mir {
 namespace {
 
+struct LoweringContext {
+    Module output;
+    std::unordered_map<std::string, Type> records;
+};
+
 class Lowerer {
   public:
-    Lowerer() {
+    explicit Lowerer(LoweringContext& context) : context_(context) {
         function_.name = "pagos_main";
         function_.result_type = Type::U32;
         function_.entry = create_block("entry", std::nullopt);
@@ -25,7 +30,7 @@ class Lowerer {
             for (const auto& field : record.fields) {
                 type.fields.push_back(type_of(field));
             }
-            records_.emplace(record.name, std::move(type));
+            context_.records.emplace(record.name, std::move(type));
         }
         ValueId result{};
         if (hir_module.result) {
@@ -55,13 +60,13 @@ class Lowerer {
         }
         block(current_block_).terminator = Return{.value = result};
 
-        Module module;
-        module.pointer_bits = hir_module.pointer_bits;
-        module.functions.push_back(std::move(function_));
-        if (auto valid = verify(module); !valid) {
+        context_.output.pointer_bits = hir_module.pointer_bits;
+        context_.output.functions.insert(context_.output.functions.begin(),
+                                         std::move(function_));
+        if (auto valid = verify(context_.output); !valid) {
             return std::unexpected("invalid lowered MIR: " + valid.error());
         }
-        return module;
+        return std::move(context_.output);
     }
 
   private:
@@ -192,6 +197,9 @@ class Lowerer {
             break;
         case hir::Expr::Kind::ReturnScope:
             result = lower_return_scope(expression);
+            break;
+        case hir::Expr::Kind::Call:
+            result = lower_call(expression);
             break;
         case hir::Expr::Kind::Array:
         case hir::Expr::Kind::Index:
@@ -495,11 +503,55 @@ class Lowerer {
                     expression->span);
     }
 
+    std::expected<ValueId, std::string>
+    lower_call(const hir::ExprPtr& expression) {
+        if (!expression->call_body || !expression->variable_name)
+            return std::unexpected("HIR call requires a name and body");
+        std::vector<ValueId> arguments;
+        arguments.reserve(expression->operands.size());
+        for (const auto& operand : expression->operands) {
+            auto value = lower_expression(operand);
+            if (!value || !live_)
+                return value;
+            arguments.push_back(*value);
+        }
+        // Reserve a unique symbol before lowering nested calls. Separate
+        // lowerers keep SSA IDs, dominance caches and return scopes local.
+        const auto slot = context_.output.functions.size();
+        const auto name =
+            "pagos." + *expression->variable_name + "." + std::to_string(slot);
+        context_.output.functions.emplace_back();
+        Lowerer callee(context_);
+        callee.function_.name = name;
+        callee.function_.internal = true;
+        callee.function_.result_type = type_of(expression->type);
+        callee.function_.parameters.reserve(expression->operands.size());
+        for (const auto& operand : expression->operands) {
+            const auto type = type_of(operand->type);
+            const auto index =
+                static_cast<std::uint32_t>(callee.function_.parameters.size());
+            callee.function_.parameters.push_back(type);
+            const auto parameter =
+                callee.emit(type, ParameterOperation{index}, operand->span);
+            callee.cache(operand.get(), parameter);
+        }
+        auto value = callee.lower_expression(expression->call_body);
+        if (!value)
+            return std::unexpected(value.error());
+        if (!callee.live_)
+            return std::unexpected("HIR call body has no continuation result");
+        callee.block(callee.current_block_).terminator = Return{*value};
+        context_.output.functions[slot] = std::move(callee.function_);
+        return emit(type_of(expression->type),
+                    CallOperation{name, std::move(arguments)},
+                    expression->span);
+    }
+
     Type type_of(const sema::Type& type) const {
         if (type.is_record()) {
-            const auto found = records_.find(type.record_name);
-            return found == records_.end() ? Type{Type::Invalid}
-                                           : found->second;
+            const auto found = context_.records.find(type.record_name);
+            return found == context_.records.end() ? Type{Type::Invalid}
+                                                   : found->second;
         }
         if (type.is_array()) {
             return Type::array(type_of(type.element_type()), type.length);
@@ -560,7 +612,7 @@ class Lowerer {
     }
 
     Function function_;
-    std::unordered_map<std::string, Type> records_;
+    LoweringContext& context_;
     BlockId current_block_{};
     // Returned paths have no continuation value; callers must stop lowering
     // that path while this is false, even if lower_expression succeeded.
@@ -574,7 +626,8 @@ class Lowerer {
 } // namespace
 
 std::expected<Module, std::string> lower(const hir::Module& module) {
-    return Lowerer().run(module);
+    LoweringContext context;
+    return Lowerer(context).run(module);
 }
 
 } // namespace pagos::mir

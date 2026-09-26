@@ -1,0 +1,8 @@
+// RUN: %run_residual %s 14 1 7
+// RUN: %run_residual %s 18 0 9
+// RUN: %run_optimized %s 14 1 7
+// RUN: %run_optimized %s 18 0 9
+fn read() -> u32 { external_input() }
+let value = if external_input() != 0 { read() } else { read() };
+let alias = value;
+let result = value + alias;

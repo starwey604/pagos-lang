@@ -153,9 +153,9 @@ does not infer Static values across Runtime selection or compare branches.
 
 HIR records whether an expression can continue and whether it may return from
 the enclosing call. `Return` carries the return value; `ReturnScope` delimits
-an inlined call with residual returns. Statically resolved returns disappear
-during analysis. MIR lowering routes residual returns to a per-call exit and
-merges their values with a phi. Terminated paths contribute neither an `if`
+the return boundary of a specialized body, inline or outlined. Static returns
+disappear during analysis. MIR lowering routes residual returns to a per-call
+exit and merges their values with a phi. Terminated paths contribute neither an `if`
 continuation nor a loop backedge. The type side table uses an internal `never`
 type for expressions that always return, so they need no continuation value.
 
@@ -363,16 +363,29 @@ have code.
 
 ## Interoperability strategy
 
-### Runtime call and effect migration contract
+### Runtime calls and effect migration
 
-The following is a preparation contract, not implemented call/FFI syntax.
-MIR already owns a function list, but lowering still produces the single
-`pagos_main` entry and inlines Pagos calls through HIR ReturnScope. M3 should
-extend `mir::Function` with typed parameters and calling convention, introduce
-stable module-local symbol identities and call operands/results, and teach
-the verifier to check argument/result types and symbol definitions. The
-code generator must create declarations before emitting bodies. Do not infer
-aggregate C ABI classification from storage layout alone.
+Scalar-argument calls with Runtime scalar results now retain an HIR `Call`
+boundary around the already specialized body. Caller-side operands capture
+argument computation identities with residual work; pure Static arguments
+stay embedded. Lowering evaluates captures in source order and maps each to
+a callee parameter, so reads, loops and traps are not duplicated. Each outlined
+body has its own SSA/dominance cache and return scopes. Aggregate and
+Static-result calls retain their existing inline path and projection precision.
+
+`mir::Function` has typed parameters and internal linkage; `ParameterOperation`
+and `CallOperation` represent parameter values and direct symbol calls.
+Module verification resolves forward callees, checks arity, exact argument/
+result types (including `usize` identity), parameter indices, and dominance.
+LLVM declares all signatures before emitting bodies. Generated symbols use
+`pagos.<source-name>.<module-local-id>` and are internal; LLVM may inline them
+during optimization. `pagos_main` keeps the existing test entry ABI.
+
+This slice still stages per invocation, creates separate residual bodies, and
+rejects Runtime recursion. Reusable residual specializations and recursive
+signatures are next, before object emission and explicit foreign declarations/
+calling conventions. Do not infer aggregate C ABI classification from storage
+layout alone.
 
 Ordinary external calls are Runtime and conservatively effectful unless a
 separate, explicit compile-time capability exists. A Static address never

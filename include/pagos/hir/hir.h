@@ -43,7 +43,9 @@ struct Expr {
         LoopIndex,
         RangeLoop,
         Return,
-        ReturnScope, // Inline call boundary; returns target this scope.
+        ReturnScope, // Function return boundary, including inline calls.
+        Call,        // Scalar residual call; operands capture already evaluated
+                     // values.
         Array,
         Index,
         Record,
@@ -63,6 +65,7 @@ struct Expr {
     std::optional<std::string> variable_name;
     std::uint32_t field_index{};
     std::vector<ExprPtr> operands;
+    ExprPtr call_body; // Specialized body, separate from caller-side operands.
 };
 
 struct Binding {

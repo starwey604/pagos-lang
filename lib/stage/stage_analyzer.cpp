@@ -1114,6 +1114,29 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
             specialization_cache_.emplace(std::move(*key), result);
         }
     }
+    const auto scalar = [](const sema::Type& type) {
+        return type.kind == sema::TypeKind::Integer ||
+               type.kind == sema::TypeKind::Bool;
+    };
+    if (result && result->stage == hir::Stage::Runtime &&
+        scalar(result->type) &&
+        std::ranges::all_of(arguments, [&](const auto& argument) {
+            return scalar(argument->type);
+        })) {
+        auto call = std::make_shared<hir::Expr>();
+        call->kind = hir::Expr::Kind::Call;
+        call->type = result->type;
+        call->stage = hir::Stage::Runtime;
+        call->span = expression.span;
+        call->trace = result->trace;
+        call->variable_name = function.name;
+        call->call_body = std::move(result);
+        // Pure Static arguments are embedded in the specialized body. Values
+        // with residual work are evaluated in the caller and captured once,
+        // including known Static values whose evaluation still has effects.
+        call->operands = argument_work;
+        result = std::move(call);
+    }
     return make_sequence(std::move(argument_work), std::move(result),
                          expression.span);
 }

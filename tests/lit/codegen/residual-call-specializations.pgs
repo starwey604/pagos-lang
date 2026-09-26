@@ -1,0 +1,12 @@
+// RUN: %pagosc emit-llvm %s | %FileCheck %s
+// RUN: %run_residual %s 35 7
+// RUN: %run_optimized %s 35 7
+fn scale(factor: u32, input: u32) -> u32 { factor * input }
+let input = external_input();
+let result = scale(2, input) + scale(3, input);
+// CHECK: call i32 @pagos.scale.0(i32
+// CHECK: call i32 @pagos.scale.1(i32
+// CHECK-LABEL: define internal i32 @pagos.scale.0(i32
+// CHECK: mul i32 2, %0
+// CHECK-LABEL: define internal i32 @pagos.scale.1(i32
+// CHECK: mul i32 3, %0

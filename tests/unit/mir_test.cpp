@@ -32,6 +32,92 @@ TEST(MirVerifier, AcceptsTypedConstantFunction) {
     EXPECT_TRUE(result.has_value());
 }
 
+pagos::mir::Module call_module() {
+    using namespace pagos::mir;
+    auto module = constant_module();
+    auto callee = module.functions.front();
+    callee.name = "identity";
+    callee.internal = true;
+    callee.parameters = {Type::U32};
+    callee.blocks[0].instructions[0].operation = ParameterOperation{0};
+    auto& entry = module.functions[0].blocks[0];
+    entry.instructions.push_back({.result = 1,
+                                  .type = Type::U32,
+                                  .operation = CallOperation{"identity", {0}},
+                                  .span = {}});
+    entry.terminator = Return{1};
+    module.functions.push_back(std::move(callee));
+    return module;
+}
+
+TEST(MirVerifier, CallsResolveForwardDeclarationsAndCheckSignatures) {
+    using namespace pagos::mir;
+    auto module = call_module();
+    ASSERT_TRUE(verify(module));
+    auto& instruction = module.functions[0].blocks[0].instructions[1];
+    auto& call = std::get<CallOperation>(instruction.operation);
+    call.callee = "missing";
+    EXPECT_FALSE(verify(module));
+    call.callee = "identity";
+    call.arguments.clear();
+    EXPECT_FALSE(verify(module));
+    call.arguments = {0, 0};
+    EXPECT_FALSE(verify(module));
+    call.arguments = {0};
+    module.functions[1].result_type = Type::Bool;
+    EXPECT_FALSE(verify(module));
+    module.functions[1].result_type = Type::U32;
+    module.functions[1].parameters[0] = Type::Bool;
+    EXPECT_FALSE(verify(module));
+}
+
+TEST(MirVerifier, CallArgumentsMustExistAndDominateTheCall) {
+    using namespace pagos::mir;
+    auto module = call_module();
+    auto& call = std::get<CallOperation>(
+        module.functions[0].blocks[0].instructions[1].operation);
+    call.arguments = {99};
+    EXPECT_FALSE(verify(module));
+    call.arguments = {1};
+    EXPECT_FALSE(verify(module));
+    call.arguments = {0};
+    EXPECT_TRUE(verify(module));
+}
+
+TEST(MirVerifier, ParametersRequireValidIndexTypeAndTarget) {
+    using namespace pagos::mir;
+    auto module = call_module();
+    auto& parameter = module.functions[1].blocks[0].instructions[0];
+    parameter.operation = ParameterOperation{1};
+    EXPECT_FALSE(verify(module));
+    parameter.operation = ParameterOperation{0};
+    parameter.type = Type::Bool;
+    EXPECT_FALSE(verify(module));
+    parameter.type = Type::U32;
+    module.functions[1].parameters[0] = Type::Invalid;
+    EXPECT_FALSE(verify(module));
+    module.functions[1].parameters[0] = Type::integer(64, false, true);
+    module.pointer_bits = 32;
+    EXPECT_FALSE(verify(module));
+    module.functions[1].parameters[0] = Type::U32;
+    EXPECT_TRUE(verify(module));
+}
+
+TEST(MirVerifier, CallSignaturesKeepUsizeDistinctFromEqualWidthIntegers) {
+    using namespace pagos::mir;
+    auto module = call_module();
+    module.pointer_bits = 32;
+    const auto size = Type::integer(32, false, true);
+    auto& callee = module.functions[1];
+    callee.result_type = callee.parameters[0] =
+        callee.blocks[0].instructions[0].type = size;
+    module.functions[0].result_type =
+        module.functions[0].blocks[0].instructions[1].type = size;
+    const auto result = verify(module);
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error(), "MIR call argument type mismatch");
+}
+
 TEST(MirVerifier, IntegerConstantsMustMatchEveryPayloadWidth) {
     using namespace pagos;
     using namespace pagos::mir;

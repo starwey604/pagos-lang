@@ -1,0 +1,9 @@
+// RUN: %run_residual %s 21 3 2 7 9
+// RUN: %run_optimized %s 21 3 2 7 9
+fn known() -> u32 { external_input(); 2 }
+fn calculate(unused: u32, scale: u32, x: u32) -> u32 {
+    external_input();
+    scale * x + x
+}
+let shared = external_input();
+let result = calculate(external_input(), known(), shared) + shared + shared + shared + shared;

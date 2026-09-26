@@ -1,0 +1,9 @@
+// RUN: %run_residual %s 7 1
+// RUN: %run_residual %s 15 0 4 11
+// RUN: %run_optimized %s 7 1
+// RUN: %run_optimized %s 15 0 4 11
+fn add(x: u32, y: u32) -> u32 { x + y }
+fn choose(flag: u32) -> u32 {
+    add(if flag != 0 { return 7; } else { external_input() }, external_input())
+}
+let result = choose(external_input());

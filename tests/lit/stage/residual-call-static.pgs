@@ -1,0 +1,10 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s
+// RUN: %run_residual %s 42 7 9
+// RUN: %run_optimized %s 42 7 9
+fn ignore(x: u32) -> u32 { external_input(); 42 }
+fn add(a: u32, b: u32) -> u32 { a + b }
+static let folded = add(20, 22);
+static let result = ignore(external_input());
+// CHECK: folded: u32 [Static] = 42
+// CHECK: result: u32 [Static] = sequence(
+// CHECK-NOT: call ignore

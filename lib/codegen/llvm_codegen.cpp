@@ -43,6 +43,21 @@ class Generator {
         if (auto valid = mir::verify(mir_module); !valid) {
             return std::unexpected("invalid MIR: " + valid.error());
         }
+        // Declare the complete signature table first: body order must not
+        // determine whether nested/forward calls can resolve their callee.
+        for (const auto& function : mir_module.functions) {
+            std::vector<llvm::Type*> parameters;
+            parameters.reserve(function.parameters.size());
+            for (const auto& parameter : function.parameters)
+                parameters.push_back(llvm_type(parameter));
+            auto* type = llvm::FunctionType::get(
+                llvm_type(function.result_type), parameters, false);
+            llvm::Function::Create(type,
+                                   function.internal
+                                       ? llvm::Function::InternalLinkage
+                                       : llvm::Function::ExternalLinkage,
+                                   function.name, *module_);
+        }
         for (const auto& function : mir_module.functions) {
             if (auto emitted = emit_function(function); !emitted) {
                 return std::unexpected(emitted.error());
@@ -72,11 +87,7 @@ class Generator {
         blocks_.clear();
         exits_.clear();
 
-        auto* function_type =
-            llvm::FunctionType::get(llvm_type(mir_function.result_type), false);
-        auto* function = llvm::Function::Create(function_type,
-                                                llvm::Function::ExternalLinkage,
-                                                mir_function.name, *module_);
+        auto* function = module_->getFunction(mir_function.name);
         function->addFnAttr("target-cpu", config_.cpu);
         if (!config_.features.empty()) {
             function->addFnAttr("target-features", config_.features);
@@ -175,6 +186,19 @@ class Generator {
     }
 
     llvm::Value* emit_instruction(const mir::Instruction& instruction) {
+        if (const auto* parameter =
+                std::get_if<mir::ParameterOperation>(&instruction.operation))
+            return builder_.GetInsertBlock()->getParent()->getArg(
+                parameter->index);
+        if (const auto* call =
+                std::get_if<mir::CallOperation>(&instruction.operation)) {
+            std::vector<llvm::Value*> arguments;
+            arguments.reserve(call->arguments.size());
+            for (auto argument : call->arguments)
+                arguments.push_back(values_.at(argument));
+            return builder_.CreateCall(module_->getFunction(call->callee),
+                                       arguments, "call.result");
+        }
         if (const auto* constant =
                 std::get_if<mir::ConstantOperation>(&instruction.operation)) {
             if (const auto* integer =

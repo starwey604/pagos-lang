@@ -152,6 +152,12 @@ checking, Static evaluation, MIR, and LLVM emission. It remains distinct from
 `u32`/`u64`; see the [RV32/RV64 example](tests/lit/stage/usize-static.pgs).
 All CLI commands accept target options. General C ABI support remains pending.
 
+Runtime scalar calls now emit internal functions with typed parameters and
+real MIR/LLVM calls; Static arguments still specialize their bodies. See the
+[nested-call example](tests/lit/codegen/residual-call-scalar.pgs).
+Aggregate calls retain the inline path. Runtime recursion and reusable Runtime
+specializations are not implemented yet; these internal signatures are not C ABI.
+
 ## Development
 
 Configure, build, and test the default Clang 22 development preset:

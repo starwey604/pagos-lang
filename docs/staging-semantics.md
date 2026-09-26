@@ -136,6 +136,23 @@ The entire function does not become Runtime simply because one argument is
 Runtime. Backend strength reduction, such as replacing multiplication by a
 shift, is outside the staging semantics.
 
+Calls with scalar arguments (`bool` or integers) and a Runtime scalar result
+now produce internal residual functions and typed MIR/LLVM calls. Pure Static
+arguments remain embedded in the specialized body. Arguments with residual
+work are evaluated once, left-to-right in the caller, and passed as values;
+this includes Static arguments whose evaluation has Runtime effects.
+Nested calls, loop-index arguments, checked traps, and early returns retain
+their existing semantics. A callee's return never exits its caller.
+
+This first call slice extracts bodies after per-invocation staging. It does not
+yet intern equivalent Runtime specializations or residualize recursive calls.
+Per-invocation analysis still consumes fuel and respects depth limits; a
+dedicated residual-version budget belongs with the upcoming reuse mechanism.
+Calls with aggregate arguments/results, and Static-result calls with residual
+effects, continue through the existing inline HIR path. This preserves precise
+aggregate projections and known results; having Runtime work alone does not
+force the result to Runtime. Internal signatures are not a public C ABI.
+
 The compiler memoizes specializations by function identity, static arguments,
 target configuration, and relevant effect dependencies. It must enforce a
 specialization budget to prevent accidental code-size explosion.
@@ -144,7 +161,8 @@ The current implementation caches a call only when every argument and the
 result are Static and evaluating the specialized body has no residual work.
 Argument evaluation is preserved separately, including on cache hits. Its key
 contains function identity and the typed argument constants; target
-configuration and effect dependencies join the key when those features land.
+configuration is fixed for each analysis and the cache resets between analyses;
+future cross-session caching must include target and effect dependencies.
 Record keys contain the nominal name and typed scalar fields in declaration
 order, so reordered initializers share a key without reordering their effects.
 Static recursion is permitted when selected

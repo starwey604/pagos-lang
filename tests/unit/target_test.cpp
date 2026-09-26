@@ -73,6 +73,42 @@ TEST(Target, UsizeLayoutsRejectWrongWidthIncludingAggregates) {
     }
 }
 
+TEST(Target, ResidualCallSignaturesUseTheSemanticTargetWidth) {
+    using namespace pagos;
+    const auto source = source::SourceFile::from_text(
+        "call.pgs", "fn next(x: usize) -> usize { x + 1usize } "
+                    "let result = next(external_input() as usize);");
+    source::DiagnosticEngine diagnostics(source);
+    syntax::Lexer lexer(source, diagnostics);
+    const auto tokens = lexer.tokenize();
+    syntax::Parser parser(tokens, diagnostics);
+    auto syntax = parser.parse_module();
+    ASSERT_FALSE(diagnostics.has_error());
+    for (const auto* triple : {"riscv32-unknown-elf", "riscv64-unknown-elf"}) {
+        const auto target = TargetLayout::create({.triple = triple});
+        ASSERT_TRUE(target);
+        sema::TypeChecker checker(diagnostics, target->pointer_bits());
+        ASSERT_TRUE(checker.check(*syntax));
+        stage::StageAnalyzer analyzer(diagnostics, checker.types());
+        auto hir = analyzer.analyze(*syntax);
+        ASSERT_FALSE(diagnostics.has_error());
+        const auto module = mir::lower(*hir);
+        ASSERT_TRUE(module) << module.error();
+        ASSERT_EQ(module->functions.size(), 2U);
+        const auto& callee = module->functions[1];
+        EXPECT_TRUE(callee.internal);
+        ASSERT_EQ(callee.parameters.size(), 1U);
+        EXPECT_EQ(callee.parameters[0],
+                  Type::integer(target->pointer_bits(), false, true));
+        EXPECT_EQ(callee.result_type, callee.parameters[0]);
+        const auto ir = codegen::LLVMCodegen::emit_for_target(*module, *target);
+        ASSERT_TRUE(ir) << ir.error();
+        EXPECT_NE(ir->find("define internal i" +
+                           std::to_string(target->pointer_bits())),
+                  std::string::npos);
+    }
+}
+
 TEST(Target, MirRejectsUnboundOrMismatchedUsize) {
     using namespace pagos;
     hir::Module hir;

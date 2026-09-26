@@ -92,6 +92,18 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
     case Expr::Kind::ExternalInput:
         output << "external_input()";
         break;
+    case Expr::Kind::Call:
+        output << "call " << expression->variable_name.value() << '(';
+        for (std::size_t index = 0; index < expression->operands.size();
+             ++index) {
+            if (index != 0)
+                output << ", ";
+            print_expression(expression->operands[index], output);
+        }
+        output << ") {";
+        print_expression(expression->call_body, output);
+        output << '}';
+        break;
     case Expr::Kind::Cast:
         output << "cast<" << sema::type_name(expression->type) << ">(";
         print_expression(expression->operands.front(), output);

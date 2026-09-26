@@ -109,6 +109,11 @@ omitting them selects the host target, not a platform-independent default.
 LLVM IR includes the matching DataLayout, triple, and CPU
 attributes. This is not yet object emission or full target C ABI support.
 
+To inspect real internal function calls, emit MIR or LLVM IR for
+`tests/lit/codegen/residual-call-scalar.pgs`. Runtime scalar calls now produce
+`pagos.<name>.<id>` helpers; Static arguments are embedded in their bodies.
+Names are module-local implementation details, not linkable C API names.
+
 LLVM builds must include X86, RISCV, and ARM backends. Configure with
 `-DPAGOS_USE_LLVM_DYLIB=OFF` to exercise component-library linking instead of
 the preferred monolithic shared library.
