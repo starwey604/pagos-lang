@@ -132,6 +132,100 @@ void StageAnalyzer::note_runtime_work() {
         entry->runtime_seen = true;
 }
 
+void StageAnalyzer::initialize_boundaries(const syntax::Module& module) {
+    for (const auto& function : module.functions) {
+        if (function->linkage == syntax::Function::Linkage::Internal)
+            continue;
+        auto entry = std::make_shared<ResidualEntry>();
+        auto definition = std::make_shared<hir::ResidualFunction>();
+        definition->name = function->name;
+        definition->result_type = types_.resolve(function->result);
+        definition->c_abi = true;
+        definition->declaration =
+            function->linkage == syntax::Function::Linkage::ExternC;
+        for (const auto& parameter : function->parameters) {
+            auto value = std::make_shared<hir::Expr>();
+            value->kind = hir::Expr::Kind::Parameter;
+            value->type = types_.resolve(parameter.type);
+            value->stage = hir::Stage::Runtime;
+            value->span = parameter.name_span;
+            value->variable_name = function->name + "." + parameter.name;
+            value->trace = {.origin_span = parameter.name_span,
+                            .origin_name =
+                                "C parameter " + *value->variable_name,
+                            .path = {*value->variable_name}};
+            definition->parameters.push_back(value);
+        }
+        entry->definition = definition;
+        boundary_functions_.emplace(function->name, entry);
+        residual_functions_.push_back(definition);
+        if (!definition->declaration)
+            (void)reserve_residual(*entry, function->name_span);
+    }
+}
+
+void StageAnalyzer::analyze_exports(const syntax::Module& module) {
+    for (const auto& function : module.functions) {
+        if (function->linkage != syntax::Function::Linkage::ExportC)
+            continue;
+        auto& entry = *boundary_functions_.at(function->name);
+        if (!entry.reserved)
+            continue;
+        const auto diagnostics_before = diagnostics_.size();
+        if (limits_.recursion_depth == 0) {
+            diagnostics_.error(
+                "E4005", "compile-time recursion depth limit of 0 exceeded",
+                function->name_span, "cannot analyze exported body");
+        } else {
+            scopes_.emplace_back();
+            for (std::size_t index = 0; index < function->parameters.size();
+                 ++index)
+                define(function->parameters[index].name,
+                       entry.definition->parameters[index]);
+            call_stack_.push_back(function->name);
+            stats_.maximum_recursion_depth =
+                std::max(stats_.maximum_recursion_depth, call_stack_.size());
+            entry.definition->body =
+                analyze_function_body(*function, function->span);
+            call_stack_.pop_back();
+            scopes_.pop_back();
+        }
+        --residual_reservations_;
+        entry.reserved = false;
+        if (diagnostics_.size() != diagnostics_before)
+            entry.definition->body.reset();
+        else if (entry.definition->body)
+            ++stats_.residual_specializations;
+    }
+}
+
+hir::ExprPtr
+StageAnalyzer::analyze_function_body(const syntax::Function& function,
+                                     source::Span call_span) {
+    auto block_result = analyze_block(*function.body);
+    auto result =
+        make_sequence(std::move(block_result.effects),
+                      std::move(block_result.value), function.body->span);
+    if (!check_resolved_type(types_.resolve(function.result), result,
+                             function.body->span, "function tail expression"))
+        return nullptr;
+    if (result && result->may_return) {
+        if (auto resolved = resolve_return(result)) {
+            result = std::move(resolved);
+        } else {
+            auto region = std::make_shared<hir::Expr>();
+            region->kind = hir::Expr::Kind::ReturnScope;
+            region->type = types_.resolve(function.result);
+            region->stage = hir::Stage::Runtime;
+            region->span = call_span;
+            region->trace = return_dependency(result);
+            region->operands = {result};
+            result = region;
+        }
+    }
+    return result;
+}
+
 bool StageAnalyzer::reserve_residual(ResidualEntry& entry, source::Span span) {
     if (entry.reserved)
         return true;
@@ -245,6 +339,7 @@ StageAnalyzer::analyze(const syntax::Module& module) {
     residual_cache_.clear();
     active_residuals_.clear();
     residual_stack_.clear();
+    boundary_functions_.clear();
     residual_functions_.clear();
     residual_reservations_ = 0;
     active_parameter_traces_.clear();
@@ -274,6 +369,9 @@ StageAnalyzer::analyze(const syntax::Module& module) {
         result->functions.push_back(std::move(summary));
     }
 
+    initialize_boundaries(module);
+    result->emit_entry =
+        !module.statements.empty() || boundary_functions_.empty();
     scopes_.emplace_back();
     std::vector<hir::ExprPtr> effects;
     for (const auto& statement : module.statements) {
@@ -295,6 +393,7 @@ StageAnalyzer::analyze(const syntax::Module& module) {
         result->result =
             make_sequence(std::move(effects), std::move(value), span);
     }
+    analyze_exports(module);
     result->residual_functions = std::move(residual_functions_);
     return result;
 }
@@ -1155,6 +1254,27 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
             argument_work.push_back(argument);
         }
     }
+    if (const auto boundary = boundary_functions_.find(function.name);
+        boundary != boundary_functions_.end()) {
+        note_runtime_work();
+        auto call = std::make_shared<hir::Expr>();
+        call->kind = hir::Expr::Kind::Call;
+        call->type = types_.resolve(function.result);
+        call->stage = hir::Stage::Runtime;
+        call->span = expression.span;
+        call->variable_name = function.name;
+        call->callee = boundary->second->definition;
+        call->operands = std::move(arguments);
+        const auto origin =
+            std::string(boundary->second->definition->declaration ? "extern "
+                                                                  : "export ") +
+            function.name;
+        call->trace = {.origin_span = expression.span,
+                       .origin_name = origin,
+                       .path = {origin}};
+        return make_sequence(std::move(argument_work), std::move(call),
+                             expression.span);
+    }
     const auto scalar = [](const sema::Type& type) {
         return type.kind == sema::TypeKind::Integer ||
                type.kind == sema::TypeKind::Bool;
@@ -1339,29 +1459,8 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
         if (recursive_expansion)
             can_analyze = reserve_residual(*entry, expression.span);
     }
-    auto block_result =
-        can_analyze ? analyze_block(*function.body) : BlockResult{};
-    auto result =
-        make_sequence(std::move(block_result.effects),
-                      std::move(block_result.value), function.body->span);
-    if (!check_resolved_type(types_.resolve(function.result), result,
-                             function.body->span, "function tail expression")) {
-        result = nullptr;
-    }
-    if (result && result->may_return) {
-        if (auto resolved = resolve_return(result)) {
-            result = std::move(resolved);
-        } else {
-            auto region = std::make_shared<hir::Expr>();
-            region->kind = hir::Expr::Kind::ReturnScope;
-            region->type = types_.resolve(function.result);
-            region->stage = hir::Stage::Runtime;
-            region->span = expression.span;
-            region->trace = return_dependency(result);
-            region->operands = {result};
-            result = region;
-        }
-    }
+    auto result = can_analyze ? analyze_function_body(function, expression.span)
+                              : nullptr;
     call_stack_.pop_back();
     scopes_.pop_back();
     if (entry) {

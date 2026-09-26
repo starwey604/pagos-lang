@@ -1,5 +1,6 @@
 #include "pagos/codegen/llvm_codegen.h"
 #include "llvm_types.h"
+#include <llvm/ADT/SmallVector.h>
 
 #include <llvm/ADT/APInt.h>
 #include <llvm/IR/BasicBlock.h>
@@ -10,10 +11,14 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Intrinsics.h>
 #include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Target/TargetMachine.h>
+#include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Triple.h>
 
 #include <cstdint>
@@ -33,19 +38,23 @@ class Generator {
   public:
     explicit Generator(const TargetLayout& target)
         : module_(std::make_unique<llvm::Module>("pagos", context_)),
-          builder_(context_), config_(target.config()) {
+          builder_(context_), config_(target.config()),
+          c_abi_supported_(target.supports_minimal_c_abi()) {
         module_->setTargetTriple(llvm::Triple(config_.triple));
         module_->setDataLayout(target.data_layout());
     }
 
-    std::expected<std::string, std::string>
-    emit(const mir::Module& mir_module) {
+    std::expected<std::string, std::string> emit(const mir::Module& mir_module,
+                                                 bool object = false) {
         if (auto valid = mir::verify(mir_module); !valid) {
             return std::unexpected("invalid MIR: " + valid.error());
         }
         // Declare the complete signature table first: body order must not
         // determine whether nested/forward calls can resolve their callee.
         for (const auto& function : mir_module.functions) {
+            if (function.c_abi && !c_abi_supported_)
+                return std::unexpected("minimal C ABI is unsupported for this "
+                                       "target configuration");
             std::vector<llvm::Type*> parameters;
             parameters.reserve(function.parameters.size());
             for (const auto& parameter : function.parameters)
@@ -59,6 +68,8 @@ class Generator {
                                    function.name, *module_);
         }
         for (const auto& function : mir_module.functions) {
+            if (function.declaration)
+                continue;
             if (auto emitted = emit_function(function); !emitted) {
                 return std::unexpected(emitted.error());
             }
@@ -70,6 +81,34 @@ class Generator {
             verification_stream.flush();
             return std::unexpected("invalid generated LLVM IR: " +
                                    verification_error);
+        }
+
+        if (object) {
+            std::string error;
+            const auto* target = llvm::TargetRegistry::lookupTarget(
+                llvm::Triple(config_.triple), error);
+            if (!target)
+                return std::unexpected(error);
+            llvm::TargetOptions options;
+            if (llvm::Triple(config_.triple).isRISCV32())
+                options.MCOptions.ABIName = "ilp32";
+            std::unique_ptr<llvm::TargetMachine> machine(
+                target->createTargetMachine(llvm::Triple(config_.triple),
+                                            config_.cpu, config_.features,
+                                            options, llvm::Reloc::PIC_));
+            if (!machine)
+                return std::unexpected("cannot create object target machine");
+            if (machine->createDataLayout() != module_->getDataLayout())
+                return std::unexpected(
+                    "object target layout differs from semantic layout");
+            llvm::SmallVector<char, 0> bytes;
+            llvm::raw_svector_ostream stream(bytes);
+            llvm::legacy::PassManager passes;
+            if (machine->addPassesToEmitFile(passes, stream, nullptr,
+                                             llvm::CodeGenFileType::ObjectFile))
+                return std::unexpected("target cannot emit object files");
+            passes.run(*module_);
+            return std::string(bytes.begin(), bytes.end());
         }
 
         std::string output;
@@ -508,6 +547,7 @@ class Generator {
     std::unique_ptr<llvm::Module> module_;
     llvm::IRBuilder<> builder_;
     TargetConfig config_;
+    bool c_abi_supported_{};
     std::unordered_map<mir::ValueId, llvm::Value*> values_;
     // LLVM integer types erase signedness; retain each MIR definition's fact.
     std::unordered_set<mir::ValueId> signed_values_;
@@ -536,6 +576,16 @@ LLVMCodegen::emit_for_target(const mir::Module& mir_module,
             "MIR semantic target pointer width does not match emission target");
     }
     return Generator(target).emit(mir_module);
+}
+
+std::expected<std::string, std::string>
+LLVMCodegen::emit_object_for_target(const mir::Module& mir_module,
+                                    const TargetLayout& target) {
+    if (mir_module.pointer_bits != 0 &&
+        mir_module.pointer_bits != target.pointer_bits())
+        return std::unexpected(
+            "MIR semantic target pointer width does not match emission target");
+    return Generator(target).emit(mir_module, true);
 }
 
 } // namespace pagos::codegen

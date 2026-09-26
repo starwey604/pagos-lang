@@ -83,9 +83,14 @@ semantics or evidence of CH32 support. See the
 [QEMU board source](https://gitlab.com/qemu-project/qemu/-/blob/v11.1.0/hw/riscv/virt.c)
 and [test device](https://gitlab.com/qemu-project/qemu/-/blob/v11.1.0/hw/misc/sifive_test.c).
 
-This probe checks the environment only; Pagos firmware generation belongs to
-M3. The matching target libgcc is currently linked explicitly; the installed
-host compiler-rt must not be substituted for it.
+Without extra arguments this remains a ten-case environment probe. Add
+`--pagosc build/debug/pagosc` to run four additional Pagos/C ABI firmware cases:
+direct object output and Clang `-O2` optimized IR, each linked against Clang-
+and GCC-compiled C. They exercise exports/imports, recursion, signed values,
+ten-argument register/stack passing, and effect order. Startup, MMIO and UART
+remain in C/assembly; this is not yet Pagos-native memory/volatile support.
+`scripts/ci.py --rv32` includes both probes and these ABI cases. The matching
+target libgcc is linked explicitly; do not substitute host compiler-rt.
 
 ### Host compiler commands
 
@@ -107,7 +112,8 @@ Unknown triples, CPUs, and feature names fail explicitly before type checking.
 selected pointer width. Use the same target options for checking and emission;
 omitting them selects the host target, not a platform-independent default.
 LLVM IR includes the matching DataLayout, triple, and CPU
-attributes. This is not yet object emission or full target C ABI support.
+attributes. `emit-obj` now emits a matching object directly through LLVM;
+full target C ABI classification is still outside the supported subset.
 
 To inspect real internal function calls, emit MIR or LLVM IR for
 `tests/lit/codegen/residual-call-scalar.pgs`. Runtime scalar calls now produce
@@ -128,7 +134,31 @@ build/debug/pagosc emit-hir source.pgs
 build/debug/pagosc explain-stage source.pgs
 build/debug/pagosc emit-mir source.pgs
 build/debug/pagosc emit-llvm source.pgs
+build/debug/pagosc emit-obj source.pgs -o source.o
 ```
+
+`emit-obj` requires exactly one `-o` path and never writes binary stdout.
+Compilation failures preserve existing output; a successful write atomically
+replaces it via an exclusive `<output>.tmp` sibling. An existing temporary,
+missing parent directory, or input/output alias is an error. Text commands do
+not accept `-o`. Objects use PIC relocation; this command adds no `-O2` IR pass
+pipeline. Link with a matching external toolchain and required target runtime.
+
+For the [minimal C ABI example](../tests/lit/codegen/c-abi.pgs):
+
+```sh
+build/debug/pagosc emit-obj tests/lit/codegen/c-abi.pgs -o build/c-abi.o
+clang build/c-abi.o tests/lit/Inputs/c_abi.c -o build/c-abi
+build/c-abi
+python3 scripts/check_rv32.py --pagosc build/debug/pagosc
+```
+
+`extern fn` imports and `export fn` exports use exact source symbol names,
+accept only `u32/i32`, and always denote Runtime calls. Validated targets are
+x86-64 Linux LP64 and generic RV32 ELF ILP32 with I/M/A/C. The C prototype and
+target flags must match; neither headers nor cross-language signature checks
+are generated. Boundary-only modules omit `pagos_main`, allowing separate
+objects to link. See [boundary rules](grammar.md#minimal-c-abi-milestone-3).
 
 Bound compile-time work with options placed anywhere before or after the
 command:
@@ -166,6 +196,8 @@ budget even when the analyzed body produces a Runtime result.
 Runtime recursion does not repeatedly enter analysis for an active key, so
 `--max-recursion-depth` limits compiler analysis depth, not target stack depth.
 No runtime stack guard or termination guarantee is provided.
+Each exported root reserves one slot and counts on successful body analysis;
+extern declarations and calls to fixed boundary symbols consume no new slots.
 
 Shared array/record quotas additionally default to 65,536 aggregate members and
 262,144 logical bytes. `explain-stage` appends `aggregate-constructions`,

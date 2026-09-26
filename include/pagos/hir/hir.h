@@ -80,6 +80,8 @@ struct ResidualFunction {
     ExprPtr body;
     sema::Type result_type;
     bool recursive{};
+    bool c_abi{};
+    bool declaration{};
 };
 
 struct Binding {
@@ -110,6 +112,7 @@ struct Module {
     ExprPtr result;
     // Semantic target width, including dependencies folded away during staging.
     unsigned pointer_bits{};
+    bool emit_entry{true};
 };
 
 [[nodiscard]] std::string_view stage_name(Stage stage) noexcept;

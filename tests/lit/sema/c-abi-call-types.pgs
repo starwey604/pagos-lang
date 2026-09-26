@@ -1,0 +1,4 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+extern fn read(x: i32) -> u32;
+let result = read(7);
+// CHECK: error[E1008]: type mismatch in argument for `x`

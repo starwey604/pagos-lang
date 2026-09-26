@@ -62,8 +62,15 @@ class Lowerer {
         block(current_block_).terminator = Return{.value = result};
 
         context_.output.pointer_bits = hir_module.pointer_bits;
-        context_.output.functions.insert(context_.output.functions.begin(),
-                                         std::move(function_));
+        for (const auto& definition : hir_module.residual_functions) {
+            if (definition->c_abi) {
+                if (auto lowered = lower_definition(*definition); !lowered)
+                    return std::unexpected(lowered.error());
+            }
+        }
+        if (hir_module.emit_entry)
+            context_.output.functions.insert(context_.output.functions.begin(),
+                                             std::move(function_));
         if (auto valid = verify(context_.output); !valid) {
             return std::unexpected("invalid lowered MIR: " + valid.error());
         }
@@ -509,7 +516,7 @@ class Lowerer {
     std::expected<ValueId, std::string>
     lower_call(const hir::ExprPtr& expression) {
         const auto callee_definition = expression->callee.lock();
-        if (!callee_definition || !callee_definition->body)
+        if (!callee_definition)
             return std::unexpected("HIR call requires a residual definition");
         const auto& definition = *callee_definition;
         if (expression->operands.size() != definition.parameters.size())
@@ -522,23 +529,37 @@ class Lowerer {
                 return value;
             arguments.push_back(*value);
         }
+        auto name = lower_definition(definition);
+        if (!name)
+            return std::unexpected(name.error());
+        return emit(type_of(expression->type),
+                    CallOperation{*name, std::move(arguments)},
+                    expression->span);
+    }
+
+    std::expected<std::string, std::string>
+    lower_definition(const hir::ResidualFunction& definition) {
+        if (!definition.body && !definition.declaration)
+            return std::unexpected(
+                "HIR call requires a completed residual definition");
         if (const auto found = context_.callees.find(&definition);
             found != context_.callees.end()) {
-            return emit(type_of(expression->type),
-                        CallOperation{found->second, std::move(arguments)},
-                        expression->span);
+            return found->second;
         }
         // Reserve a unique symbol before lowering nested calls. Separate
         // lowerers keep SSA IDs, dominance caches and return scopes local.
         const auto slot = context_.output.functions.size();
-        const auto name =
-            "pagos." + definition.name + "." + std::to_string(slot);
+        auto name = definition.c_abi ? definition.name
+                                     : "pagos." + definition.name + "." +
+                                           std::to_string(slot);
         context_.output.functions.emplace_back();
         context_.callees.emplace(&definition, name);
         Lowerer callee(context_);
         callee.function_.name = name;
-        callee.function_.internal = true;
-        callee.function_.result_type = type_of(expression->type);
+        callee.function_.internal = !definition.c_abi;
+        callee.function_.c_abi = definition.c_abi;
+        callee.function_.declaration = definition.declaration;
+        callee.function_.result_type = type_of(definition.result_type);
         callee.function_.parameters.reserve(definition.parameters.size());
         for (const auto& operand : definition.parameters) {
             const auto type = type_of(operand->type);
@@ -549,6 +570,11 @@ class Lowerer {
                 callee.emit(type, ParameterOperation{index}, operand->span);
             callee.cache(operand.get(), parameter);
         }
+        if (definition.declaration) {
+            callee.function_.blocks.clear();
+            context_.output.functions[slot] = std::move(callee.function_);
+            return name;
+        }
         auto value = callee.lower_expression(definition.body);
         if (!value)
             return std::unexpected(value.error());
@@ -556,9 +582,7 @@ class Lowerer {
             return std::unexpected("HIR call body has no continuation result");
         callee.block(callee.current_block_).terminator = Return{*value};
         context_.output.functions[slot] = std::move(callee.function_);
-        return emit(type_of(expression->type),
-                    CallOperation{name, std::move(arguments)},
-                    expression->span);
+        return name;
     }
 
     Type type_of(const sema::Type& type) const {

@@ -1,0 +1,3 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+extern fn read() -> u32 { 1 }
+// CHECK: error[E1002]: expected `;`

@@ -1,0 +1,9 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+extern fn read() -> u32;
+export fn fixed() -> u32 { 42 }
+static let a = read();
+static let b = fixed();
+// CHECK: error[E2001]:
+// CHECK: extern read
+// CHECK: error[E2001]:
+// CHECK: export fixed

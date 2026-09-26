@@ -309,12 +309,14 @@ struct Parameter {
 };
 
 struct Function {
+    enum class Linkage { Internal, ExternC, ExportC };
     std::string name;
     source::Span name_span;
     std::vector<Parameter> parameters;
     Type result{TypeKind::Error};
     std::unique_ptr<Block> body;
     source::Span span;
+    Linkage linkage{Linkage::Internal};
 };
 
 struct Module {

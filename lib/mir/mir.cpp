@@ -29,6 +29,11 @@ std::expected<void, std::string> verify_function(const Function& function,
     if (!function.result_type.valid()) {
         return std::unexpected("invalid MIR result type");
     }
+    if (function.declaration) {
+        if (!function.c_abi || function.internal || !function.blocks.empty())
+            return std::unexpected("invalid MIR external declaration");
+        return {};
+    }
     if (function.blocks.empty()) {
         return std::unexpected("MIR function `" + function.name +
                                "` has no blocks");
@@ -732,6 +737,17 @@ std::expected<void, std::string> verify(const Module& module) {
             if (!consistent(parameter))
                 return std::unexpected("inconsistent MIR record definition");
         }
+        if (function.c_abi) {
+            const auto supported = [](const Type& type) {
+                return type.kind == Type::Integer &&
+                       type.integer_type.width == 32 &&
+                       !type.integer_type.is_usize;
+            };
+            if (function.internal || !supported(function.result_type) ||
+                !std::ranges::all_of(function.parameters, supported))
+                return std::unexpected("C ABI MIR signatures require external "
+                                       "linkage and i32/u32 types");
+        }
         if (!function.result_type.matches_pointer_width(module.pointer_bits))
             return std::unexpected(
                 "MIR usize width does not match semantic target");
@@ -761,14 +777,22 @@ void print(const Module& module, std::ostream& output) {
     if (module.pointer_bits != 0)
         output << "target pointer_bits = " << module.pointer_bits << '\n';
     for (const auto& function : module.functions) {
-        output << "func @" << function.name << '(';
+        output << (function.declaration ? "extern C func @"
+                   : function.c_abi     ? "export C func @"
+                                        : "func @")
+               << function.name << '(';
         for (std::size_t index = 0; index < function.parameters.size();
              ++index) {
             if (index != 0)
                 output << ", ";
             output << type_name(function.parameters[index]);
         }
-        output << ") -> " << type_name(function.result_type) << " {\n";
+        output << ") -> " << type_name(function.result_type);
+        if (function.declaration) {
+            output << '\n';
+            continue;
+        }
+        output << " {\n";
         for (const auto& block : function.blocks) {
             output << block_name(block.id) << ":\n";
             for (const auto& instruction : block.instructions) {

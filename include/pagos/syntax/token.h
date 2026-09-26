@@ -11,6 +11,8 @@ enum class TokenKind {
     Identifier,
     Integer,
     KwFn,
+    KwExtern,
+    KwExport,
     KwRecord,
     KwLet,
     KwStatic,

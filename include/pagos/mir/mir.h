@@ -217,6 +217,8 @@ struct Function {
     std::vector<BasicBlock> blocks;
     std::vector<Type> parameters;
     bool internal{};
+    bool c_abi{};
+    bool declaration{};
 };
 
 struct Module {

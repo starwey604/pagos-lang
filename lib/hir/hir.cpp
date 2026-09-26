@@ -107,7 +107,9 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
         if (const auto callee = expression->callee.lock()) {
             // Recursive definitions are printed separately below, never
             // recursively expanded through call edges.
-            if (callee->recursive)
+            if (callee->c_abi)
+                output << (callee->declaration ? "extern C" : "export C");
+            else if (callee->recursive)
                 output << "recursive";
             else
                 print_expression(callee->body, output);
@@ -224,6 +226,17 @@ ExprPtr with_trace_step(const ExprPtr& expression, std::string step) {
 
 void print(const Module& module, std::ostream& output) {
     for (const auto& function : module.residual_functions) {
+        if (function->c_abi) {
+            output << (function->declaration ? "extern C fn " : "export C fn ")
+                   << function->name << " -> "
+                   << sema::type_name(function->result_type);
+            if (!function->declaration) {
+                output << " = ";
+                print_expression(function->body, output);
+            }
+            output << '\n';
+            continue;
+        }
         if (!function->recursive)
             continue;
         output << "recursive fn " << function->name << " -> "

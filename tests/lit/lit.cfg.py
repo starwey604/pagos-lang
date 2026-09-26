@@ -25,6 +25,24 @@ config.environment["PATH"] = os.pathsep.join(
     [config.llvm_tools_dir, config.environment.get("PATH", "")]
 )
 config.substitutions.append((
+    "%check_object",
+    " ".join(shlex.quote(value) for value in [
+        config.python,
+        os.path.join(config.pagos_test_source_root, "Inputs", "check_object.py"),
+        config.pagosc,
+        config.test_clang,
+    ]),
+))
+config.substitutions.append((
+    "%run_c_abi",
+    " ".join(shlex.quote(value) for value in [
+        config.python,
+        os.path.join(config.pagos_test_source_root, "Inputs", "run_c_abi.py"),
+        config.pagosc,
+        config.test_clang,
+    ]),
+))
+config.substitutions.append((
     "%run_crc32",
     " ".join(shlex.quote(value) for value in [
         config.python,

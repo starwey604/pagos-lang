@@ -68,7 +68,7 @@ and queries pointer width, allocation size, ABI alignment, and record field
 offsets. Layout and LLVM emission share one private storage-type conversion.
 No target-specific layout cache is global, and board MMIO addresses remain
 outside the compiler. A storage layout is not a C ABI argument/return
-classification; target ABI lowering remains M3 work.
+classification; only the explicit minimal C ABI below is currently supported.
 
 ```mermaid
 flowchart TB
@@ -404,9 +404,8 @@ LLVM declares all signatures before emitting bodies. Generated symbols use
 `pagos.<source-name>.<module-local-id>` and are internal; LLVM may inline them
 during optimization. `pagos_main` keeps the existing test entry ABI.
 
-Scalar Runtime recursion is supported, but aggregate recursive signatures,
-object emission and explicit foreign declarations/calling conventions remain
-separate work. Compilation budgets neither prove termination nor bound target
+Scalar Runtime recursion is supported, but aggregate recursive signatures
+remain separate work. Compilation budgets neither prove termination nor bound target
 stack usage. Do not infer aggregate C ABI classification from storage layout
 alone.
 
@@ -430,8 +429,25 @@ in its identity. These boundaries precede adding a richer effect model.
 
 ### ABI sequence
 
-1. Emit and consume C ABI symbols.
-2. Support manually declared C functions and layout-compatible records.
+The minimal boundary now carries linkage/declaration flags from syntax through
+HIR and MIR. Export roots and extern signatures are predeclared independently
+of internal specialization caches; MIR retains public source names and verifies
+the `u32/i32` restriction. LLVM uses its default C calling convention, gated to
+x86-64 Linux LP64 and generic RV32 ELF ILP32 with I/M/A/C. Supporting other
+types/targets requires explicit ABI classification, not just LLVM storage types;
+see [LLVM calling conventions](https://llvm.org/docs/LangRef.html#calling-conventions)
+and the [RISC-V psABI](https://riscv-non-isa.github.io/riscv-elf-psabi-doc/).
+
+Object emission uses an initialized LLVM AsmPrinter and TargetMachine directly,
+with the same triple/CPU/features and checked DataLayout as semantic analysis.
+Objects use PIC relocation; RV32 sets soft-float ILP32 explicitly. There is no
+new middle-end optimization pipeline or embedded linker. The CLI writes an
+exclusive sibling temporary and renames only after emission/write success,
+rejecting an output that aliases the input. Linking remains an external
+Clang/GCC/LLD task. Library-style boundary modules omit synthetic `pagos_main`.
+
+1. Emit and consume `u32/i32` C ABI symbols (implemented).
+2. Extend manually declared C functions to pointers and layout-compatible records.
 3. Add a Clang-based binding generator or consume a stable generated format.
 4. Use C shims for C++ libraries.
 5. Consider direct C++ ABI integration only after exceptions, RTTI, overloads,

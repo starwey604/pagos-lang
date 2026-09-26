@@ -14,6 +14,10 @@ class LLVMCodegen {
     emit(const mir::Module& mir_module, TargetConfig config = {});
     [[nodiscard]] static std::expected<std::string, std::string>
     emit_for_target(const mir::Module& mir_module, const TargetLayout& target);
+    // Binary object bytes, never text printed to a terminal.
+    [[nodiscard]] static std::expected<std::string, std::string>
+    emit_object_for_target(const mir::Module& mir_module,
+                           const TargetLayout& target);
 };
 
 } // namespace pagos::codegen

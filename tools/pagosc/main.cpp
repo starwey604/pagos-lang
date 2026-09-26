@@ -9,8 +9,11 @@
 #include "pagos/syntax/lexer.h"
 #include "pagos/syntax/parser.h"
 
+#include <algorithm>
 #include <charconv>
 #include <expected>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <optional>
 #include <print>
@@ -20,13 +23,21 @@
 
 namespace {
 
-enum class Command { Check, EmitHir, EmitMir, EmitLlvm, ExplainStage };
+enum class Command {
+    Check,
+    EmitHir,
+    EmitMir,
+    EmitLlvm,
+    EmitObject,
+    ExplainStage
+};
 
 struct Options {
     Command command;
     std::string source_path;
     pagos::stage::AnalysisLimits limits;
     pagos::codegen::TargetConfig target;
+    std::optional<std::string> output_path;
 };
 
 void print_usage() {
@@ -38,8 +49,8 @@ void print_usage() {
                  "[--max-array-elements=N] [--max-array-bytes=N] "
                  "[--max-aggregate-members=N] [--max-aggregate-bytes=N] "
                  "[--target=TRIPLE] [--cpu=CPU] [--features=FEATURES] "
-                 "<check|emit-hir|emit-mir|emit-llvm|explain-stage> "
-                 "<source.pgs>");
+                 "<check|emit-hir|emit-mir|emit-llvm|emit-obj|explain-stage> "
+                 "<source.pgs> [-o output.o]");
 }
 
 std::optional<Command> parse_command(std::string_view name) {
@@ -55,6 +66,8 @@ std::optional<Command> parse_command(std::string_view name) {
     if (name == "emit-llvm") {
         return Command::EmitLlvm;
     }
+    if (name == "emit-obj")
+        return Command::EmitObject;
     if (name == "explain-stage") {
         return Command::ExplainStage;
     }
@@ -81,6 +94,7 @@ std::expected<Options, std::string> parse_options(int argument_count,
     std::optional<std::string> source_path;
     pagos::stage::AnalysisLimits limits;
     pagos::codegen::TargetConfig target;
+    std::optional<std::string> output_path;
 
     for (int index = 1; index < argument_count; ++index) {
         const std::string_view argument{arguments[index]};
@@ -97,9 +111,15 @@ std::expected<Options, std::string> parse_options(int argument_count,
             "--max-aggregate-members=";
         constexpr std::string_view aggregate_bytes_prefix =
             "--max-aggregate-bytes=";
-        if (argument.starts_with("--target=") ||
-            argument.starts_with("--cpu=") ||
-            argument.starts_with("--features=")) {
+        if (argument == "-o") {
+            if (output_path || index + 1 >= argument_count)
+                return std::unexpected("-o requires exactly one output path");
+            output_path = arguments[++index];
+            if (output_path->empty() || output_path->starts_with('-'))
+                return std::unexpected("invalid object output path");
+        } else if (argument.starts_with("--target=") ||
+                   argument.starts_with("--cpu=") ||
+                   argument.starts_with("--features=")) {
             const auto value = argument.substr(argument.find('=') + 1);
             if (value.empty())
                 return std::unexpected("empty target option: " +
@@ -177,10 +197,44 @@ std::expected<Options, std::string> parse_options(int argument_count,
     if (!command || !source_path) {
         return std::unexpected("a command and source file are required");
     }
+    if ((*command == Command::EmitObject) != output_path.has_value())
+        return std::unexpected(
+            "emit-obj requires -o; other commands do not accept -o");
     return Options{.command = *command,
                    .source_path = std::move(*source_path),
                    .limits = limits,
-                   .target = std::move(target)};
+                   .target = std::move(target),
+                   .output_path = std::move(output_path)};
+}
+
+std::expected<void, std::string> write_object(const std::string& input,
+                                              const std::string& output,
+                                              const std::string& bytes) {
+    std::error_code error;
+    if (std::filesystem::equivalent(input, output, error))
+        return std::unexpected(
+            "object output must not replace the source file");
+    // Exclusive sibling creation, then atomic replacement. Existing output
+    // survives compilation/write failures; an existing .tmp is never touched.
+    const auto temporary = output + ".tmp";
+    std::ofstream stream(temporary, std::ios::binary | std::ios::out |
+                                        std::ios::noreplace);
+    if (!stream)
+        return std::unexpected("cannot create object temporary file: " +
+                               temporary);
+    stream.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    stream.close();
+    if (!stream) {
+        std::filesystem::remove(temporary, error);
+        return std::unexpected("cannot write object file: " + output);
+    }
+    std::filesystem::rename(temporary, output, error);
+    if (error) {
+        const auto message = error.message();
+        std::filesystem::remove(temporary, error);
+        return std::unexpected("cannot replace object output: " + message);
+    }
+    return {};
 }
 
 } // namespace
@@ -223,6 +277,17 @@ int main(int argument_count, char** arguments) {
         diagnostics.render(std::cerr);
         return 1;
     }
+    if (std::ranges::any_of(
+            syntax_module->functions,
+            [](const auto& function) {
+                return function->linkage !=
+                       pagos::syntax::Function::Linkage::Internal;
+            }) &&
+        !target->supports_minimal_c_abi()) {
+        std::println(stderr, "error: minimal C ABI requires x86-64 Linux LP64 "
+                             "or generic RV32 ELF ILP32 (I/M/A/C)");
+        return 1;
+    }
 
     pagos::stage::StageAnalyzer stage_analyzer(
         diagnostics, type_checker.types(), options->limits);
@@ -260,6 +325,7 @@ int main(int argument_count, char** arguments) {
         return 0;
     case Command::EmitMir:
     case Command::EmitLlvm:
+    case Command::EmitObject:
         break;
     }
 
@@ -270,6 +336,21 @@ int main(int argument_count, char** arguments) {
     }
     if (options->command == Command::EmitMir) {
         pagos::mir::print(*mir_module, std::cout);
+        return 0;
+    }
+    if (options->command == Command::EmitObject) {
+        const auto bytes = pagos::codegen::LLVMCodegen::emit_object_for_target(
+            *mir_module, *target);
+        if (!bytes) {
+            std::println(stderr, "error: {}", bytes.error());
+            return 1;
+        }
+        if (auto written = write_object(options->source_path,
+                                        *options->output_path, *bytes);
+            !written) {
+            std::println(stderr, "error: {}", written.error());
+            return 1;
+        }
         return 0;
     }
 

@@ -93,6 +93,10 @@ class StageAnalyzer {
     };
     void note_runtime_work();
     bool reserve_residual(ResidualEntry& entry, source::Span span);
+    void initialize_boundaries(const syntax::Module& module);
+    void analyze_exports(const syntax::Module& module);
+    hir::ExprPtr analyze_function_body(const syntax::Function& function,
+                                       source::Span call_span);
     using TraceArguments = std::unordered_map<std::size_t, hir::RuntimeTrace>;
     [[nodiscard]] static hir::RuntimeTrace
     substitute_trace(hir::RuntimeTrace trace, const TraceArguments& arguments);
@@ -170,6 +174,8 @@ class StageAnalyzer {
                        ResidualKeyHash>
         active_residuals_;
     std::vector<std::shared_ptr<ResidualEntry>> residual_stack_;
+    std::unordered_map<std::string, std::shared_ptr<ResidualEntry>>
+        boundary_functions_;
     std::vector<std::shared_ptr<const hir::ResidualFunction>>
         residual_functions_;
     std::size_t residual_reservations_{};

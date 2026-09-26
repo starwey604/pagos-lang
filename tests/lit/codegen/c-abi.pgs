@@ -1,0 +1,40 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR
+// RUN: %run_c_abi %s
+// RUN: %run_c_abi --optimize %s
+extern fn c_next() -> u32;
+extern fn c_neg(x: i32) -> i32;
+extern fn c_identity(x: u32) -> u32;
+extern fn c_mix(a: u32, b: u32, c: u32, d: u32, e: u32,
+                f: u32, g: u32, h: u32, i: u32, j: u32) -> u32;
+fn sum(n: u32) -> u32 { if n == 0 { 0 } else { n + sum(n - 1) } }
+export fn api_sum(n: u32) -> u32 { sum(n) }
+export fn api_neg(n: i32) -> i32 { c_neg(n) - 1i32 }
+export fn api_mix(a: u32, b: u32, c: u32, d: u32, e: u32,
+                  f: u32, g: u32, h: u32, i: u32, j: u32) -> u32 {
+    c_mix(a, b, c, d, e, f, g, h, i, j) ^ 2779096485
+}
+export fn api_effects() -> u32 {
+    let first = c_next();
+    let second = c_next();
+    first + first + second
+}
+export fn api_constant() -> u32 { 42 }
+export fn api_even(n: u32) -> u32 { if n == 0 { 1 } else { api_odd(n - 1) } }
+export fn api_odd(n: u32) -> u32 { if n == 0 { 0 } else { api_even(n - 1) } }
+export fn api_discard() -> u32 { c_next(); 7 }
+export fn api_arg_return(flag: u32) -> u32 {
+    c_identity(if flag == 1 { return 99; } else { c_next() })
+}
+export fn api_trap(zero: u32) -> u32 { c_identity(1 / zero); 7 }
+// HIR: extern C fn c_next -> u32
+// HIR: export C fn api_sum -> u32
+// MIR: extern C func @c_next() -> u32
+// MIR: export C func @api_sum(u32) -> u32
+// IR: declare i32 @c_next()
+// IR: define i32 @api_sum(i32
+// IR: call i32 @pagos.sum.
+// IR: define i32 @api_constant()
+// IR: ret i32 42
+// IR-NOT: @pagos_main

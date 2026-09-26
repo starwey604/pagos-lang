@@ -29,6 +29,24 @@ bool TypeChecker::check(syntax::Module& module) {
     collect_records(module);
     collect_functions(module);
     for (auto& function : module.functions) {
+        if (function->linkage != syntax::Function::Linkage::Internal) {
+            const auto boundary_type = [&](const syntax::Type& type,
+                                           source::Span span) {
+                if (type.kind != syntax::TypeKind::Integer ||
+                    type.integer_width != 32 || type.integer_usize)
+                    diagnostics_.error(
+                        "E1010", "C ABI boundary supports only `u32` and `i32`",
+                        span);
+            };
+            boundary_type(function->result, function->name_span);
+            for (const auto& parameter : function->parameters)
+                boundary_type(parameter.type, parameter.name_span);
+            if (function->name == "pagos_main" ||
+                function->name == "pagos_external_input")
+                diagnostics_.error(
+                    "E1004", "reserved C ABI symbol `" + function->name + "`",
+                    function->name_span);
+        }
         check_function(*function);
     }
 
@@ -116,6 +134,10 @@ void TypeChecker::check_function(syntax::Function& function) {
     for (const auto& parameter : function.parameters) {
         define(parameter.name, types_.resolve(parameter.type),
                parameter.name_span);
+    }
+    if (function.linkage == syntax::Function::Linkage::ExternC) {
+        scopes_.pop_back();
+        return;
     }
     const auto previous_return_type = current_return_type_;
     const auto result_type = types_.resolve(function.result);

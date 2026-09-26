@@ -1,0 +1,4 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+export fn uncalled(x: u32) -> u32 { static let a = x; 1 }
+// CHECK: error[E2001]:
+// CHECK: C parameter uncalled.x

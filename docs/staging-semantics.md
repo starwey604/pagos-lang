@@ -210,6 +210,24 @@ depth on the target. Programs may fail to terminate or exhaust the target stack;
 there is no guaranteed tail-call optimization or runtime stack guard in this
 slice.
 
+### Explicit C boundaries
+
+`extern fn` imports and `export fn` definitions have fixed, unspecialized
+`u32/i32` signatures. Their calls always remain Runtime and conservatively
+effectful, even with Static arguments or a known constant body. They cannot
+satisfy `static let`, and foreign code is never invoked by the evaluator.
+Each call preserves left-to-right argument work and its own effect identity;
+aliasing a call result does not execute the call again.
+
+All exports are analysis roots with Runtime parameters. Ordinary helpers in
+their bodies still use the normal specialization rules. Fixed export signatures
+are declared before any body, enabling forward and mutual recursion. Each
+export reserves one residual-definition slot, even if unused; imported
+declarations consume none. Completed export bodies count in
+`residual-specializations`, but boundary calls are not specialization-cache hits.
+Fuel/depth/construction limits apply to analyzing an export, not each target
+invocation. `static let` failures identify the C parameter or boundary call.
+
 ## 5. Control flow
 
 ### Static condition

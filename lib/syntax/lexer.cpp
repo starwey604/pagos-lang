@@ -12,6 +12,8 @@ namespace {
 constexpr std::array keywords{
     std::pair<std::string_view, TokenKind>{"record", TokenKind::KwRecord},
     std::pair<std::string_view, TokenKind>{"fn", TokenKind::KwFn},
+    std::pair<std::string_view, TokenKind>{"extern", TokenKind::KwExtern},
+    std::pair<std::string_view, TokenKind>{"export", TokenKind::KwExport},
     std::pair<std::string_view, TokenKind>{"let", TokenKind::KwLet},
     std::pair<std::string_view, TokenKind>{"static", TokenKind::KwStatic},
     std::pair<std::string_view, TokenKind>{"runtime", TokenKind::KwRuntime},

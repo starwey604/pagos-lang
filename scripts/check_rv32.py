@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and run the pinned, freestanding RV32 environment smoke tests."""
+"""Run RV32 environment probes and, with --pagosc, the Pagos/C ABI bridge."""
 
 import argparse
 import json
@@ -20,6 +20,8 @@ def checked(command):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--qemu-version", default="11.1.1")
+    parser.add_argument("--pagosc", type=Path,
+                        help="also compile and execute Pagos/C ABI firmware")
     args = parser.parse_args()
     version = checked(["qemu-system-riscv32", "--version"]).splitlines()[0]
     if version != f"QEMU emulator version {args.qemu_version}":
@@ -32,14 +34,29 @@ def main():
                       "gcc": checked(["riscv64-elf-gcc", "--version"]).splitlines()[0],
                       "runtime": str(runtime)}, indent=2), flush=True)
     with tempfile.TemporaryDirectory(prefix="pagos-rv32-") as directory:
+        objects = {}
+        if args.pagosc:
+            pagosc = str(args.pagosc.resolve())
+            source = str(ROOT / "tests/lit/codegen/c-abi.pgs")
+            target = ["--target=riscv32-unknown-elf", "--features=+m,+a,+c"]
+            objects["c-abi"] = str(Path(directory) / "pagos.o")
+            objects["c-abi-opt"] = str(Path(directory) / "pagos-opt.o")
+            subprocess.run([pagosc, *target, "emit-obj", source, "-o",
+                            objects["c-abi"]], check=True)
+            ir = subprocess.check_output([pagosc, *target, "emit-llvm", source])
+            subprocess.run(["clang", "--target=riscv32-unknown-elf", *ISA,
+                            "-O2", "-c", "-x", "ir", "-", "-o",
+                            objects["c-abi-opt"]], input=ir, check=True)
         for compiler in ("clang", "riscv64-elf-gcc"):
-            for case, define, expected in (
+            cases = [
                 ("success", None, 0),
                 ("failure", "FORCE_FAILURE", 1),
                 ("bss-init", "SKIP_BSS_CLEAR", 1),
                 ("data-init", "SKIP_DATA_COPY", 1),
                 ("timeout", "FORCE_TIMEOUT", None),
-            ):
+            ]
+            cases += [(name, "WITH_PAGOS_C_ABI", 0) for name in objects]
+            for case, define, expected in cases:
                 elf = str(Path(directory) / f"{compiler}-{case}.elf")
                 command = [compiler, *ISA, "-O2", "-ffreestanding", "-nostdlib",
                            "-fno-stack-protector", "-fno-pic", "-mcmodel=medany",
@@ -49,6 +66,9 @@ def main():
                     command += ["--target=riscv32-unknown-elf", "-fuse-ld=lld"]
                 if define:
                     command += [f"-D{define}"]
+                if case in objects:
+                    command += ["-DPAGOS_FREESTANDING", objects[case],
+                                str(ROOT / "tests/lit/Inputs/c_abi.c")]
                 command += [str(PLATFORM / "start.S"), str(PLATFORM / "smoke.c"),
                             str(runtime), "-o", elf]
                 subprocess.run(command, check=True)

@@ -1,0 +1,10 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+extern fn clash() -> u32;
+export fn clash() -> u32 { 1 }
+extern fn pagos_main() -> u32;
+extern fn pagos_external_input() -> u32;
+extern fn duplicate(x: u32, x: u32) -> u32;
+// CHECK: error[E1004]: duplicate function `clash`
+// CHECK: error[E1004]: reserved C ABI symbol `pagos_main`
+// CHECK: error[E1004]: reserved C ABI symbol `pagos_external_input`
+// CHECK: error[E1004]: duplicate

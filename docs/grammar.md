@@ -1,6 +1,6 @@
 # Core Grammar Sketch
 
-Status: normative syntax baseline, including Milestone 3 integer types.
+Status: normative syntax baseline, including M3 integers and minimal C ABI.
 Later milestones should not silently change accepted programs.
 
 ## Scope
@@ -31,8 +31,10 @@ record          = "record" identifier "{" record-fields [ "," ] "}" ;
 record-fields   = identifier ":" scalar-type
                   { "," identifier ":" scalar-type } ;
 
-function        = "fn" identifier "(" [ parameters ] ")"
-                  "->" type block ;
+function        = [ "export" ] "fn" identifier "(" [ parameters ] ")"
+                  "->" type block
+                | "extern" "fn" identifier "(" [ parameters ] ")"
+                  "->" type ";" ;
 parameters      = parameter { "," parameter } ;
 parameter       = identifier ":" type ;
 integer-type    = "u8" | "u16" | "u32" | "u64"
@@ -97,10 +99,10 @@ range's bounds must be `u32`. Initializers and return expressions must match
 their declared or inferred type. There are no implicit conversions in the
 core language.
 
-Scalar calls with a Runtime scalar result lower to internal residual functions.
-Static calls still evaluate during analysis; aggregate calls retain the inline
-path. No new source syntax or foreign calling convention is introduced by
-this lowering choice. Runtime recursion remains unsupported.
+Ordinary scalar calls with a Runtime scalar result lower to internal residual
+functions, including direct and mutual Runtime recursion. Static calls still
+evaluate during analysis; aggregate calls retain the inline path and aggregate
+recursion remains unsupported. Internal signatures are not a foreign ABI.
 
 Unsuffixed literals default to `u32`; annotations do not retarget literals in
 this slice. Use `let byte: u8 = 255u8`, not `let byte: u8 = 255`. A suffixed
@@ -144,6 +146,38 @@ discards high bits. Shift counts must be non-negative and below the width:
 an analyzed Static count outside this range reports `E4009`, even with a Runtime
 left operand; a Runtime count is checked before shifting and traps if invalid.
 Unselected Static branches and skipped short-circuit operands are not evaluated.
+
+## Minimal C ABI (Milestone 3)
+
+```pagos
+extern fn platform_read() -> u32;
+export fn sample(offset: u32) -> u32 { platform_read() + offset }
+```
+
+`extern fn` declares a C symbol without a body; `export fn` defines one using
+its exact source name. Both require explicit parameter/result types, limited
+to `u32` and `i32` (C `uint32_t` and `int32_t`). Zero parameters are allowed;
+`void`, `bool`, other widths, `usize`, pointers, aggregates, varargs, and
+overloads are not. Declarations cannot be repeated or redeclared as definitions
+in the same module. `pagos_main` and `pagos_external_input` are reserved names.
+
+Every export is analyzed/emitted, even if uncalled, with all parameters Runtime.
+Calls to either boundary are always Runtime and conservatively effectful,
+including calls to a constant-returning export with Static arguments. Normal
+helpers inside an export still specialize. Foreign code never runs during
+compilation. Argument order, checked traps, and early returns remain unchanged.
+
+The validated ABI subset is x86-64 Linux LP64 and generic RV32 ELF soft-float
+ILP32 (I with optional M/A/C). Other C-boundary target configurations are
+rejected, rather than inferred from storage layout. The caller must supply
+matching C prototypes and target options; no headers or linker checks for
+cross-language type mismatches are generated. Unwinding across the boundary,
+C++ exceptions, and `longjmp` through Pagos frames are outside this contract.
+
+A module with any `extern`/`export` and no top-level statements emits only its
+boundary symbols and reachable helpers, not synthetic `pagos_main`. Top-level
+statements otherwise retain the explicit test entry, not an automatically run
+module initializer. Separate object files can import each other's exports.
 
 ## Minimal Records (Milestone 2)
 

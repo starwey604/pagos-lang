@@ -1,4 +1,7 @@
-// Platform-only environment probe, not a Pagos runtime or language feature.
+// Platform environment probe; optionally also execute the Pagos/C ABI bridge.
+#ifdef WITH_PAGOS_C_ABI
+extern int abi_check(void);
+#endif
 typedef unsigned int u32;
 typedef unsigned long long u64;
 _Static_assert(sizeof(u32) == 4 && sizeof(void*) == 4, "RV32 ILP32 required");
@@ -28,6 +31,9 @@ void smoke_main(void) {
     u32 passed = initialized == 0x12345678 && zeroed == 0 &&
                  ((u32)&stack_probe & 3) == 0 && stack_probe[3] == 4 &&
                  numerator / denominator == 0x7df47fccd4ac14ULL;
+#ifdef WITH_PAGOS_C_ABI
+    passed = passed && abi_check() == 0;
+#endif
 #ifdef FORCE_FAILURE
     passed = 0;
 #endif

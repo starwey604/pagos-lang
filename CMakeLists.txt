@@ -138,6 +138,7 @@ if(PAGOS_USE_LLVM_DYLIB AND TARGET LLVM AND LLVM_LINK_LLVM_DYLIB)
 else()
     llvm_map_components_to_libnames(PAGOS_LLVM_LIBRARIES
         Core
+        CodeGen
         Support
         Target
         TargetParser

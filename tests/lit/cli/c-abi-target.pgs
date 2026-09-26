@@ -1,0 +1,7 @@
+// RUN: %pagosc --target=riscv32-unknown-elf --features=+m,+a,+c check %s
+// RUN: not %pagosc --target=riscv64-unknown-elf check %s 2>&1 | %FileCheck %s
+// RUN: not %pagosc --target=arm-none-eabi check %s 2>&1 | %FileCheck %s
+// RUN: not %pagosc --target=x86_64-pc-windows-msvc check %s 2>&1 | %FileCheck %s
+// RUN: not %pagosc --target=riscv32-unknown-elf --features=+f check %s 2>&1 | %FileCheck %s
+extern fn read() -> u32;
+// CHECK: error: minimal C ABI requires x86-64 Linux LP64 or generic RV32 ELF ILP32 (I/M/A/C)

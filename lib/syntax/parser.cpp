@@ -42,6 +42,8 @@ void Parser::synchronize() {
         }
         switch (current().kind) {
         case TokenKind::KwFn:
+        case TokenKind::KwExtern:
+        case TokenKind::KwExport:
         case TokenKind::KwRecord:
         case TokenKind::KwLet:
         case TokenKind::KwStatic:
@@ -65,7 +67,8 @@ std::unique_ptr<Module> Parser::parse_module() {
             if (auto record = parse_record()) {
                 module->records.push_back(std::move(*record));
             }
-        } else if (check(TokenKind::KwFn)) {
+        } else if (check(TokenKind::KwFn) || check(TokenKind::KwExtern) ||
+                   check(TokenKind::KwExport)) {
             if (auto function = parse_function()) {
                 module->functions.push_back(std::move(function));
             }
@@ -188,6 +191,11 @@ std::optional<Type> Parser::parse_type() {
 }
 
 std::unique_ptr<Function> Parser::parse_function() {
+    auto linkage = Function::Linkage::Internal;
+    if (match(TokenKind::KwExtern))
+        linkage = Function::Linkage::ExternC;
+    else if (match(TokenKind::KwExport))
+        linkage = Function::Linkage::ExportC;
     const auto* start = consume(TokenKind::KwFn, "expected `fn`");
     const auto* name =
         consume(TokenKind::Identifier, "expected function name after `fn`");
@@ -224,19 +232,26 @@ std::unique_ptr<Function> Parser::parse_function() {
     if (!result) {
         return nullptr;
     }
-    auto body = parse_block();
-    if (!body) {
-        return nullptr;
+    std::unique_ptr<Block> body;
+    if (linkage == Function::Linkage::ExternC) {
+        if (!consume(TokenKind::Semicolon,
+                     "expected `;` after extern function declaration"))
+            return nullptr;
+    } else {
+        body = parse_block();
+        if (!body)
+            return nullptr;
     }
     const auto span =
-        source::Span{.begin = start->span.begin, .end = body->span.end};
+        source::Span{.begin = start->span.begin, .end = previous().span.end};
     return std::make_unique<Function>(
         Function{.name = std::string(name->lexeme),
                  .name_span = name->span,
                  .parameters = std::move(parameters),
                  .result = *result,
                  .body = std::move(body),
-                 .span = span});
+                 .span = span,
+                 .linkage = linkage});
 }
 
 std::unique_ptr<Block> Parser::parse_block() {

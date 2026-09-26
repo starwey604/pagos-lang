@@ -20,6 +20,10 @@ std::string_view token_kind_name(TokenKind kind) noexcept {
         return "integer";
     case TokenKind::KwFn:
         return "`fn`";
+    case TokenKind::KwExtern:
+        return "`extern`";
+    case TokenKind::KwExport:
+        return "`export`";
     case TokenKind::KwLet:
         return "`let`";
     case TokenKind::KwStatic:

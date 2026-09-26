@@ -1,0 +1,11 @@
+// RUN: not %pagosc --max-residual-specializations=1 check %s 2>&1 | %FileCheck %s --check-prefix=BUDGET
+// RUN: not %pagosc --max-recursion-depth=0 check %s 2>&1 | %FileCheck %s --check-prefix=DEPTH
+// RUN: not %pagosc --max-fuel=0 check %s 2>&1 | %FileCheck %s --check-prefix=FUEL
+// RUN: %pagosc --max-residual-specializations=2 explain-stage %s | %FileCheck %s --check-prefix=OK
+extern fn read() -> u32;
+export fn first() -> u32 { 1 }
+export fn second() -> u32 { read() }
+// BUDGET: error[E4012]:
+// DEPTH: error[E4005]:
+// FUEL: error[E4004]:
+// OK: residual-specializations=2,

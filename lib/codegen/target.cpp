@@ -29,12 +29,15 @@ TargetLayout::create(TargetConfig config) {
         LLVMInitializeX86TargetInfo();
         LLVMInitializeX86Target();
         LLVMInitializeX86TargetMC();
+        LLVMInitializeX86AsmPrinter();
         LLVMInitializeRISCVTargetInfo();
         LLVMInitializeRISCVTarget();
         LLVMInitializeRISCVTargetMC();
+        LLVMInitializeRISCVAsmPrinter();
         LLVMInitializeARMTargetInfo();
         LLVMInitializeARMTarget();
         LLVMInitializeARMTargetMC();
+        LLVMInitializeARMAsmPrinter();
     });
     if (config.triple.empty())
         config.triple = llvm::sys::getDefaultTargetTriple();
@@ -124,6 +127,24 @@ unsigned TargetLayout::pointer_bits() const {
 
 bool TargetLayout::little_endian() const {
     return llvm::DataLayout(layout_).isLittleEndian();
+}
+
+bool TargetLayout::supports_minimal_c_abi() const {
+    const llvm::Triple triple(config_.triple);
+    if (triple.getArch() == llvm::Triple::x86_64 && triple.isOSLinux() &&
+        pointer_bits() == 64)
+        return true;
+    if (!triple.isRISCV32() || triple.getOS() != llvm::Triple::UnknownOS ||
+        !triple.isOSBinFormatELF() || config_.cpu != "generic-rv32")
+        return false;
+    // Deliberately the validated RV32 I/M/A/C, soft-float ILP32 subset.
+    std::istringstream features(config_.features);
+    std::string feature;
+    while (std::getline(features, feature, ',')) {
+        if (feature != "+m" && feature != "+a" && feature != "+c")
+            return false;
+    }
+    return true;
 }
 
 std::expected<TypeLayout, std::string>
