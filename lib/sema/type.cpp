@@ -4,6 +4,10 @@ namespace pagos::sema {
 
 Type::Type(const syntax::Type& annotation, unsigned pointer_bits) {
     switch (annotation.kind) {
+    case syntax::TypeKind::Pointer:
+        *this = pointer(Type(annotation.pointee_type(), pointer_bits),
+                        annotation.pointer_mutable, pointer_bits);
+        break;
     case syntax::TypeKind::Unknown:
         kind = TypeKind::Unknown;
         break;
@@ -37,6 +41,9 @@ Type::Type(const syntax::Type& annotation, unsigned pointer_bits) {
 
 std::string type_name(const Type& type) {
     switch (type.kind) {
+    case TypeKind::Pointer:
+        return std::string(type.pointer_mutable ? "*mut " : "*const ") +
+               type_name(type.pointee_type());
     case TypeKind::Unknown:
         return "<unknown>";
     case TypeKind::Void:

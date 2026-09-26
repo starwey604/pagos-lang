@@ -20,7 +20,8 @@ enum class TypeKind {
     Error,
     ArrayBool,
     ArrayInteger,
-    Record
+    Record,
+    Pointer
 };
 
 struct Type {
@@ -28,6 +29,7 @@ struct Type {
     unsigned integer_width{32};
     bool integer_signed{};
     bool integer_usize{}; // Target-dependent spelling; width is unresolved.
+    bool pointer_mutable{};
     // Zero denotes a deferred array length in the semantic type table only.
     // Source array types and all residual array values must have positive size.
     std::uint32_t length{};
@@ -50,6 +52,18 @@ struct Type {
         auto type = integer(0);
         type.integer_usize = true;
         return type;
+    }
+    [[nodiscard]] bool is_pointer() const noexcept {
+        return kind == TypeKind::Pointer;
+    }
+    [[nodiscard]] static Type pointer(const Type& pointee, bool writable) {
+        auto type = pointee;
+        type.kind = TypeKind::Pointer;
+        type.pointer_mutable = writable;
+        return type;
+    }
+    [[nodiscard]] Type pointee_type() const {
+        return integer_usize ? usize() : integer(integer_width, integer_signed);
     }
     [[nodiscard]] static Type record(std::string name) {
         Type type{TypeKind::Record};
@@ -75,7 +89,7 @@ struct Type {
     }
 };
 enum class BindingKind { Inferred, Static, Runtime };
-enum class UnaryOperator { Not, BitNot, Negate };
+enum class UnaryOperator { Not, BitNot, Negate, Dereference };
 enum class BinaryOperator {
     Add,
     Subtract,
@@ -246,7 +260,7 @@ struct ArrayGeneratorExpr final : Expr {
 };
 
 struct Stmt {
-    enum class Kind { Binding, Return, Expression, For };
+    enum class Kind { Binding, Return, Expression, For, Store };
 
     Stmt(Kind kind, source::Span span) : kind(kind), span(span) {}
     virtual ~Stmt() = default;
@@ -281,6 +295,15 @@ struct ExpressionStmt final : Stmt {
     ExpressionStmt(std::unique_ptr<Expr> expression, source::Span span)
         : Stmt(Kind::Expression, span), expression(std::move(expression)) {}
     std::unique_ptr<Expr> expression;
+};
+
+struct StoreStmt final : Stmt {
+    StoreStmt(std::unique_ptr<Expr> pointer, std::unique_ptr<Expr> value,
+              source::Span span)
+        : Stmt(Kind::Store, span), pointer(std::move(pointer)),
+          value(std::move(value)) {}
+    std::unique_ptr<Expr> pointer;
+    std::unique_ptr<Expr> value;
 };
 
 struct ForStmt final : Stmt {

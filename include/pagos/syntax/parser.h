@@ -30,6 +30,7 @@ class Parser {
     std::optional<Module::Record> parse_record();
     std::unique_ptr<Block> parse_block();
     std::unique_ptr<Stmt> parse_statement();
+    std::unique_ptr<Stmt> parse_store(std::unique_ptr<Expr> destination);
     std::unique_ptr<Stmt> parse_binding(BindingKind kind,
                                         source::Span start_span);
     std::unique_ptr<Stmt> parse_return();

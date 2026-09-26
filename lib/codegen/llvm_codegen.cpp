@@ -240,6 +240,13 @@ class Generator {
         }
         if (const auto* constant =
                 std::get_if<mir::ConstantOperation>(&instruction.operation)) {
+            if (const auto* pointer =
+                    std::get_if<PointerConstant>(&constant->value))
+                return llvm::ConstantExpr::getIntToPtr(
+                    llvm::ConstantInt::get(
+                        context_, llvm::APInt(pointer->address.type().width,
+                                              pointer->address.bits())),
+                    llvm_type(instruction.type));
             if (const auto* integer =
                     std::get_if<IntegerValue>(&constant->value)) {
                 return llvm::ConstantInt::get(llvm_type(instruction.type),
@@ -313,6 +320,33 @@ class Generator {
                 std::get_if<mir::BinaryOperation>(&instruction.operation)) {
             return emit_binary(*binary);
         }
+        if (const auto* cast = std::get_if<mir::PointerCastOperation>(
+                &instruction.operation)) {
+            auto* value = values_.at(cast->operand);
+            if (!instruction.type.is_pointer())
+                return builder_.CreatePtrToInt(
+                    value, llvm_type(instruction.type), "pointer.address");
+            if (value->getType()->isPointerTy())
+                return value; // Read-only conversion has no machine
+                              // representation change.
+            return builder_.CreateIntToPtr(value, llvm_type(instruction.type),
+                                           "address.pointer");
+        }
+        if (const auto* load =
+                std::get_if<mir::LoadOperation>(&instruction.operation)) {
+            auto* pointer = values_.at(load->pointer);
+            guard_pointer(pointer);
+            return builder_.CreateAlignedLoad(llvm_type(instruction.type),
+                                              pointer, llvm::Align(1),
+                                              "pointer.load");
+        }
+        if (const auto* store =
+                std::get_if<mir::StoreOperation>(&instruction.operation)) {
+            auto* pointer = values_.at(store->pointer);
+            guard_pointer(pointer);
+            return builder_.CreateAlignedStore(values_.at(store->value),
+                                               pointer, llvm::Align(1));
+        }
         if (const auto* cast = std::get_if<mir::IntegerCastOperation>(
                 &instruction.operation)) {
             return builder_.CreateIntCast(
@@ -358,6 +392,24 @@ class Generator {
             return emit_index(*index);
         }
         return nullptr;
+    }
+
+    void guard_pointer(llvm::Value* pointer) {
+        auto* function = builder_.GetInsertBlock()->getParent();
+        auto* trap_block =
+            llvm::BasicBlock::Create(context_, "pointer.null", function);
+        auto* valid_block =
+            llvm::BasicBlock::Create(context_, "pointer.valid", function);
+        auto* null = llvm::ConstantPointerNull::get(
+            llvm::cast<llvm::PointerType>(pointer->getType()));
+        builder_.CreateCondBr(builder_.CreateICmpEQ(pointer, null), trap_block,
+                              valid_block);
+        builder_.SetInsertPoint(trap_block);
+        auto* trap = llvm::Intrinsic::getOrInsertDeclaration(
+            module_.get(), llvm::Intrinsic::trap);
+        builder_.CreateCall(trap);
+        builder_.CreateUnreachable();
+        builder_.SetInsertPoint(valid_block);
     }
 
     llvm::Value* emit_index(const mir::IndexOperation& operation) {

@@ -50,7 +50,8 @@ class Lowerer {
                     emit(Type::U32, IntegerCastOperation{.operand = result},
                          hir_module.result->span);
             } else if (hir_module.result->type.is_array() ||
-                       hir_module.result->type.is_record()) {
+                       hir_module.result->type.is_record() ||
+                       hir_module.result->type.is_pointer()) {
                 result = emit(Type::U32,
                               ConstantOperation{.value = std::uint32_t{0}},
                               hir_module.result->span);
@@ -178,9 +179,30 @@ class Lowerer {
                 return std::unexpected(operand.error());
             if (!live_)
                 return *operand;
-            result = emit(type_of(expression->type),
-                          IntegerCastOperation{.operand = *operand},
-                          expression->span);
+            const Operation operation =
+                expression->type.is_pointer() ||
+                        expression->operands[0]->type.is_pointer()
+                    ? Operation{PointerCastOperation{*operand}}
+                    : Operation{IntegerCastOperation{*operand}};
+            result =
+                emit(type_of(expression->type), operation, expression->span);
+            break;
+        }
+        case hir::Expr::Kind::Load:
+        case hir::Expr::Kind::Store: {
+            const auto pointer = lower_expression(expression->operands.at(0));
+            if (!pointer || !live_)
+                return pointer;
+            if (expression->kind == hir::Expr::Kind::Load) {
+                result = emit(type_of(expression->type),
+                              LoadOperation{*pointer}, expression->span);
+            } else {
+                const auto value = lower_expression(expression->operands.at(1));
+                if (!value || !live_)
+                    return value;
+                result = emit(Type::Void, StoreOperation{*pointer, *value},
+                              expression->span);
+            }
             break;
         }
         case hir::Expr::Kind::Unary:
@@ -586,6 +608,9 @@ class Lowerer {
     }
 
     Type type_of(const sema::Type& type) const {
+        if (type.is_pointer())
+            return Type::pointer(type_of(type.pointee_type()),
+                                 type.pointer_mutable, type.pointer_bits);
         if (type.is_record()) {
             const auto found = context_.records.find(type.record_name);
             return found == context_.records.end() ? Type{Type::Invalid}

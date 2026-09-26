@@ -8,6 +8,8 @@ namespace pagos::codegen::detail {
 
 inline llvm::Type* storage_type(const mir::Type& type,
                                 llvm::LLVMContext& context) {
+    if (type.is_pointer())
+        return llvm::PointerType::get(context, 0);
     if (type.is_record()) {
         std::vector<llvm::Type*> fields;
         fields.reserve(type.fields.size());

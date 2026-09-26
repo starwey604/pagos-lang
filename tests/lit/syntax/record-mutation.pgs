@@ -2,4 +2,4 @@
 record Config { value: u32 }
 let config = Config(value: 1);
 config.value = 2;
-// CHECK: error[E1002]: expected `;` after expression
+// CHECK: error[E1002]: assignment requires a pointer dereference

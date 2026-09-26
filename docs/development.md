@@ -84,11 +84,13 @@ semantics or evidence of CH32 support. See the
 and [test device](https://gitlab.com/qemu-project/qemu/-/blob/v11.1.0/hw/misc/sifive_test.c).
 
 Without extra arguments this remains a ten-case environment probe. Add
-`--pagosc build/debug/pagosc` to run four additional Pagos/C ABI firmware cases:
+`--pagosc build/debug/pagosc` to run eight additional Pagos/C ABI firmware cases:
 direct object output and Clang `-O2` optimized IR, each linked against Clang-
 and GCC-compiled C. They exercise exports/imports, recursion, signed values,
-ten-argument register/stack passing, and effect order. Startup, MMIO and UART
-remain in C/assembly; this is not yet Pagos-native memory/volatile support.
+ten-argument register/stack passing, and effect order. The pointer suite also
+executes Pagos RAM loads/stores, aliasing, recursive/loop updates, integer-address
+round trips, and unaligned access. Startup, MMIO and UART remain in C/assembly;
+this is not yet Pagos volatile/device support.
 `scripts/ci.py --rv32` includes both probes and these ABI cases. The matching
 target libgcc is linked explicitly; do not substitute host compiler-rt.
 
@@ -154,11 +156,20 @@ python3 scripts/check_rv32.py --pagosc build/debug/pagosc
 ```
 
 `extern fn` imports and `export fn` exports use exact source symbol names,
-accept only `u32/i32`, and always denote Runtime calls. Validated targets are
-x86-64 Linux LP64 and generic RV32 ELF ILP32 with I/M/A/C. The C prototype and
+accept `u32/i32` and integer pointers, and always denote Runtime calls.
+Validated targets are x86-64 Linux LP64 and generic RV32 ELF ILP32 with I/M/A/C.
+The C prototype and
 target flags must match; neither headers nor cross-language signature checks
 are generated. Boundary-only modules omit `pagos_main`, allowing separate
 objects to link. See [boundary rules](grammar.md#minimal-c-abi-milestone-3).
+
+For memory access, substitute `tests/lit/codegen/pointers.pgs` and
+`tests/lit/Inputs/pointers.c` in the native link example above. The C harness
+owns the storage; Pagos uses `*const T` / `*mut T`, `*p` and `*p = value;`.
+No `unsafe` keyword or borrowing annotations are required. Read the
+[memory rules](grammar.md#raw-pointers-and-memory-milestone-3) before passing
+addresses: null checks are not lifetime/bounds checks, and ordinary memory
+operations are neither volatile nor atomic.
 
 Bound compile-time work with options placed anywhere before or after the
 command:

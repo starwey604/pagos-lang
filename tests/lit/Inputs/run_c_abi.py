@@ -12,7 +12,8 @@ def main():
     optimize = arguments[0] == "--optimize"
     if optimize:
         arguments = arguments[1:]
-    source, = arguments
+    source, *extra = arguments
+    harness = Path(extra[0]) if extra else Path(__file__).with_name("c_abi.c")
     with tempfile.TemporaryDirectory(prefix="pagos-c-abi-") as directory:
         root = Path(directory)
         obj = root / "module.o"
@@ -27,11 +28,12 @@ def main():
             assert obj.read_bytes().startswith(b"\x7fELF")
         program = root / "program"
         subprocess.run([clang, "-O2" if optimize else "-O0", str(obj),
-                        str(Path(__file__).with_name("c_abi.c")), "-o", str(program)],
+                        str(harness), "-o", str(program)],
                        check=True, timeout=20)
         subprocess.run([str(program)], check=True, timeout=5)
-        trapped = subprocess.run([str(program), "trap"], timeout=5)
-        assert trapped.returncode == -signal.SIGILL, trapped
+        for case in (["trap", "store-trap", "discard-trap"] if extra else ["trap"]):
+            trapped = subprocess.run([str(program), case], timeout=5)
+            assert trapped.returncode == -signal.SIGILL, trapped
 
 
 if __name__ == "__main__":

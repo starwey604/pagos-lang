@@ -18,8 +18,14 @@ struct RecordConstant {
     std::vector<ScalarConstant> fields;
     bool operator==(const RecordConstant&) const = default;
 };
-using Constant = std::variant<IntegerValue, bool, std::vector<IntegerValue>,
-                              std::vector<bool>, RecordConstant>;
+// Numeric address in the target address space, never a host allocation/handle.
+struct PointerConstant {
+    IntegerValue address;
+    bool operator==(const PointerConstant&) const = default;
+};
+using Constant =
+    std::variant<IntegerValue, bool, std::vector<IntegerValue>,
+                 std::vector<bool>, RecordConstant, PointerConstant>;
 
 [[nodiscard]] std::size_t constant_hash(const Constant& value) noexcept;
 [[nodiscard]] bool constant_equal(const Constant& left, const Constant& right);

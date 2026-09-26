@@ -1,0 +1,4 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let p = 0usize as *const u32;
+let value = *p;
+// CHECK: error[E4013]: cannot dereference a null pointer

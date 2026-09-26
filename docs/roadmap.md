@@ -115,14 +115,17 @@ and bounded recursive specialization growth. The seventh slice adds direct
 object emission and minimal `extern fn`/`export fn` C interoperability for
 `u32/i32` on x86-64 Linux LP64 and generic RV32 ELF ILP32 (I/M/A/C). Real
 Pagos/C firmware runs on QEMU with Clang and GCC C callers/callees; startup
-and MMIO remain in the C/assembly harness. Aggregate call lowering, additional
-ABI types/targets, memory, and native Pagos MMIO remain open.
+and MMIO remain in the C/assembly harness. The eighth slice adds non-owning
+integer pointers, C pointer signatures, ordinary RAM loads/stores and `usize`
+address conversions, without `unsafe` or mandatory borrowing. Aggregate call
+lowering, additional ABI types/targets, allocation and native Pagos MMIO
+remain open.
 
 Add the minimum systems features needed for real firmware:
 
 - explicit-width integer types and target `usize`;
 - layout-defined records and enums;
-- pointers, address spaces, and controlled `unsafe` operations;
+- programmer-managed raw pointers, explicit memory rules and address spaces;
 - volatile loads/stores and MMIO;
 - globals and custom sections;
 - C ABI import/export;

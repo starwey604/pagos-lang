@@ -213,9 +213,9 @@ slice.
 ### Explicit C boundaries
 
 `extern fn` imports and `export fn` definitions have fixed, unspecialized
-`u32/i32` signatures. Their calls always remain Runtime and conservatively
-effectful, even with Static arguments or a known constant body. They cannot
-satisfy `static let`, and foreign code is never invoked by the evaluator.
+`u32/i32` or integer-pointer signatures. Their calls always remain Runtime and
+conservatively effectful, even with Static arguments or a known constant body.
+They cannot satisfy `static let`, and foreign code is never invoked by the evaluator.
 Each call preserves left-to-right argument work and its own effect identity;
 aliasing a call result does not execute the call again.
 
@@ -307,11 +307,22 @@ pure        deterministic computation with no external effects
 build.fs    declared build-time filesystem access
 build.env   declared build-time environment access
 target.io   target-side I/O such as MMIO, sensors, and interrupts
-unsafe      raw pointers, inline assembly, and unchecked operations
+target.memory ordinary target memory reads and writes
 ```
 
 Possible later effects include allocation, concurrency, process execution, and
 network access.
+
+Raw pointer access does not require an `unsafe` keyword or a borrow checker.
+Memory validity is the programmer's responsibility, subject to the
+[pointer contract](grammar.md#raw-pointers-and-memory-milestone-3).
+Numeric address construction/conversion may be Static, but loads/stores are
+always residual work. A Static-result helper may still retain stores; neither
+result caching nor specialization reuse may suppress them. Repeated reads are
+distinct computations, whereas an alias of an already-read value is a snapshot.
+Runtime stores are ordered after their address/value computations and before
+later dependent reads or external calls. Pointer permission is not an effect
+summary: `*const` does not mean memory cannot change through another alias.
 
 `build.fs` and `build.env` calls record exact dependencies for incremental and
 content-addressed builds. Network access should be disabled by default. External
@@ -401,7 +412,7 @@ command. HIR/MIR retain the semantic pointer width even if all target-dependent
 work folds away; emission with a different pointer width is rejected.
 Static results computed at a different pointer width must not be reused.
 
-Floating point, implicit conversions, `isize`, and pointers remain outside the
+Floating point, implicit conversions, and `isize` remain outside the
 core grammar.
 
 MMIO, volatile access, interrupts, and target assembly are always residual
@@ -440,7 +451,8 @@ constraint, the first Runtime source, and the shortest useful dependency path.
 - Are explicit stage annotations permitted on function parameters and return
   types, and what is their syntax?
 - How does mutable local state interact with compile-time evaluation?
-- What memory and ownership model should the systems language use?
+- Which scoped cleanup/RAII tools should supplement programmer-managed raw
+  pointer lifetimes without mandatory borrowing or an `unsafe` keyword?
 - Which generic and reflection facilities are necessary for the first useful
   embedded configuration library?
 - Should the current analysis-only field sensitivity later become part of the

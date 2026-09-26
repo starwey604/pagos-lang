@@ -105,6 +105,8 @@ std::size_t StageAnalyzer::ResidualKeyHash::operator()(
         mix(argument.type.integer_type.width);
         mix(argument.type.integer_type.is_signed);
         mix(argument.type.integer_type.is_usize);
+        mix(argument.type.pointer_bits);
+        mix(argument.type.pointer_mutable);
         mix(argument.constant.has_value());
         if (argument.constant)
             mix(constant_hash(*argument.constant));
@@ -130,6 +132,16 @@ StageAnalyzer::substitute_trace(hir::RuntimeTrace trace,
 void StageAnalyzer::note_runtime_work() {
     for (const auto& entry : residual_stack_)
         entry->runtime_seen = true;
+}
+
+bool StageAnalyzer::check_pointer_access(const hir::ExprPtr& pointer,
+                                         source::Span span) {
+    if (pointer->constant &&
+        std::get<PointerConstant>(*pointer->constant).address.bits() == 0) {
+        diagnostics_.error("E4013", "cannot dereference a null pointer", span);
+        return false;
+    }
+    return true;
 }
 
 void StageAnalyzer::initialize_boundaries(const syntax::Module& module) {
@@ -422,6 +434,25 @@ StageAnalyzer::BlockResult
 StageAnalyzer::analyze_statement(const syntax::Stmt& statement,
                                  hir::Module* output_module) {
     switch (statement.kind) {
+    case syntax::Stmt::Kind::Store: {
+        const auto& store = static_cast<const syntax::StoreStmt&>(statement);
+        auto pointer = analyze_expression(*store.pointer);
+        if (!pointer || !pointer->falls_through)
+            return {.value = pointer, .returned = true};
+        auto value = analyze_expression(*store.value);
+        if (!value || !value->falls_through)
+            return {.value = value ? make_sequence({pointer}, value, store.span)
+                                   : nullptr,
+                    .returned = true};
+        if (!check_pointer_access(pointer, store.pointer->span))
+            return {};
+        auto effect = make_runtime(hir::Expr::Kind::Store, sema::TypeKind::Void,
+                                   store.span, {pointer, value},
+                                   {.origin_span = store.span,
+                                    .origin_name = "pointer store",
+                                    .path = {"pointer store"}});
+        return {.effects = {effect}};
+    }
     case syntax::Stmt::Kind::Binding: {
         auto value = analyze_binding(
             static_cast<const syntax::BindingStmt&>(statement), output_module);
@@ -636,11 +667,16 @@ hir::ExprPtr StageAnalyzer::analyze_expression(const syntax::Expr& expression) {
             return operand;
         const auto type = type_of(expression);
         if (operand->stage == hir::Stage::Static) {
+            const auto bits =
+                operand->type.is_pointer()
+                    ? std::get<PointerConstant>(*operand->constant).address
+                    : std::get<IntegerValue>(*operand->constant);
+            hir::Constant constant =
+                type.is_pointer()
+                    ? hir::Constant{PointerConstant{bits}}
+                    : hir::Constant{bits.convert(type.integer_type).value()};
             auto value =
-                hir::make_constant(std::get<IntegerValue>(*operand->constant)
-                                       .convert(type.integer_type)
-                                       .value(),
-                                   type, expression.span);
+                hir::make_constant(std::move(constant), type, expression.span);
             return has_residual_work(operand)
                        ? make_sequence({operand}, value, expression.span)
                        : value;
@@ -1096,6 +1132,15 @@ hir::ExprPtr StageAnalyzer::analyze_unary(const syntax::UnaryExpr& expression) {
     if (!operand || !operand->falls_through) {
         return operand;
     }
+    if (expression.operation == syntax::UnaryOperator::Dereference) {
+        if (!check_pointer_access(operand, expression.span))
+            return nullptr;
+        return make_runtime(hir::Expr::Kind::Load, type_of(expression),
+                            expression.span, {operand},
+                            {.origin_span = expression.span,
+                             .origin_name = "pointer load",
+                             .path = {"pointer load"}});
+    }
     if (operand->stage == hir::Stage::Static) {
         const auto result = vm::Evaluator::unary(expression.operation,
                                                  operand->constant.value());
@@ -1277,7 +1322,7 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
     }
     const auto scalar = [](const sema::Type& type) {
         return type.kind == sema::TypeKind::Integer ||
-               type.kind == sema::TypeKind::Bool;
+               type.kind == sema::TypeKind::Bool || type.is_pointer();
     };
     std::optional<ResidualKey> residual_key;
     if (scalar(types_.resolve(function.result)) &&

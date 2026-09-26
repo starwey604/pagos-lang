@@ -35,6 +35,8 @@ enum class TokenKind {
     KwI64,
     KwUsize,
     KwAs,
+    KwConst,
+    KwMut,
     LeftParen,
     RightParen,
     LeftBrace,

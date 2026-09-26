@@ -1,0 +1,5 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+record R { pointer: *mut u32 }
+let values = [4096usize as *mut u32];
+// CHECK: error[E1008]: record fields must be `bool` or an integer
+// CHECK: error[E1008]: array elements must be `bool` or an integer

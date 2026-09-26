@@ -119,6 +119,22 @@ std::optional<Module::Record> Parser::parse_record() {
 }
 
 std::optional<Type> Parser::parse_type() {
+    if (match(TokenKind::Star)) {
+        const auto span = previous().span;
+        const bool writable = match(TokenKind::KwMut);
+        if (!writable &&
+            !consume(TokenKind::KwConst, "expected `const` or `mut` after `*`"))
+            return std::nullopt;
+        auto pointee = parse_type();
+        if (!pointee)
+            return std::nullopt;
+        if (pointee->kind != TypeKind::Integer) {
+            diagnostics_.error("E1011",
+                               "pointer pointee must be an integer type", span);
+            return std::nullopt;
+        }
+        return Type::pointer(*pointee, writable);
+    }
     if (match(TokenKind::Identifier)) {
         return Type::record(std::string(previous().lexeme));
     }
@@ -279,6 +295,13 @@ std::unique_ptr<Block> Parser::parse_block() {
             synchronize();
             continue;
         }
+        if (check(TokenKind::Equal)) {
+            if (auto statement = parse_store(std::move(expression)))
+                block->statements.push_back(std::move(statement));
+            else
+                synchronize();
+            continue;
+        }
         if (match(TokenKind::Semicolon)) {
             const auto span = source::Span{.begin = expression->span.begin,
                                            .end = previous().span.end};
@@ -329,6 +352,8 @@ std::unique_ptr<Stmt> Parser::parse_statement() {
     if (!expression) {
         return nullptr;
     }
+    if (check(TokenKind::Equal))
+        return parse_store(std::move(expression));
     const auto* semicolon =
         consume(TokenKind::Semicolon, "expected `;` after expression");
     if (!semicolon) {
@@ -337,6 +362,27 @@ std::unique_ptr<Stmt> Parser::parse_statement() {
     const auto span = source::Span{.begin = expression->span.begin,
                                    .end = semicolon->span.end};
     return std::make_unique<ExpressionStmt>(std::move(expression), span);
+}
+
+std::unique_ptr<Stmt> Parser::parse_store(std::unique_ptr<Expr> destination) {
+    ++index_; // `=` is recognized by the caller; stores are statements only.
+    auto value = parse_expression();
+    const auto* end =
+        consume(TokenKind::Semicolon, "expected `;` after pointer store");
+    if (!value || !end)
+        return nullptr;
+    if (destination->kind != Expr::Kind::Unary ||
+        static_cast<UnaryExpr&>(*destination).operation !=
+            UnaryOperator::Dereference) {
+        diagnostics_.error("E1002", "assignment requires a pointer dereference",
+                           destination->span);
+        return nullptr;
+    }
+    const auto span =
+        source::Span{.begin = destination->span.begin, .end = end->span.end};
+    return std::make_unique<StoreStmt>(
+        std::move(static_cast<UnaryExpr&>(*destination).operand),
+        std::move(value), span);
 }
 
 std::unique_ptr<Stmt> Parser::parse_binding(BindingKind kind,
@@ -601,9 +647,10 @@ std::unique_ptr<Expr> Parser::parse_cast() {
 
 std::unique_ptr<Expr> Parser::parse_unary() {
     if (match(TokenKind::Bang) || match(TokenKind::Tilde) ||
-        match(TokenKind::Minus)) {
+        match(TokenKind::Minus) || match(TokenKind::Star)) {
         const auto operation =
             previous().kind == TokenKind::Bang    ? UnaryOperator::Not
+            : previous().kind == TokenKind::Star  ? UnaryOperator::Dereference
             : previous().kind == TokenKind::Tilde ? UnaryOperator::BitNot
                                                   : UnaryOperator::Negate;
         const auto start = previous().span;

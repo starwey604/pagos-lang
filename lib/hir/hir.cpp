@@ -123,6 +123,16 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
         print_expression(expression->operands.front(), output);
         output << ')';
         break;
+    case Expr::Kind::Load:
+    case Expr::Kind::Store:
+        output << (expression->kind == Expr::Kind::Load ? "load(" : "store(");
+        print_expression(expression->operands.at(0), output);
+        if (expression->kind == Expr::Kind::Store) {
+            output << ", ";
+            print_expression(expression->operands.at(1), output);
+        }
+        output << ')';
+        break;
     case Expr::Kind::Unary:
         output << (expression->unary_operation == syntax::UnaryOperator::Not
                        ? "not("

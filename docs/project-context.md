@@ -74,6 +74,11 @@ provisional until the toolchain exists and package/domain conflicts are checked.
 14. Embedded configuration should initially generate artifacts for existing
     C/C++, Zephyr, and Linux workflows rather than requiring ecosystem
     replacement.
+15. Raw-pointer lifetime management stays with the programmer. Do not introduce
+    an `unsafe` keyword or mandatory borrow checker as a default roadmap step.
+    Keep explicit type/memory rules and useful diagnostics; scoped cleanup,
+    allocators and RAII-style tools are separate future design choices, not
+    a promise of complete memory safety.
 
 ## Corrected assumptions about existing systems
 

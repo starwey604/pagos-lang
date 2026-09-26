@@ -1,0 +1,7 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s
+fn before_store() -> u32 {
+    *(0usize as *mut u32) = if true { return 7; } else { 1 };
+    0
+}
+static let skipped = if true { before_store() } else { *(0usize as *const u32) };
+// CHECK: binding skipped: u32 [Static] = sequence(ptr(0), 7)

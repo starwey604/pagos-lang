@@ -66,6 +66,10 @@ std::string_view token_kind_name(TokenKind kind) noexcept {
         return "`i64`";
     case TokenKind::KwAs:
         return "`as`";
+    case TokenKind::KwConst:
+        return "`const`";
+    case TokenKind::KwMut:
+        return "`mut`";
     case TokenKind::LeftParen:
         return "`(`";
     case TokenKind::RightParen:

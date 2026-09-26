@@ -1,0 +1,6 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+static let p = 4096usize as *const u32;
+static let value = *p;
+// CHECK: error[E2001]:
+// CHECK: pointer load
+// CHECK: value

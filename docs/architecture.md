@@ -413,9 +413,9 @@ Ordinary external calls are Runtime and conservatively effectful unless a
 separate, explicit compile-time capability exists. A Static address never
 licenses evaluating, removing, merging, or caching a volatile/MMIO read or
 write. Future target addresses must be target-width values or symbolic
-relocations, never dereferenceable host pointers. Unsafe permissions and
-alias rules remain language work for M3; no host execution of target code
-is introduced by layout preparation.
+relocations, never dereferenceable host pointers. Ordinary raw memory now uses
+the contract below; volatile/MMIO and additional address spaces remain future
+work. No host execution of target code is introduced.
 
 The current `hir::has_residual_work` and `hir::is_cacheable_result` predicates
 are shared entry points: a Static result can retain Runtime work, trapping
@@ -427,13 +427,33 @@ Specialization caches currently reset per analysis; any future cross-session
 cache containing target-dependent facts must include target configuration
 in its identity. These boundaries precede adding a richer effect model.
 
+### Raw target memory
+
+Pointer types carry an integer pointee, read/write permission and semantic
+target width. `PointerConstant` stores a tagged target `usize` address rather
+than a host pointer; it cannot be confused with an integer constant or a value
+from a different target width. HIR loads/stores are always Runtime. Ordinary
+scalar specialization, recursive signatures, sequencing and computation
+identity reuse also apply to pointers. The evaluator refuses memory reads.
+
+MIR verifies pointee types, permissions, address-cast rules and dominance.
+Stores have scheduling identities but no usable SSA result (`void`); returning,
+passing or otherwise using one as a value is invalid. LLVM uses opaque pointers,
+`inttoptr`/`ptrtoint`, and non-atomic ordinary loads/stores with `align 1`.
+Null guards trap before access; known null accesses fail during staging.
+No `noalias`, TBAA, `readonly`, `nonnull` or dereferenceability promises are
+inferred from source pointer permission. Lifetime, range and initialized-byte
+validity remain caller obligations; no borrow checker or `unsafe` gate exists.
+See the [source contract](grammar.md#raw-pointers-and-memory-milestone-3).
+
 ### ABI sequence
 
 The minimal boundary now carries linkage/declaration flags from syntax through
 HIR and MIR. Export roots and extern signatures are predeclared independently
 of internal specialization caches; MIR retains public source names and verifies
-the `u32/i32` restriction. LLVM uses its default C calling convention, gated to
-x86-64 Linux LP64 and generic RV32 ELF ILP32 with I/M/A/C. Supporting other
+the `u32/i32` and integer-pointer subset. LLVM uses its default C calling
+convention, gated to x86-64 Linux LP64 and generic RV32 ELF ILP32 with I/M/A/C.
+Supporting other
 types/targets requires explicit ABI classification, not just LLVM storage types;
 see [LLVM calling conventions](https://llvm.org/docs/LangRef.html#calling-conventions)
 and the [RISC-V psABI](https://riscv-non-isa.github.io/riscv-elf-psabi-doc/).
@@ -446,8 +466,8 @@ exclusive sibling temporary and renames only after emission/write success,
 rejecting an output that aliases the input. Linking remains an external
 Clang/GCC/LLD task. Library-style boundary modules omit synthetic `pagos_main`.
 
-1. Emit and consume `u32/i32` C ABI symbols (implemented).
-2. Extend manually declared C functions to pointers and layout-compatible records.
+1. Emit and consume `u32/i32` and integer-pointer C ABI symbols (implemented).
+2. Extend manually declared C functions to layout-compatible records.
 3. Add a Clang-based binding generator or consume a stable generated format.
 4. Use C shims for C++ libraries.
 5. Consider direct C++ ABI integration only after exceptions, RTTI, overloads,

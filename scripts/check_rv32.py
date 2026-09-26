@@ -35,18 +35,21 @@ def main():
                       "runtime": str(runtime)}, indent=2), flush=True)
     with tempfile.TemporaryDirectory(prefix="pagos-rv32-") as directory:
         objects = {}
+        harnesses = {}
         if args.pagosc:
             pagosc = str(args.pagosc.resolve())
-            source = str(ROOT / "tests/lit/codegen/c-abi.pgs")
             target = ["--target=riscv32-unknown-elf", "--features=+m,+a,+c"]
-            objects["c-abi"] = str(Path(directory) / "pagos.o")
-            objects["c-abi-opt"] = str(Path(directory) / "pagos-opt.o")
-            subprocess.run([pagosc, *target, "emit-obj", source, "-o",
-                            objects["c-abi"]], check=True)
-            ir = subprocess.check_output([pagosc, *target, "emit-llvm", source])
-            subprocess.run(["clang", "--target=riscv32-unknown-elf", *ISA,
-                            "-O2", "-c", "-x", "ir", "-", "-o",
-                            objects["c-abi-opt"]], input=ir, check=True)
+            for name, harness in (("c-abi", "c_abi.c"), ("pointers", "pointers.c")):
+                source = str(ROOT / f"tests/lit/codegen/{name}.pgs")
+                objects[name] = str(Path(directory) / f"{name}.o")
+                objects[name + "-opt"] = str(Path(directory) / f"{name}-opt.o")
+                harnesses[name] = harnesses[name + "-opt"] = str(ROOT / "tests/lit/Inputs" / harness)
+                subprocess.run([pagosc, *target, "emit-obj", source, "-o",
+                                objects[name]], check=True)
+                ir = subprocess.check_output([pagosc, *target, "emit-llvm", source])
+                subprocess.run(["clang", "--target=riscv32-unknown-elf", *ISA,
+                                "-O2", "-c", "-x", "ir", "-", "-o",
+                                objects[name + "-opt"]], input=ir, check=True)
         for compiler in ("clang", "riscv64-elf-gcc"):
             cases = [
                 ("success", None, 0),
@@ -68,7 +71,7 @@ def main():
                     command += [f"-D{define}"]
                 if case in objects:
                     command += ["-DPAGOS_FREESTANDING", objects[case],
-                                str(ROOT / "tests/lit/Inputs/c_abi.c")]
+                                harnesses[case]]
                 command += [str(PLATFORM / "start.S"), str(PLATFORM / "smoke.c"),
                             str(runtime), "-o", elf]
                 subprocess.run(command, check=True)

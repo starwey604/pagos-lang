@@ -2,6 +2,7 @@ find_package(GTest REQUIRED CONFIG)
 
 add_executable(pagos_unit_tests
     unit/c_abi_test.cpp
+    unit/pointer_test.cpp
     unit/integer_test.cpp
     unit/value_test.cpp
     unit/type_test.cpp

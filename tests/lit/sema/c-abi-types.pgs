@@ -6,4 +6,4 @@ extern fn wide(x: u64) -> i32;
 extern fn size(x: usize) -> u32;
 extern fn array(x: [u32; 2]) -> u32;
 export fn aggregate() -> R { R(x: 1) }
-// CHECK-COUNT-6: error[E1010]: C ABI boundary supports only `u32` and `i32`
+// CHECK-COUNT-6: error[E1010]: C ABI boundary supports only `u32`, `i32`, and integer pointers

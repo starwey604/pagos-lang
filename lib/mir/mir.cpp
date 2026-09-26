@@ -55,7 +55,10 @@ std::expected<void, std::string> verify_function(const Function& function,
         for (std::size_t index = 0; index < block.instructions.size();
              ++index) {
             const auto& instruction = block.instructions[index];
-            if (!instruction.type.valid()) {
+            if (!instruction.type.valid() &&
+                !(instruction.type == Type::Void &&
+                  std::holds_alternative<StoreOperation>(
+                      instruction.operation))) {
                 return std::unexpected("invalid MIR value type");
             }
             const bool is_phi =
@@ -84,6 +87,8 @@ std::expected<void, std::string> verify_function(const Function& function,
             return std::unexpected("undefined MIR value `" + value_name(value) +
                                    "`");
         }
+        if (iterator->second == Type::Void)
+            return std::unexpected("MIR store has no value");
         return iterator->second;
     };
     const auto require_target =
@@ -248,6 +253,15 @@ std::expected<void, std::string> verify_function(const Function& function,
             }
             if (const auto* constant =
                     std::get_if<ConstantOperation>(&instruction.operation)) {
+                if (const auto* pointer =
+                        std::get_if<PointerConstant>(&constant->value)) {
+                    if (!instruction.type.is_pointer() ||
+                        pointer->address.type() !=
+                            IntegerType{instruction.type.pointer_bits, false,
+                                        true})
+                        return std::unexpected("invalid MIR pointer constant");
+                    continue;
+                }
                 const auto* integers =
                     std::get_if<std::vector<IntegerValue>>(&constant->value);
                 const auto* booleans =
@@ -385,6 +399,62 @@ std::expected<void, std::string> verify_function(const Function& function,
                             "invalid MIR arithmetic operation");
                     }
                 }
+                continue;
+            }
+            if (const auto* load =
+                    std::get_if<LoadOperation>(&instruction.operation)) {
+                const auto pointer = value_type(load->pointer);
+                if (!pointer)
+                    return std::unexpected(pointer.error());
+                if (auto valid =
+                        require_dominance(load->pointer, block.id, index);
+                    !valid)
+                    return valid;
+                if (!pointer->is_pointer() ||
+                    instruction.type != pointer->pointee_type())
+                    return std::unexpected("invalid MIR pointer load");
+                continue;
+            }
+            if (const auto* store =
+                    std::get_if<StoreOperation>(&instruction.operation)) {
+                const auto pointer = value_type(store->pointer);
+                const auto value = value_type(store->value);
+                if (!pointer || !value)
+                    return std::unexpected("invalid MIR store operand");
+                if (auto valid =
+                        require_dominance(store->pointer, block.id, index);
+                    !valid)
+                    return valid;
+                if (auto valid =
+                        require_dominance(store->value, block.id, index);
+                    !valid)
+                    return valid;
+                if (!pointer->is_pointer() || !pointer->pointer_mutable ||
+                    *value != pointer->pointee_type() ||
+                    instruction.type != Type::Void)
+                    return std::unexpected("invalid MIR pointer store");
+                continue;
+            }
+            if (const auto* cast =
+                    std::get_if<PointerCastOperation>(&instruction.operation)) {
+                const auto operand = value_type(cast->operand);
+                if (!operand)
+                    return std::unexpected(operand.error());
+                if (auto valid =
+                        require_dominance(cast->operand, block.id, index);
+                    !valid)
+                    return valid;
+                const auto size_type = [](const Type& type) {
+                    return type.kind == Type::Integer &&
+                           type.integer_type.is_usize;
+                };
+                const auto& result = instruction.type;
+                if (!((operand->is_pointer() && size_type(result)) ||
+                      (size_type(*operand) && result.is_pointer()) ||
+                      (operand->is_pointer() && result.is_pointer() &&
+                       operand->pointee_type() == result.pointee_type() &&
+                       (operand->pointer_mutable || !result.pointer_mutable))))
+                    return std::unexpected("invalid MIR pointer cast");
                 continue;
             }
             if (const auto* cast =
@@ -605,6 +675,16 @@ void print_instruction(const Instruction& instruction, std::ostream& output) {
     } else if (const auto* integer_cast =
                    std::get_if<IntegerCastOperation>(&instruction.operation)) {
         output << "integer_cast " << value_name(integer_cast->operand);
+    } else if (const auto* pointer_cast =
+                   std::get_if<PointerCastOperation>(&instruction.operation)) {
+        output << "pointer_cast " << value_name(pointer_cast->operand);
+    } else if (const auto* load =
+                   std::get_if<LoadOperation>(&instruction.operation)) {
+        output << "load " << value_name(load->pointer);
+    } else if (const auto* store =
+                   std::get_if<StoreOperation>(&instruction.operation)) {
+        output << "store " << value_name(store->pointer) << ", "
+               << value_name(store->value);
     } else if (const auto* cast =
                    std::get_if<BoolToU32Operation>(&instruction.operation)) {
         output << "bool_to_u32 " << value_name(cast->operand);
@@ -650,6 +730,11 @@ void print_instruction(const Instruction& instruction, std::ostream& output) {
 } // namespace
 
 std::string type_name(const Type& type) {
+    if (type == Type::Void)
+        return "void";
+    if (type.is_pointer())
+        return std::string(type.pointer_mutable ? "*mut " : "*const ") +
+               type_name(type.pointee_type());
     if (type.is_record()) {
         return type.record_name;
     }
@@ -739,14 +824,15 @@ std::expected<void, std::string> verify(const Module& module) {
         }
         if (function.c_abi) {
             const auto supported = [](const Type& type) {
-                return type.kind == Type::Integer &&
-                       type.integer_type.width == 32 &&
-                       !type.integer_type.is_usize;
+                return type.is_pointer() || (type.kind == Type::Integer &&
+                                             type.integer_type.width == 32 &&
+                                             !type.integer_type.is_usize);
             };
             if (function.internal || !supported(function.result_type) ||
                 !std::ranges::all_of(function.parameters, supported))
-                return std::unexpected("C ABI MIR signatures require external "
-                                       "linkage and i32/u32 types");
+                return std::unexpected(
+                    "C ABI MIR signatures require external "
+                    "linkage and i32/u32 or integer pointer types");
         }
         if (!function.result_type.matches_pointer_width(module.pointer_bits))
             return std::unexpected(

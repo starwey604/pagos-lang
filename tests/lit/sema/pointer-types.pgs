@@ -1,0 +1,12 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let p = 4096usize as *mut u32;
+*p = 1u8;
+let bad = *17;
+let address = 4096 as *mut u32;
+let number = p as u64;
+let changed = p as *const i32;
+let arithmetic = p + 1usize;
+// CHECK: error[E1008]: type mismatch in pointer store
+// CHECK: error[E1011]: dereference requires a pointer
+// CHECK-COUNT-3: error[E1011]: pointer casts require `usize`
+// CHECK: error[E1008]: type mismatch in left arithmetic operand

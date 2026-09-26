@@ -1,15 +1,14 @@
 # Core Grammar Sketch
 
-Status: normative syntax baseline, including M3 integers and minimal C ABI.
+Status: normative syntax baseline, including M3 integers, raw pointers and C ABI.
 Later milestones should not silently change accepted programs.
 
 ## Scope
 
 The compiler supports `bool`, unsigned `u8/u16/u32/u64`, signed `i8/i16/i32/i64`,
-target-sized unsigned `usize`,
-fixed-length scalar arrays, immutable bindings, functions, calls, `if`
-expressions, explicit stage constraints, and
-range-based `for` statements.
+target-sized unsigned `usize`, fixed-length scalar arrays, raw integer pointers,
+immutable bindings, functions, calls, `if` expressions, explicit stage constraints,
+and range-based `for` statements.
 Static ranges execute during analysis; Runtime ranges residualize as target
 control flow. A `return` inside an expression block or loop exits the nearest
 enclosing function, including when the compiler inlines that function.
@@ -40,12 +39,15 @@ parameter       = identifier ":" type ;
 integer-type    = "u8" | "u16" | "u32" | "u64"
                 | "i8" | "i16" | "i32" | "i64" | "usize" ;
 scalar-type     = "bool" | integer-type ;
-type            = scalar-type | identifier | "[" scalar-type ";" integer "]" ;
+pointer-type    = "*" ( "const" | "mut" ) integer-type ;
+type            = scalar-type | pointer-type | identifier
+                | "[" scalar-type ";" integer "]" ;
 
 block           = "{" { statement } [ expression ] "}" ;
 statement       = binding ";"
                 | "return" expression ";"
                 | expression ";"
+                | expression "=" expression ";"  (* left side must be *pointer *)
                 | for-expression ;
 binding         = [ "static" | "runtime" ] "let" identifier
                   [ ":" type ] "=" expression ;
@@ -64,8 +66,8 @@ comparison      = shift { ( "<" | "<=" | ">" | ">=" ) shift } ;
 shift           = additive { ( "<<" | ">>" ) additive } ;
 additive        = multiplicative { ( "+" | "-" ) multiplicative } ;
 multiplicative  = cast { ( "*" | "/" | "%" ) cast } ;
-cast            = unary { "as" integer-type } ;
-unary           = ( "!" | "~" | "-" ) unary | call ;
+cast            = unary { "as" ( integer-type | pointer-type ) } ;
+unary           = ( "!" | "~" | "-" | "*" ) unary | call ;
 call            = primary { "(" [ arguments ] ")" | "[" expression "]"
                           | "." identifier } ;
 arguments       = expression { "," expression } ;
@@ -117,7 +119,7 @@ All integer operations and casts use the resolved width at both stages.
 For example, `4294967295usize + 1usize` is zero on RV32 and 4294967296 on RV64;
 `4294967296usize` itself is rejected on RV32. `usize` works in scalar arrays,
 records, function signatures, and shift counts. Array lengths, array indices,
-and range bounds/indices remain `u32`; `isize` and pointers are not yet supported.
+and range bounds/indices remain `u32`; `isize` is not yet supported.
 
 Unary `-` requires a signed integer; `-1` and `-1u8` are errors, while `-1i8`
 is valid. A minus directly enclosing a positive signed literal (parentheses
@@ -135,8 +137,8 @@ destination's signedness. Equal-width casts preserve bits, so `255u8 as i8`
 is -1, `-1i8 as u64` is 18446744073709551615, and `255u8 as i16` is 255.
 Same-type casts are allowed. Casts evaluate their operand exactly once,
 preserve its stage and effects, bind below unary operators
-and above multiplication, and associate left-to-right. Only integer-to-integer
-casts are supported; booleans, aggregates, and pointers cannot be cast.
+and above multiplication, and associate left-to-right. Booleans and aggregates
+cannot be cast; pointer conversions follow the separate rules below.
 
 `~`, `&`, `|`, `^`, `<<`, and `>>` accept integers and preserve their
 type. Binary operands, including shift counts, must have the same type.
@@ -155,9 +157,11 @@ export fn sample(offset: u32) -> u32 { platform_read() + offset }
 ```
 
 `extern fn` declares a C symbol without a body; `export fn` defines one using
-its exact source name. Both require explicit parameter/result types, limited
-to `u32` and `i32` (C `uint32_t` and `int32_t`). Zero parameters are allowed;
-`void`, `bool`, other widths, `usize`, pointers, aggregates, varargs, and
+its exact source name. Both require explicit parameter/result types: `u32` and
+`i32` (C `uint32_t` and `int32_t`), or pointers to the supported integer types.
+`*const T` / `*mut T` map to `const T*` / `T*` with the corresponding C integer
+type; a `usize` pointee uses `uintptr_t`. Zero parameters are allowed;
+`void`, `bool`, other by-value widths, by-value `usize`, aggregates, varargs, and
 overloads are not. Declarations cannot be repeated or redeclared as definitions
 in the same module. `pagos_main` and `pagos_external_input` are reserved names.
 
@@ -178,6 +182,63 @@ A module with any `extern`/`export` and no top-level statements emits only its
 boundary symbols and reachable helpers, not synthetic `pagos_main`. Top-level
 statements otherwise retain the explicit test entry, not an automatically run
 module initializer. Separate object files can import each other's exports.
+
+## Raw Pointers and Memory (Milestone 3)
+
+```pagos
+export fn increment(p: *mut u32) -> u32 {
+    let previous = *p;
+    *p = previous + 1;
+    *p
+}
+```
+
+Pointers are copyable, non-owning target addresses. `*const T` permits reads;
+`*mut T` permits reads/writes. `T` is an integer, including `usize`; `bool`,
+records, arrays, and pointers themselves are not supported pointees yet.
+An immutable `let p` fixes the pointer value, not the pointed-to bytes.
+`*const` does not promise immutable memory and `*mut` does not promise exclusive
+access. Aliases may observe each other's writes. There is no borrow checker,
+`unsafe` keyword, ownership transfer, automatic release, or implicit allocation.
+
+`*p` reads a value. `*p = value;` writes an exactly matching value type and is
+a statement, not an expression. Evaluate the address first, then the value,
+then perform the write. An early return during either evaluation skips the
+write. Reusing a binding initialized by a read reuses that captured value;
+writing `*p` again performs a new source-level read. Ordinary non-volatile
+accesses may be optimized when observable behavior is unchanged.
+
+Only `usize as *const T` / `usize as *mut T`, pointer-to-`usize`, identity
+casts, and explicit `*mut T as *const T` conversions are supported. Other
+integer widths must explicitly convert through `usize`. Direct pointee changes
+or adding write permission are rejected; converting through an integer is a
+low-level escape whose validity remains the programmer's responsibility.
+Same-type pointers support `==` and `!=`, comparing numeric target addresses.
+No implicit permission conversion, pointer arithmetic, pointer indexing or
+ordering is provided. Explicit `usize` arithmetic computes byte addresses,
+wraps at the target width, and carries no bounds or allocation guarantee.
+
+A numeric pointer can be Static: `4096usize as *const u32` does not read memory.
+Every dereference/store remains Runtime, even at a Static address. The evaluator
+never dereferences a compiler-host pointer. Pointer constants include the target
+address width; normal specialization/version budgets apply to pointer calls.
+A pointer-valued implicit test entry returns zero after preserving effects.
+
+This slice accesses ordinary initialized memory in address space zero, using
+target endianness and the pointee's byte width. Unaligned access is permitted
+(LLVM `align 1`); accesses are not atomic and may become multiple instructions.
+An analyzed known-null access reports `E4013`; a Runtime null access traps.
+Merely forming, passing or comparing a null pointer is valid. Other invalid
+accesses are not checked: callers must ensure live, sufficiently large,
+readable/writable storage and initialized bytes for reads. Dangling, out-of-bounds,
+read-only writes and unsynchronized conflicting accesses violate the contract;
+there is no complete memory-safety guarantee or warning coverage promise.
+
+No type-based non-aliasing rule is inferred from the pointee type. C callers
+must additionally obey C's own object/access rules. Local address-taking,
+allocation/free, pointer-containing aggregates, `defer`/RAII, atomics, address
+spaces and volatile/MMIO are deferred. Plain pointer accesses must not be used
+as substitutes for volatile device access.
 
 ## Minimal Records (Milestone 2)
 
@@ -349,6 +410,6 @@ unary operators, and calls/indexing. Write `(value & 1) != 0` for a bit test;
 ## Reserved Decisions
 
 Milestone 1 does not include user-defined operators, implicit numeric
-conversions, overloading, mutable assignment, pointers, or generic
+conversions, overloading, mutable binding assignment, or generic
 parameters. New syntax for those features requires a documented semantic
 decision and examples before parser implementation.

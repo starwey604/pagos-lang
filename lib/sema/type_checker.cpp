@@ -32,11 +32,13 @@ bool TypeChecker::check(syntax::Module& module) {
         if (function->linkage != syntax::Function::Linkage::Internal) {
             const auto boundary_type = [&](const syntax::Type& type,
                                            source::Span span) {
-                if (type.kind != syntax::TypeKind::Integer ||
-                    type.integer_width != 32 || type.integer_usize)
-                    diagnostics_.error(
-                        "E1010", "C ABI boundary supports only `u32` and `i32`",
-                        span);
+                if (!type.is_pointer() &&
+                    (type.kind != syntax::TypeKind::Integer ||
+                     type.integer_width != 32 || type.integer_usize))
+                    diagnostics_.error("E1010",
+                                       "C ABI boundary supports only `u32`, "
+                                       "`i32`, and integer pointers",
+                                       span);
             };
             boundary_type(function->result, function->name_span);
             for (const auto& parameter : function->parameters)
@@ -181,6 +183,25 @@ void TypeChecker::check_statement(syntax::Stmt& statement,
                                   const sema::Type& expected_return,
                                   bool& saw_return) {
     switch (statement.kind) {
+    case syntax::Stmt::Kind::Store: {
+        auto& store = static_cast<syntax::StoreStmt&>(statement);
+        const auto pointer = check_expression(*store.pointer);
+        const auto value = check_expression(*store.value);
+        saw_return = saw_return || pointer == TypeKind::Never ||
+                     value == TypeKind::Never;
+        if (pointer.is_pointer()) {
+            if (!pointer.pointer_mutable)
+                diagnostics_.error("E1011", "store requires a `*mut` pointer",
+                                   store.pointer->span);
+            if (!compatible(pointer.pointee_type(), value))
+                type_mismatch(store.value->span, pointer.pointee_type(), value,
+                              "pointer store");
+        } else if (pointer != TypeKind::Never && pointer != TypeKind::Error) {
+            diagnostics_.error("E1011", "store requires a pointer",
+                               store.pointer->span);
+        }
+        break;
+    }
     case syntax::Stmt::Kind::Binding: {
         auto& binding = static_cast<syntax::BindingStmt&>(statement);
         if (binding.annotation) {
@@ -293,6 +314,14 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
             type = sema::TypeKind::Never;
             break;
         }
+        if (unary.operation == syntax::UnaryOperator::Dereference) {
+            if (operand_type.is_pointer())
+                type = operand_type.pointee_type();
+            else if (operand_type != TypeKind::Error)
+                diagnostics_.error("E1011", "dereference requires a pointer",
+                                   unary.span);
+            break;
+        }
         if (unary.operation == syntax::UnaryOperator::Negate) {
             if (operand_type.kind == TypeKind::Integer &&
                 operand_type.integer_type.is_signed) {
@@ -323,6 +352,27 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
         auto& cast = static_cast<syntax::CastExpr&>(expression);
         const auto operand = check_expression(*cast.operand);
         const auto destination = types_.resolve(cast.destination);
+        if (operand.is_pointer() || destination.is_pointer()) {
+            const auto is_size = [](const Type& value) {
+                return value.kind == TypeKind::Integer &&
+                       value.integer_type.is_usize;
+            };
+            const bool allowed =
+                (operand.is_pointer() && is_size(destination)) ||
+                (is_size(operand) && destination.is_pointer()) ||
+                (operand.is_pointer() && destination.is_pointer() &&
+                 operand.pointee_type() == destination.pointee_type() &&
+                 (operand.pointer_mutable || !destination.pointer_mutable));
+            if (allowed || operand == TypeKind::Never ||
+                operand == TypeKind::Error)
+                type = operand == TypeKind::Never ? operand : destination;
+            else
+                diagnostics_.error("E1011",
+                                   "pointer casts require `usize` or the same "
+                                   "pointee without adding write permission",
+                                   cast.span);
+            break;
+        }
         if (destination.kind != TypeKind::Integer ||
             (operand.kind != TypeKind::Integer &&
              operand.kind != TypeKind::Never &&

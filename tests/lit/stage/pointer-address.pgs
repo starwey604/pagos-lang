@@ -1,0 +1,19 @@
+// RUN: %pagosc --target=riscv32-unknown-elf emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc --target=riscv64-unknown-elf emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc --target=riscv32-unknown-elf emit-llvm %s | %FileCheck %s --check-prefix=RV32
+// RUN: %pagosc --target=riscv64-unknown-elf emit-llvm %s | %FileCheck %s --check-prefix=RV64
+fn keep(p: *mut usize) -> *mut usize { p }
+static let address = 4096usize;
+static let p = keep(address as *mut usize);
+static let q = p as *const usize;
+static let back = q as usize;
+static let same = q == (4096usize as *const usize);
+static let distinct = q != (8192usize as *const usize);
+let value = *q;
+// HIR: binding p: *mut usize [Static] = ptr(4096)
+// HIR: binding back: usize [Static] = 4096
+// HIR: binding same: bool [Static] = true
+// HIR: binding distinct: bool [Static] = true
+// HIR: binding value: usize [Runtime] = load(ptr(4096))
+// RV32: load i32, ptr inttoptr (i32 4096 to ptr), align 1
+// RV64: load i64, ptr inttoptr (i64 4096 to ptr), align 1

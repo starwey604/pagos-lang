@@ -42,6 +42,8 @@ struct Expr {
         Parameter,
         Unary,
         Cast,
+        Load,
+        Store,
         Binary,
         If,
         Sequence, // Ordered evaluations followed by the result value.

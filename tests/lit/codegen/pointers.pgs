@@ -1,0 +1,73 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR
+// RUN: %run_c_abi %s %S/../Inputs/pointers.c
+// RUN: %run_c_abi --optimize %s %S/../Inputs/pointers.c
+extern fn c_pointer() -> *mut u32;
+extern fn c_change(p: *mut u32) -> u32;
+fn read(p: *const u32) -> u32 { *p }
+fn set(p: *mut u32, value: u32) -> u32 { *p = value; 7 }
+fn bump(p: *mut u32, count: u32) -> u32 {
+    if count == 0 { *p } else { *p = *p + 1; bump(p, count - 1) }
+}
+export fn api_alias(p: *mut u32, q: *const u32) -> u32 {
+    let before = read(q);
+    *p = 9;
+    before + before + read(q)
+}
+export fn api_foreign() -> u32 {
+    let p = c_pointer();
+    *p = 3;
+    let old = *p;
+    c_change(p);
+    old + *p
+}
+export fn api_inline(p: *mut u32) -> u32 {
+    static let a = set(p, 1);
+    c_change(p);
+    static let b = set(p, 1);
+    a + b + *p
+}
+export fn api_loop(p: *mut u32, count: u32) -> u32 {
+    for i in 0..count { *p = *p + i; }
+    bump(p, 3)
+}
+export fn api_roundtrip(p: *mut u32) -> *const u32 {
+    let address = p as usize;
+    address as *const u32
+}
+export fn api_choose(p: *mut u32, q: *mut u32, flag: u32) -> *mut u32 {
+    if flag == 0 { return p; } else { q }
+}
+export fn api_small(p: *mut u8, q: *mut i16) -> u32 {
+    *p = 255u8;
+    *q = -1234i16;
+    (*p as u32) + ((-*q) as u32)
+}
+export fn api_wide(p: *mut u64, q: *mut i64, size: *mut usize) -> u32 {
+    *p = 18446744073709551615u64;
+    *q = -9223372036854775808i64;
+    *size = 17usize;
+    if *p == ~0u64 && *q == -9223372036854775808i64 && *size == 17usize { 1 } else { 0 }
+}
+export fn api_unaligned(p: *mut u8) -> u32 {
+    let word = (p as usize + 1usize) as *mut u32;
+    *word = 305419896;
+    *word
+}
+export fn api_return(p: *mut u32, flag: u32) -> u32 {
+    *p = if flag == 0 { return 77; } else { 44 };
+    *p
+}
+export fn api_null_read(p: *const u32) -> u32 { *p }
+export fn api_null_store(p: *mut u32) -> u32 { *p = 1; 0 }
+export fn api_discard_read(p: *const u32) -> u32 { *p; 7 }
+// HIR: export C fn api_alias
+// HIR-SAME: store(
+// MIR: export C func @api_alias(*mut u32, *const u32) -> u32
+// MIR: void = store
+// IR: define i32 @api_alias(ptr %0, ptr %1)
+// IR: store i32 9, ptr %0, align 1
+// IR: load i32, ptr %0, align 1
+// IR: ptrtoint ptr
+// IR: inttoptr i64

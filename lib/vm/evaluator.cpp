@@ -46,6 +46,10 @@ Evaluator::unary(syntax::UnaryOperator operation,
         return hir::Constant{std::get<IntegerValue>(operand).bit_not()};
     case syntax::UnaryOperator::Negate:
         return hir::Constant{std::get<IntegerValue>(operand).negate()};
+    case syntax::UnaryOperator::Dereference:
+        return std::unexpected(EvaluationError{
+            .code = "E4013",
+            .message = "target memory cannot be read by the Static evaluator"});
     }
     return std::unexpected(
         EvaluationError{.code = "E4002", .message = "unknown unary operation"});

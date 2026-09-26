@@ -1,0 +1,3 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+extern fn unsupported(p: *mut bool) -> u32;
+// CHECK: error[E1011]: pointer pointee must be an integer type

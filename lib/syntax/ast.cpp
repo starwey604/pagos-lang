@@ -35,6 +35,9 @@ ForStmt::~ForStmt() = default;
 
 std::string type_name(const Type& type) {
     switch (type.kind) {
+    case TypeKind::Pointer:
+        return std::string(type.pointer_mutable ? "*mut " : "*const ") +
+               type_name(type.pointee_type());
     case TypeKind::Record:
         return type.record_name;
     case TypeKind::ArrayBool:

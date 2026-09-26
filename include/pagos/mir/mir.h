@@ -19,11 +19,13 @@ using ValueId = std::uint32_t;
 using BlockId = std::uint32_t;
 
 struct Type {
-    enum Kind { Invalid, Bool, Integer, Array, Record };
+    enum Kind { Invalid, Bool, Integer, Array, Record, Pointer, Void };
     // Convenience descriptor, not a separate integer kind.
     static const Type U32;
     Kind kind{Integer};
     IntegerType integer_type;
+    unsigned pointer_bits{};
+    bool pointer_mutable{};
     Kind element_kind{Invalid};
     std::uint32_t length{};
     std::string record_name;
@@ -33,9 +35,12 @@ struct Type {
     bool operator==(const Type&) const = default;
     [[nodiscard]] bool is_record() const noexcept { return kind == Record; }
     [[nodiscard]] bool is_array() const noexcept { return kind == Array; }
+    [[nodiscard]] bool is_pointer() const noexcept { return kind == Pointer; }
     [[nodiscard]] bool matches_pointer_width(unsigned bits) const {
-        if ((kind == Integer || kind == Array) && integer_type.is_usize &&
-            integer_type.width != bits)
+        if (is_pointer() && pointer_bits != bits)
+            return false;
+        if ((kind == Integer || kind == Array || is_pointer()) &&
+            integer_type.is_usize && integer_type.width != bits)
             return false;
         for (const auto& field : fields) {
             if (!field.matches_pointer_width(bits))
@@ -48,6 +53,20 @@ struct Type {
         Type type{Integer};
         type.integer_type = {width, is_signed, is_usize};
         return type;
+    }
+    [[nodiscard]] static Type pointer(const Type& pointee, bool writable,
+                                      unsigned bits) {
+        if (pointee.kind != Integer)
+            return Invalid;
+        Type type{Pointer};
+        type.integer_type = pointee.integer_type;
+        type.pointer_bits = bits;
+        type.pointer_mutable = writable;
+        return type;
+    }
+    [[nodiscard]] Type pointee_type() const {
+        return integer(integer_type.width, integer_type.is_signed,
+                       integer_type.is_usize);
     }
     [[nodiscard]] static Type array(const Type& element, std::uint32_t length) {
         if (element.kind != Bool && element.kind != Integer)
@@ -66,6 +85,12 @@ struct Type {
         return type;
     }
     [[nodiscard]] bool valid() const noexcept {
+        if (is_pointer())
+            return (pointer_bits == 32 || pointer_bits == 64) &&
+                   integer_type.valid() && record_name.empty() &&
+                   fields.empty() && length == 0 && element_kind == Invalid;
+        if (pointer_bits != 0 || pointer_mutable)
+            return false;
         if (is_record()) {
             if (record_name.empty() || fields.empty() || length != 0 ||
                 element_kind != Invalid)
@@ -163,6 +188,17 @@ struct BoolToU32Operation {
 struct IntegerCastOperation {
     ValueId operand;
 };
+struct PointerCastOperation {
+    ValueId operand;
+};
+struct LoadOperation {
+    ValueId pointer;
+};
+// Stores have an instruction identity for scheduling, but no SSA value.
+struct StoreOperation {
+    ValueId pointer;
+    ValueId value;
+};
 
 struct PhiIncoming {
     BlockId block;
@@ -177,7 +213,8 @@ using Operation =
     std::variant<ConstantOperation, ExternalInputOperation, UnaryOperation,
                  BinaryOperation, BoolToU32Operation, IntegerCastOperation,
                  PhiOperation, ArrayOperation, IndexOperation, RecordOperation,
-                 FieldOperation, ParameterOperation, CallOperation>;
+                 FieldOperation, ParameterOperation, CallOperation,
+                 PointerCastOperation, LoadOperation, StoreOperation>;
 
 struct Instruction {
     ValueId result;

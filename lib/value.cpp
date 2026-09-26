@@ -46,6 +46,9 @@ std::size_t constant_hash(const Constant& argument) noexcept {
                     mix(field.index());
                     std::visit(mix_scalar, field);
                 }
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(value)>,
+                                                PointerConstant>) {
+                mix_scalar(value.address);
             } else if constexpr (requires { value.size(); }) {
                 mix(value.size());
                 for (auto element : value) {
@@ -80,6 +83,8 @@ void print_constant(const Constant& value, std::ostream& output) {
                     print_scalar(payload.fields[index], output);
                 }
                 output << ')';
+            } else if constexpr (std::is_same_v<T, PointerConstant>) {
+                output << "ptr(" << payload.address.decimal() << ")";
             } else if constexpr (requires { payload.size(); }) {
                 output << '[';
                 for (std::size_t index = 0; index < payload.size(); ++index) {

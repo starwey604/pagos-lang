@@ -1,0 +1,6 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let p = 4096usize as *const u32;
+*p = 1;
+let mutable = p as *mut u32;
+// CHECK: error[E1011]: store requires a `*mut` pointer
+// CHECK: error[E1011]: pointer casts require `usize` or the same pointee without adding write permission
