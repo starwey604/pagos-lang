@@ -107,21 +107,22 @@ StageAnalyzer::analyze(const syntax::Module& module) {
     construction_budget_exhausted_ = false;
 
     auto result = std::make_unique<hir::Module>();
+    result->pointer_bits = types_.pointer_bits;
     for (const auto& record : module.records) {
         records_.emplace(record.name, &record);
         hir::Module::RecordType type{.name = record.name};
         for (const auto& field : record.fields) {
             type.names.push_back(field.name);
-            type.fields.push_back(field.type);
+            type.fields.push_back(types_.resolve(field.type));
         }
         result->records.push_back(std::move(type));
     }
     for (const auto& function : module.functions) {
         functions_.emplace(function->name, function.get());
-        hir::FunctionSummary summary{.name = function->name,
-                                     .result = function->result};
+        hir::FunctionSummary summary{
+            .name = function->name, .result = types_.resolve(function->result)};
         for (const auto& parameter : function->parameters) {
-            summary.parameters.push_back(parameter.type);
+            summary.parameters.push_back(types_.resolve(parameter.type));
         }
         result->functions.push_back(std::move(summary));
     }
@@ -191,9 +192,9 @@ StageAnalyzer::analyze_statement(const syntax::Stmt& statement,
             return {.value = value, .returned = true};
         }
         if (!call_stack_.empty() &&
-            !check_resolved_type(functions_.at(call_stack_.back())->result,
-                                 value, return_statement.value->span,
-                                 "return expression")) {
+            !check_resolved_type(
+                types_.resolve(functions_.at(call_stack_.back())->result),
+                value, return_statement.value->span, "return expression")) {
             return {.returned = true};
         }
         auto result = std::make_shared<hir::Expr>();
@@ -315,7 +316,7 @@ hir::ExprPtr StageAnalyzer::analyze_binding(const syntax::BindingStmt& binding,
     }
 
     if (binding.annotation &&
-        !check_resolved_type(*binding.annotation, value,
+        !check_resolved_type(types_.resolve(*binding.annotation), value,
                              binding.initializer->span,
                              "initializer for `" + binding.name + "`")) {
         return nullptr;
@@ -429,7 +430,7 @@ StageAnalyzer::analyze_record(const syntax::RecordExpr& expression) {
     const auto& declaration = *records_.at(expression.name);
     std::array<std::size_t, 4> width_counts{};
     for (const auto& field : declaration.fields) {
-        const sema::Type type(field.type);
+        const auto type = types_.resolve(field.type);
         const auto bytes = type.kind == sema::TypeKind::Bool
                                ? 1U
                                : type.integer_type.width / 8;
@@ -990,8 +991,8 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
     const auto& function = *function_iterator->second;
     for (std::size_t index = 0; index < arguments.size(); ++index) {
         if (!check_resolved_type(
-                function.parameters[index].type, arguments[index],
-                expression.arguments[index]->span,
+                types_.resolve(function.parameters[index].type),
+                arguments[index], expression.arguments[index]->span,
                 "argument for `" + function.parameters[index].name + "`")) {
             return nullptr;
         }
@@ -1087,8 +1088,8 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
     auto result =
         make_sequence(std::move(block_result.effects),
                       std::move(block_result.value), function.body->span);
-    if (!check_resolved_type(function.result, result, function.body->span,
-                             "function tail expression")) {
+    if (!check_resolved_type(types_.resolve(function.result), result,
+                             function.body->span, "function tail expression")) {
         result = nullptr;
     }
     if (result && result->may_return) {
@@ -1097,7 +1098,7 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
         } else {
             auto region = std::make_shared<hir::Expr>();
             region->kind = hir::Expr::Kind::ReturnScope;
-            region->type = function.result;
+            region->type = types_.resolve(function.result);
             region->stage = hir::Stage::Runtime;
             region->span = expression.span;
             region->trace = return_dependency(result);
@@ -1287,8 +1288,8 @@ void StageAnalyzer::report_static_failure(const syntax::BindingStmt& binding,
 }
 
 sema::Type StageAnalyzer::type_of(const syntax::Expr& expression) const {
-    if (const auto iterator = types_.find(&expression);
-        iterator != types_.end()) {
+    if (const auto iterator = types_.expressions.find(&expression);
+        iterator != types_.expressions.end()) {
         return iterator->second;
     }
     return sema::TypeKind::Error;

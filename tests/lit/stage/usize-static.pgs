@@ -1,0 +1,25 @@
+// RUN: %pagosc --target=riscv32-unknown-elf emit-hir %s | %FileCheck %s --check-prefixes=COMMON,RV32
+// RUN: %pagosc --target=riscv64-unknown-elf emit-hir %s | %FileCheck %s --check-prefixes=COMMON,RV64
+static let maximum: usize = ~0usize;
+static let wrap = maximum + 1usize;
+static let wide = (4294967295usize + 1usize) as u64;
+static let negative = -1i8 as usize;
+static let narrow = maximum as u8;
+static let signed = maximum as i64;
+static let same_bits = (1usize as u32 as usize) == 1usize;
+fn table(x: usize) -> [usize; 2] { [x, x + 1usize] }
+record R { count: usize, flag: bool }
+static let config = R(count: table(41usize)[1], flag: true);
+static let field = config.count;
+// RV32: maximum: usize [Static] = 4294967295
+// RV64: maximum: usize [Static] = 18446744073709551615
+// COMMON: wrap: usize [Static] = 0
+// RV32: wide: u64 [Static] = 0
+// RV64: wide: u64 [Static] = 4294967296
+// RV32: negative: usize [Static] = 4294967295
+// RV64: negative: usize [Static] = 18446744073709551615
+// COMMON: narrow: u8 [Static] = 255
+// RV32: signed: i64 [Static] = 4294967295
+// RV64: signed: i64 [Static] = -1
+// COMMON: same_bits: bool [Static] = true
+// COMMON: field: usize [Static] = 42

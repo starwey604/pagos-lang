@@ -196,4 +196,23 @@ TEST(Integer, ConversionsPreserveLowBitsAndExtendAccordingToSource) {
     EXPECT_EQ(negative.convert({0, false}).error(), IntegerError::InvalidWidth);
 }
 
+TEST(Integer, UsizeIdentitySurvivesOperationsAndExplicitCasts) {
+    using namespace pagos;
+    for (unsigned width : {32U, 64U}) {
+        const IntegerType type{width, false, true};
+        const auto one = *IntegerValue::create(type, 1);
+        const auto fixed = *IntegerValue::create({width, false}, 1);
+        EXPECT_NE(one, fixed);
+        EXPECT_EQ(one.apply(IntegerOperation::Add, fixed).error(),
+                  IntegerError::TypeMismatch);
+        EXPECT_EQ(one.convert({width, false}), fixed);
+        EXPECT_EQ(fixed.convert(type), one);
+        EXPECT_EQ(one.bit_not().type(), type);
+        EXPECT_EQ(one.apply(IntegerOperation::Add, one)->type(), type);
+        EXPECT_EQ(one.compare(fixed).error(), IntegerError::TypeMismatch);
+    }
+    EXPECT_FALSE(IntegerValue::create({16, false, true}, 1));
+    EXPECT_FALSE(IntegerValue::create({32, true, true}, 1));
+}
+
 } // namespace

@@ -230,7 +230,8 @@ std::expected<void, std::string> verify_function(const Function& function) {
                                 else
                                     return Type::integer(
                                         scalar.type().width,
-                                        scalar.type().is_signed);
+                                        scalar.type().is_signed,
+                                        scalar.type().is_usize);
                             },
                             record->fields[field]);
                         if (type != instruction.type.fields[field]) {
@@ -604,6 +605,8 @@ std::string type_name(const Type& type) {
                std::to_string(type.length) + "]";
     }
     if (type.kind == Type::Integer) {
+        if (type.integer_type.is_usize)
+            return "usize" + std::to_string(type.integer_type.width);
         return std::string(type.integer_type.is_signed ? "i" : "u") +
                std::to_string(type.integer_type.width);
     }
@@ -650,6 +653,9 @@ std::string_view binary_name(BinaryOperator operation) noexcept {
 }
 
 std::expected<void, std::string> verify(const Module& module) {
+    if (module.pointer_bits != 0 && module.pointer_bits != 32 &&
+        module.pointer_bits != 64)
+        return std::unexpected("invalid MIR target pointer width");
     if (module.functions.empty()) {
         return std::unexpected("MIR module has no functions");
     }
@@ -663,11 +669,18 @@ std::expected<void, std::string> verify(const Module& module) {
         return inserted || entry->second == type;
     };
     for (const auto& function : module.functions) {
+        if (!function.result_type.matches_pointer_width(module.pointer_bits))
+            return std::unexpected(
+                "MIR usize width does not match semantic target");
         if (!consistent(function.result_type)) {
             return std::unexpected("inconsistent MIR record definition");
         }
         for (const auto& block : function.blocks) {
             for (const auto& instruction : block.instructions) {
+                if (!instruction.type.matches_pointer_width(
+                        module.pointer_bits))
+                    return std::unexpected(
+                        "MIR usize width does not match semantic target");
                 if (!consistent(instruction.type)) {
                     return std::unexpected(
                         "inconsistent MIR record definition");
@@ -686,6 +699,8 @@ std::expected<void, std::string> verify(const Module& module) {
 }
 
 void print(const Module& module, std::ostream& output) {
+    if (module.pointer_bits != 0)
+        output << "target pointer_bits = " << module.pointer_bits << '\n';
     for (const auto& function : module.functions) {
         output << "func @" << function.name << "() -> "
                << type_name(function.result_type) << " {\n";

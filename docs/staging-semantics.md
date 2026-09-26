@@ -265,7 +265,7 @@ tables, or target-specific sections.
 Compile-time arithmetic must agree with target execution. The evaluator uses
 explicit target-width representations rather than native host C++ arithmetic.
 
-Milestone 3 supports `bool`, `u8/u16/u32/u64`, and `i8/i16/i32/i64`.
+Milestone 3 supports `bool`, `u8/u16/u32/u64`, `i8/i16/i32/i64`, and `usize`.
 Decimal literals default to `u32`, independently of surrounding annotations;
 an adjacent suffix selects width and signedness (`255u8`, `127i8`).
 A literal that does not fit is a compile error. Unary `-` requires a signed
@@ -305,7 +305,8 @@ signed sources and zero-extends unsigned sources. Equal-width conversions keep
 bits and change their interpretation. They do not change binding time,
 discard effects, or permit an out-of-range literal: `256u8` fails, whereas
 `256 as u8` is zero. Integer width
-and signedness belong to scalar, array, record, and specialization-key values.
+and signedness, plus the distinct `usize` identity, belong to scalar, array,
+record, and specialization-key values.
 Aggregate construction quotas count width/8 logical bytes per integer slot,
 not the host representation's storage size or target record padding.
 
@@ -316,10 +317,17 @@ aggregates return zero after evaluating their effects. `external_input()`,
 range bounds/indices, and array indices remain `u32`. This is a test ABI,
 not general C ABI support.
 
-Floating point, implicit conversions, and `usize` are outside the core grammar.
-Before introduction, each must define overflow and target
-layout behavior; `usize` must follow the selected target data layout even when
-evaluated on the host.
+`usize` is unsigned and follows the selected target DataLayout pointer width,
+including during literal checking and Static evaluation on a different host.
+It is not an alias for `u32`/`u64`; conversions must be explicit even when widths
+match. Its shifts, wrapping arithmetic, casts, and logical construction budgets
+use that width. The CLI resolves one target before type checking for every
+command. HIR/MIR retain the semantic pointer width even if all target-dependent
+work folds away; emission with a different pointer width is rejected.
+Static results computed at a different pointer width must not be reused.
+
+Floating point, implicit conversions, `isize`, and pointers remain outside the
+core grammar.
 
 MMIO, volatile access, interrupts, and target assembly are always residual
 target effects.

@@ -1,0 +1,4 @@
+// RUN: not %pagosc --target=riscv32-unknown-elf check %s 2>&1 | %FileCheck %s
+// RUN: %pagosc --target=riscv64-unknown-elf check %s
+let shifted = (external_input() as usize) >> 32usize;
+// CHECK: error[E4009]: shift count must be less than 32

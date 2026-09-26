@@ -1,0 +1,7 @@
+// RUN: not %pagosc --target=riscv32-unknown-elf check %s 2>&1 | %FileCheck %s
+// RUN: not %pagosc --target=riscv64-unknown-elf check %s 2>&1 | %FileCheck %s
+let input = external_input();
+static let size: usize = input as usize;
+// CHECK: error[E2001]: static binding `size` was thawed
+// CHECK: dependency path:
+// CHECK: external_input -> input -> size

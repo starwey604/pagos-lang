@@ -1,0 +1,5 @@
+// RUN: not %pagosc --target=riscv32-unknown-elf check %s 2>&1 | %FileCheck %s --check-prefix=RV32
+// RUN: %pagosc --target=riscv64-unknown-elf emit-hir %s | %FileCheck %s --check-prefix=RV64
+static let value: usize = 4_294_967_296usize;
+// RV32: error[E1005]: integer literal does not fit `usize`
+// RV64: value: usize [Static] = 4294967296

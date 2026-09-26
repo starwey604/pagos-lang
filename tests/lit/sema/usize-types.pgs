@@ -1,0 +1,19 @@
+// RUN: not %pagosc --target=riscv32-unknown-elf check %s 2>&1 | %FileCheck %s
+// RUN: not %pagosc --target=riscv64-unknown-elf check %s 2>&1 | %FileCheck %s
+fn expect(x: usize) -> usize { x }
+record R { size: usize }
+let annotation: usize = 1;
+let mixed32 = 1usize + 1u32;
+let mixed64 = 1usize == 1u64;
+let shift = 1usize << 1;
+let array = [1usize, 1];
+let argument = expect(1);
+let field = R(size: 1);
+let negative = -1usize;
+let index = [1usize][0usize];
+// CHECK: expected `usize`, found `u32`
+// CHECK: expected `usize`, found `u32`
+// CHECK: expected `usize`, found `u64`
+// CHECK-COUNT-4: expected `usize`, found `u32`
+// CHECK: unary `-` requires a signed integer
+// CHECK: expected `u32`, found `usize`

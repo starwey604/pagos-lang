@@ -90,6 +90,8 @@ struct Module {
     std::vector<FunctionSummary> functions;
     std::vector<Binding> bindings;
     ExprPtr result;
+    // Semantic target width, including dependencies folded away during staging.
+    unsigned pointer_bits{};
 };
 
 [[nodiscard]] std::string_view stage_name(Stage stage) noexcept;

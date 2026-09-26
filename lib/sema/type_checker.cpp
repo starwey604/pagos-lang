@@ -23,7 +23,7 @@ bool compatible(const sema::Type& expected, const sema::Type& actual) {
 } // namespace
 
 bool TypeChecker::check(syntax::Module& module) {
-    types_.clear();
+    types_.expressions.clear();
     functions_.clear();
     records_.clear();
     collect_records(module);
@@ -61,8 +61,8 @@ void TypeChecker::collect_records(const syntax::Module& module) {
                                    "duplicate field `" + field.name + "`",
                                    field.name_span);
             }
-            if (sema::Type(field.type).kind != sema::TypeKind::Integer &&
-                sema::Type(field.type) != sema::TypeKind::Bool) {
+            if (types_.resolve(field.type).kind != sema::TypeKind::Integer &&
+                types_.resolve(field.type) != sema::TypeKind::Bool) {
                 diagnostics_.error("E1008",
                                    "record fields must be `bool` or an integer",
                                    field.name_span);
@@ -72,6 +72,10 @@ void TypeChecker::collect_records(const syntax::Module& module) {
 }
 
 void TypeChecker::validate_type(const sema::Type& type, source::Span span) {
+    if (type.kind == TypeKind::Error) {
+        diagnostics_.error("E1005", "`usize` requires a target pointer width",
+                           span);
+    }
     if (type.is_record() && !records_.contains(type.record_name)) {
         diagnostics_.error(
             "E1003", "unknown record type `" + type.record_name + "`", span);
@@ -86,9 +90,9 @@ void TypeChecker::collect_functions(syntax::Module& module) {
                                    function->name + "`",
                                function->name_span);
         }
-        validate_type(function->result, function->name_span);
+        validate_type(types_.resolve(function->result), function->name_span);
         for (const auto& parameter : function->parameters) {
-            validate_type(parameter.type, parameter.name_span);
+            validate_type(types_.resolve(parameter.type), parameter.name_span);
         }
         if (function->name == "external_input") {
             diagnostics_.error(
@@ -110,16 +114,17 @@ void TypeChecker::collect_functions(syntax::Module& module) {
 void TypeChecker::check_function(syntax::Function& function) {
     scopes_.emplace_back();
     for (const auto& parameter : function.parameters) {
-        define(parameter.name, parameter.type, parameter.name_span);
+        define(parameter.name, types_.resolve(parameter.type),
+               parameter.name_span);
     }
     const auto previous_return_type = current_return_type_;
-    current_return_type_ = function.result;
+    const auto result_type = types_.resolve(function.result);
+    current_return_type_ = result_type;
     bool saw_return = false;
-    const auto tail_type =
-        check_block(*function.body, function.result, saw_return);
+    const auto tail_type = check_block(*function.body, result_type, saw_return);
     if (tail_type != sema::TypeKind::Void &&
-        !compatible(function.result, tail_type)) {
-        type_mismatch(function.body->tail->span, function.result, tail_type,
+        !compatible(result_type, tail_type)) {
+        type_mismatch(function.body->tail->span, result_type, tail_type,
                       "function tail expression");
     }
     if (!saw_return && tail_type == sema::TypeKind::Void) {
@@ -157,16 +162,16 @@ void TypeChecker::check_statement(syntax::Stmt& statement,
     case syntax::Stmt::Kind::Binding: {
         auto& binding = static_cast<syntax::BindingStmt&>(statement);
         if (binding.annotation) {
-            validate_type(*binding.annotation, binding.name_span);
+            validate_type(types_.resolve(*binding.annotation),
+                          binding.name_span);
         }
         const auto initializer_type = check_expression(*binding.initializer);
         saw_return = saw_return || initializer_type == sema::TypeKind::Never;
         const auto binding_type = binding.annotation
-                                      ? sema::Type(*binding.annotation)
+                                      ? types_.resolve(*binding.annotation)
                                       : initializer_type;
-        if (binding.annotation &&
-            !compatible(*binding.annotation, initializer_type)) {
-            type_mismatch(binding.initializer->span, *binding.annotation,
+        if (binding.annotation && !compatible(binding_type, initializer_type)) {
+            type_mismatch(binding.initializer->span, binding_type,
                           initializer_type,
                           "initializer for `" + binding.name + "`");
         }
@@ -232,7 +237,14 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
     case syntax::Expr::Kind::Integer: {
         const auto& integer = static_cast<syntax::IntegerExpr&>(expression);
         const auto literal_type =
-            Type::integer(integer.width, integer.is_signed);
+            integer.is_usize ? Type::usize(types_.pointer_bits)
+                             : Type::integer(integer.width, integer.is_signed);
+        if (literal_type.kind == TypeKind::Error) {
+            diagnostics_.error("E1005",
+                               "`usize` requires a target pointer width",
+                               integer.span);
+            break;
+        }
         if (!IntegerValue::parse_decimal(literal_type.integer_type,
                                          integer.spelling)) {
             diagnostics_.error("E1005",
@@ -288,7 +300,7 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
     case syntax::Expr::Kind::Cast: {
         auto& cast = static_cast<syntax::CastExpr&>(expression);
         const auto operand = check_expression(*cast.operand);
-        const Type destination(cast.destination);
+        const auto destination = types_.resolve(cast.destination);
         if (destination.kind != TypeKind::Integer ||
             (operand.kind != TypeKind::Integer &&
              operand.kind != TypeKind::Never &&
@@ -431,7 +443,7 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
         break;
     }
     }
-    types_.insert_or_assign(&expression, type);
+    types_.expressions.insert_or_assign(&expression, type);
     return type;
 }
 
@@ -464,9 +476,9 @@ sema::Type TypeChecker::check_record(syntax::RecordExpr& expression) {
                                "unknown field `" + field.name + "` in `" +
                                    expression.name + "`",
                                field.name_span);
-        } else if (!compatible(declared->type, actual)) {
-            type_mismatch(field.value->span, declared->type, actual,
-                          "field `" + field.name + "`");
+        } else if (!compatible(types_.resolve(declared->type), actual)) {
+            type_mismatch(field.value->span, types_.resolve(declared->type),
+                          actual, "field `" + field.name + "`");
         }
     }
     for (const auto& field : fields) {
@@ -505,7 +517,7 @@ sema::Type TypeChecker::check_field(syntax::FieldExpr& expression) {
                            expression.name_span);
         return sema::TypeKind::Error;
     }
-    return field->type;
+    return types_.resolve(field->type);
 }
 
 sema::Type TypeChecker::check_binary(syntax::BinaryExpr& expression) {
@@ -605,15 +617,16 @@ sema::Type TypeChecker::check_call(syntax::CallExpr& expression) {
         const auto actual = check_expression(*expression.arguments[index]);
         argument_returns = argument_returns || actual == sema::TypeKind::Never;
         if (index < count &&
-            !compatible(function.parameters[index].type, actual)) {
-            type_mismatch(expression.arguments[index]->span,
-                          function.parameters[index].type, actual,
-                          "argument for `" + function.parameters[index].name +
-                              "`");
+            !compatible(types_.resolve(function.parameters[index].type),
+                        actual)) {
+            type_mismatch(
+                expression.arguments[index]->span,
+                types_.resolve(function.parameters[index].type), actual,
+                "argument for `" + function.parameters[index].name + "`");
         }
     }
     return argument_returns ? sema::Type(sema::TypeKind::Never)
-                            : sema::Type(function.result);
+                            : types_.resolve(function.result);
 }
 
 sema::Type TypeChecker::check_if(syntax::IfExpr& expression) {

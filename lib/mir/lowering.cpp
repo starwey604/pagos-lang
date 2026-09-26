@@ -56,6 +56,7 @@ class Lowerer {
         block(current_block_).terminator = Return{.value = result};
 
         Module module;
+        module.pointer_bits = hir_module.pointer_bits;
         module.functions.push_back(std::move(function_));
         if (auto valid = verify(module); !valid) {
             return std::unexpected("invalid lowered MIR: " + valid.error());
@@ -505,7 +506,8 @@ class Lowerer {
         }
         if (type.kind == sema::TypeKind::Integer) {
             return Type::integer(type.integer_type.width,
-                                 type.integer_type.is_signed);
+                                 type.integer_type.is_signed,
+                                 type.integer_type.is_usize);
         }
         return type == sema::TypeKind::Bool ? Type::Bool : Type::Invalid;
     }

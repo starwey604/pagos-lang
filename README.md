@@ -147,7 +147,10 @@ widths, and construction quotas count logical bytes. See the
 [integer rules](docs/grammar.md#core-type-rules) and
 [multi-width example](tests/lit/codegen/unsigned-widths.pgs), and the
 [signed boundary example](tests/lit/codegen/signed-arithmetic-64.pgs).
-`usize` and general C ABI support are not implemented yet.
+Target-sized unsigned `usize` now follows the selected LLVM DataLayout through
+checking, Static evaluation, MIR, and LLVM emission. It remains distinct from
+`u32`/`u64`; see the [RV32/RV64 example](tests/lit/stage/usize-static.pgs).
+All CLI commands accept target options. General C ABI support remains pending.
 
 ## Development
 

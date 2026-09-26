@@ -12,9 +12,11 @@ namespace pagos {
 struct IntegerType {
     unsigned width{32};
     bool is_signed{};
+    bool is_usize{};
     bool operator==(const IntegerType&) const = default;
     [[nodiscard]] bool valid() const noexcept {
-        return width > 0 && width <= 64;
+        return width > 0 && width <= 64 &&
+               (!is_usize || (!is_signed && (width == 32 || width == 64)));
     }
 };
 

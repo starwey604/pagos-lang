@@ -104,7 +104,8 @@ construction budgets, MIR checks, and LLVM arithmetic. Existing `u32` programs
 retain their behavior. The second slice adds `i8/i16/i32/i64`, negative literals,
 wrapping negation, signed comparisons/division/shifts, and signedness-aware
 conversions. MIN/-1 division and remainder have explicit checks at both stages.
-Target-dependent `usize` is next;
+The third slice adds distinct target-dependent `usize`, target-aware checking
+and Static evaluation, and cross-session width consistency checks;
 general Runtime calls, C ABI, object emission, memory, and MMIO remain open.
 
 Add the minimum systems features needed for real firmware:

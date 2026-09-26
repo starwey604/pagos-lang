@@ -7,6 +7,28 @@
 
 namespace {
 
+TEST(Parser, UsizeSpellingStaysUnresolvedInAnnotationsAndLiterals) {
+    using namespace pagos::syntax;
+    const auto source = pagos::source::SourceFile::from_text(
+        "usize.pgs", "fn f(a: [usize; 2]) -> usize { 1usize as usize }");
+    pagos::source::DiagnosticEngine diagnostics(source);
+    Lexer lexer(source, diagnostics);
+    const auto tokens = lexer.tokenize();
+    Parser parser(tokens, diagnostics);
+    const auto module = parser.parse_module();
+    ASSERT_FALSE(diagnostics.has_error());
+    const auto& function = *module->functions.front();
+    EXPECT_EQ(function.parameters[0].type, Type::array(Type::usize(), 2));
+    EXPECT_EQ(function.result, Type::usize());
+    const auto& cast = static_cast<const CastExpr&>(*function.body->tail);
+    EXPECT_EQ(cast.destination, Type::usize());
+    const auto& literal = static_cast<const IntegerExpr&>(*cast.operand);
+    EXPECT_TRUE(literal.is_usize);
+    EXPECT_FALSE(literal.is_signed);
+    EXPECT_EQ(literal.width, 0U);
+    EXPECT_EQ(literal.spelling, "1");
+}
+
 TEST(Parser, SignedLiteralSignDoesNotEraseOuterNegation) {
     using namespace pagos::syntax;
     const auto source = pagos::source::SourceFile::from_text(

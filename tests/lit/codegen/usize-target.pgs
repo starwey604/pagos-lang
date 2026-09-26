@@ -1,0 +1,17 @@
+// RUN: %pagosc --target=riscv32-unknown-elf emit-mir %s | %FileCheck %s --check-prefix=MIR32
+// RUN: %pagosc --target=riscv64-unknown-elf emit-mir %s | %FileCheck %s --check-prefix=MIR64
+// RUN: %pagosc --target=riscv32-unknown-elf emit-llvm %s | %FileCheck %s --check-prefix=RV32
+// RUN: %pagosc --target=riscv64-unknown-elf emit-llvm %s | %FileCheck %s --check-prefix=RV64
+// RUN: %run_residual %s 42 41
+// RUN: %run_optimized %s 42 41
+fn increment(x: usize) -> usize { x + 1usize }
+let size: usize = external_input() as usize;
+let result = increment(size) as u32;
+// MIR32: target pointer_bits = 32
+// MIR32: usize32
+// MIR64: target pointer_bits = 64
+// MIR64: usize64
+// RV32: add i32
+// RV64: zext i32 {{.*}} to i64
+// RV64: add i64
+// RV64: trunc i64 {{.*}} to i32

@@ -3,7 +3,8 @@
 // RUN: not %pagosc emit-llvm %s --target=unknown-none-elf 2>&1 | %FileCheck %s --check-prefix=BAD
 // RUN: not %pagosc emit-llvm %s --target=riscv32-unknown-elf --cpu=wrong 2>&1 | %FileCheck %s --check-prefix=CPU
 // RUN: not %pagosc emit-llvm %s --target=riscv32-unknown-elf --features=+wrong 2>&1 | %FileCheck %s --check-prefix=FEATURE
-// RUN: not %pagosc check %s --target=riscv32-unknown-elf 2>&1 | %FileCheck %s --check-prefix=COMMAND
+// RUN: %pagosc check %s --target=riscv32-unknown-elf
+// RUN: not %pagosc check %s --target=unknown-none-elf 2>&1 | %FileCheck %s --check-prefix=BAD
 // RUN: not %pagosc emit-llvm %s --target= 2>&1 | %FileCheck %s --check-prefix=EMPTY
 // RUN: not %pagosc emit-llvm %s --target=riscv32-unknown-elf --features=+64bit 2>&1 | %FileCheck %s --check-prefix=WIDTH
 let result = 42;
@@ -16,6 +17,5 @@ let result = 42;
 // BAD: error: unsupported target triple:
 // CPU: error: unsupported CPU
 // FEATURE: error: unsupported target feature: wrong
-// COMMAND: error: target options currently require emit-llvm
 // EMPTY: error: empty target option:
 // WIDTH: error: target feature conflicts with triple width:

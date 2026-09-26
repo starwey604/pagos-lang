@@ -500,7 +500,18 @@ LLVMCodegen::emit(const mir::Module& mir_module, TargetConfig config) {
     if (!target) {
         return std::unexpected(target.error());
     }
-    return Generator(*target).emit(mir_module);
+    return emit_for_target(mir_module, *target);
+}
+
+std::expected<std::string, std::string>
+LLVMCodegen::emit_for_target(const mir::Module& mir_module,
+                             const TargetLayout& target) {
+    if (mir_module.pointer_bits != 0 &&
+        mir_module.pointer_bits != target.pointer_bits()) {
+        return std::unexpected(
+            "MIR semantic target pointer width does not match emission target");
+    }
+    return Generator(target).emit(mir_module);
 }
 
 } // namespace pagos::codegen

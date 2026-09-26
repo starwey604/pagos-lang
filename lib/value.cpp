@@ -30,6 +30,7 @@ std::size_t constant_hash(const Constant& argument) noexcept {
         if constexpr (std::is_same_v<decltype(scalar), IntegerValue>) {
             mix(scalar.type().width);
             mix(scalar.type().is_signed);
+            mix(scalar.type().is_usize);
             mix(std::hash<std::uint64_t>{}(scalar.bits()));
         } else {
             mix(static_cast<std::size_t>(scalar));

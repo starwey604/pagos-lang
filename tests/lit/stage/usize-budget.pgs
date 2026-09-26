@@ -1,0 +1,12 @@
+// RUN: %pagosc --target=riscv32-unknown-elf --max-array-bytes=8 --max-aggregate-bytes=13 explain-stage %s | %FileCheck %s --check-prefix=RV32
+// RUN: %pagosc --target=riscv64-unknown-elf --max-array-bytes=16 --max-aggregate-bytes=25 explain-stage %s | %FileCheck %s --check-prefix=RV64
+// RUN: not %pagosc --target=riscv64-unknown-elf --max-array-bytes=8 check %s 2>&1 | %FileCheck %s --check-prefix=ARRAY
+// RUN: not %pagosc --target=riscv64-unknown-elf --max-aggregate-bytes=24 check %s 2>&1 | %FileCheck %s --check-prefix=RECORD
+record R { size: usize, flag: bool }
+let table: [usize; 2] = [for i in 0..2 { i as usize }];
+let result = R(size: table[1], flag: true);
+// RV32: array-elements=2, array-bytes=8, aggregate-constructions=2, aggregate-members=4, aggregate-bytes=13
+// RV64: array-elements=2, array-bytes=16, aggregate-constructions=2, aggregate-members=4, aggregate-bytes=25
+// ARRAY: error[E4008]: array construction budget exceeded
+// ARRAY: request 2 elements at 8 bytes each
+// RECORD: error[E4010]: aggregate construction budget exceeded

@@ -1,0 +1,7 @@
+// RUN: %pagosc --target=riscv32-unknown-elf check %s
+// RUN: %pagosc --target=riscv64-unknown-elf check %s
+// RUN: %run_residual %s trap
+// RUN: %run_optimized %s trap
+runtime let divisor: usize = 0usize;
+let discarded = 1usize % divisor;
+let result = 42;

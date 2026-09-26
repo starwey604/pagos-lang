@@ -80,7 +80,6 @@ std::expected<Options, std::string> parse_options(int argument_count,
     std::optional<std::string> source_path;
     pagos::stage::AnalysisLimits limits;
     pagos::codegen::TargetConfig target;
-    bool explicit_target = false;
 
     for (int index = 1; index < argument_count; ++index) {
         const std::string_view argument{arguments[index]};
@@ -102,7 +101,6 @@ std::expected<Options, std::string> parse_options(int argument_count,
             if (value.empty())
                 return std::unexpected("empty target option: " +
                                        std::string(argument));
-            explicit_target = true;
             if (argument.starts_with("--target="))
                 target.triple = value;
             else if (argument.starts_with("--cpu="))
@@ -170,9 +168,6 @@ std::expected<Options, std::string> parse_options(int argument_count,
     if (!command || !source_path) {
         return std::unexpected("a command and source file are required");
     }
-    if (explicit_target && *command != Command::EmitLlvm) {
-        return std::unexpected("target options currently require emit-llvm");
-    }
     return Options{.command = *command,
                    .source_path = std::move(*source_path),
                    .limits = limits,
@@ -194,6 +189,11 @@ int main(int argument_count, char** arguments) {
         std::println(stderr, "error: {}", source.error());
         return 1;
     }
+    const auto target = pagos::codegen::TargetLayout::create(options->target);
+    if (!target) {
+        std::println(stderr, "error: {}", target.error());
+        return 1;
+    }
     pagos::source::DiagnosticEngine diagnostics(*source);
     pagos::syntax::Lexer lexer(*source, diagnostics);
     auto tokens = lexer.tokenize();
@@ -209,7 +209,7 @@ int main(int argument_count, char** arguments) {
         return 1;
     }
 
-    pagos::sema::TypeChecker type_checker(diagnostics);
+    pagos::sema::TypeChecker type_checker(diagnostics, target->pointer_bits());
     if (!type_checker.check(*syntax_module)) {
         diagnostics.render(std::cerr);
         return 1;
@@ -262,7 +262,7 @@ int main(int argument_count, char** arguments) {
     }
 
     auto llvm_ir =
-        pagos::codegen::LLVMCodegen::emit(*mir_module, options->target);
+        pagos::codegen::LLVMCodegen::emit_for_target(*mir_module, *target);
     if (!llvm_ir) {
         std::println(stderr, "error: {}", llvm_ir.error());
         return 1;

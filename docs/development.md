@@ -89,7 +89,7 @@ host compiler-rt must not be substituted for it.
 
 ### Host compiler commands
 
-`emit-llvm` also accepts explicit `--target=TRIPLE`, `--cpu=CPU`, and
+All commands accept explicit `--target=TRIPLE`, `--cpu=CPU`, and
 `--features=+feature,-feature` options. Omitting the triple uses the host
 triple with a generic CPU; no host `sizeof` values define target layout.
 For example:
@@ -97,12 +97,16 @@ For example:
 ```sh
 build/debug/pagosc emit-llvm benchmarks/cache-hits.pgs \
   --target=riscv32-unknown-elf --cpu=generic-rv32 --features=+m,+a,+c
+build/debug/pagosc emit-hir tests/lit/stage/usize-static.pgs \
+  --target=riscv64-unknown-elf
 ```
 
 Preparation supports X86, RISC-V, and little-endian ARM/Thumb layout queries.
-Unknown triples, CPUs, and feature names fail explicitly. Target options on
-other commands are rejected until those phases actually consume target
-configuration. LLVM IR now includes the matching DataLayout, triple, and CPU
+Unknown triples, CPUs, and feature names fail explicitly before type checking.
+`usize` literal ranges, Static arithmetic, and aggregate budgets follow the
+selected pointer width. Use the same target options for checking and emission;
+omitting them selects the host target, not a platform-independent default.
+LLVM IR includes the matching DataLayout, triple, and CPU
 attributes. This is not yet object emission or full target C ABI support.
 
 LLVM builds must include X86, RISCV, and ARM backends. Configure with

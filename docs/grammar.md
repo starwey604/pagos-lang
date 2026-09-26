@@ -1,11 +1,12 @@
 # Core Grammar Sketch
 
-Status: normative syntax baseline, including Milestone 3 fixed-width integers.
+Status: normative syntax baseline, including Milestone 3 integer types.
 Later milestones should not silently change accepted programs.
 
 ## Scope
 
 The compiler supports `bool`, unsigned `u8/u16/u32/u64`, signed `i8/i16/i32/i64`,
+target-sized unsigned `usize`,
 fixed-length scalar arrays, immutable bindings, functions, calls, `if`
 expressions, explicit stage constraints, and
 range-based `for` statements.
@@ -35,7 +36,7 @@ function        = "fn" identifier "(" [ parameters ] ")"
 parameters      = parameter { "," parameter } ;
 parameter       = identifier ":" type ;
 integer-type    = "u8" | "u16" | "u32" | "u64"
-                | "i8" | "i16" | "i32" | "i64" ;
+                | "i8" | "i16" | "i32" | "i64" | "usize" ;
 scalar-type     = "bool" | integer-type ;
 type            = scalar-type | identifier | "[" scalar-type ";" integer "]" ;
 
@@ -100,6 +101,16 @@ Unsuffixed literals default to `u32`; annotations do not retarget literals in
 this slice. Use `let byte: u8 = 255u8`, not `let byte: u8 = 255`. A suffixed
 literal must fit its type; `256u8` is an error, not a truncation. The suffix
 must be adjacent to the digits. Source array lengths remain unsuffixed literals.
+
+`usize` is an unsigned integer with the selected target's pointer width, taken
+from LLVM DataLayout (32 bits on RV32, 64 on RV64), not the compiler host.
+Write `let size: usize = 1usize` or `external_input() as usize`. It is distinct
+from `u32` and `u64` even when their widths match; mixing them requires `as`.
+All integer operations and casts use the resolved width at both stages.
+For example, `4294967295usize + 1usize` is zero on RV32 and 4294967296 on RV64;
+`4294967296usize` itself is rejected on RV32. `usize` works in scalar arrays,
+records, function signatures, and shift counts. Array lengths, array indices,
+and range bounds/indices remain `u32`; `isize` and pointers are not yet supported.
 
 Unary `-` requires a signed integer; `-1` and `-1u8` are errors, while `-1i8`
 is valid. A minus directly enclosing a positive signed literal (parentheses

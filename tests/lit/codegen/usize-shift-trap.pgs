@@ -1,0 +1,6 @@
+// RUN: %run_residual %s 2147483648 31
+// RUN: %run_residual %s trap 64
+// RUN: %run_optimized %s 2147483648 31
+// RUN: %run_optimized %s trap 64
+let count = external_input() as usize;
+let result = (1usize << count) as u32;

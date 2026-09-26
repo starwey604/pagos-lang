@@ -6,6 +6,23 @@
 
 namespace {
 
+TEST(Constant, UsizeIdentityIncludesResolvedWidthAndNominalKind) {
+    using namespace pagos;
+    const auto value = *IntegerValue::create({32, false, true}, 1);
+    for (const auto type :
+         {IntegerType{32, false}, IntegerType{64, false, true}}) {
+        const auto other = *IntegerValue::create(type, 1);
+        for (const auto& pair :
+             {std::pair<Constant, Constant>{value, other},
+              {std::vector<IntegerValue>{value},
+               std::vector<IntegerValue>{other}},
+              {RecordConstant{"R", {value}}, RecordConstant{"R", {other}}}}) {
+            EXPECT_FALSE(constant_equal(pair.first, pair.second));
+            EXPECT_NE(constant_hash(pair.first), constant_hash(pair.second));
+        }
+    }
+}
+
 TEST(Constant, IntegerIdentityIncludesWidthAndSignednessInAggregates) {
     using namespace pagos;
     const auto byte = *IntegerValue::create({8, false}, 1);

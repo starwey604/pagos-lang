@@ -1,5 +1,9 @@
 #include "pagos/codegen/llvm_codegen.h"
 #include "pagos/codegen/target.h"
+#include "pagos/mir/lowering.h"
+#include "pagos/stage/stage_analyzer.h"
+#include "pagos/syntax/lexer.h"
+#include "pagos/syntax/parser.h"
 
 #include <gtest/gtest.h>
 
@@ -7,6 +11,83 @@ namespace {
 
 using pagos::codegen::TargetLayout;
 using pagos::mir::Type;
+
+TEST(Target, UsizeAnalysisIsSessionLocalAndDoesNotMutateSyntax) {
+    using namespace pagos;
+    const auto source = source::SourceFile::from_text(
+        "usize.pgs", "record R { size: usize } "
+                     "fn read(a: [usize; 2]) -> usize { return a[1]; } "
+                     "static let maximum: usize = ~0usize; "
+                     "static let r = R(size: maximum); "
+                     "static let result = read([1usize, r.size]) as u64;");
+    source::DiagnosticEngine diagnostics(source);
+    syntax::Lexer lexer(source, diagnostics);
+    const auto tokens = lexer.tokenize();
+    syntax::Parser parser(tokens, diagnostics);
+    auto syntax = parser.parse_module();
+    ASSERT_FALSE(diagnostics.has_error());
+    for (const auto* triple : {"riscv32-unknown-elf", "riscv64-unknown-elf",
+                               "riscv32-unknown-elf"}) {
+        const auto target = TargetLayout::create({.triple = triple});
+        ASSERT_TRUE(target);
+        const auto bits = target->pointer_bits();
+        sema::TypeChecker checker(diagnostics, bits);
+        ASSERT_TRUE(checker.check(*syntax));
+        stage::StageAnalyzer analyzer(diagnostics, checker.types());
+        const auto hir = analyzer.analyze(*syntax);
+        ASSERT_FALSE(diagnostics.has_error());
+        ASSERT_TRUE(hir->result->constant);
+        EXPECT_EQ(std::get<IntegerValue>(*hir->result->constant).decimal(),
+                  bits == 32 ? "4294967295" : "18446744073709551615");
+        EXPECT_EQ(analyzer.stats().aggregate_bytes_reserved, 3U * bits / 8U);
+        EXPECT_EQ(syntax->functions[0]->result, syntax::Type::usize());
+        EXPECT_EQ(syntax->records[0].fields[0].type, syntax::Type::usize());
+        const auto mir = mir::lower(*hir);
+        ASSERT_TRUE(mir) << mir.error();
+        EXPECT_EQ(mir->pointer_bits, bits);
+        EXPECT_TRUE(codegen::LLVMCodegen::emit_for_target(*mir, *target));
+        // The usize dependency has folded into a fixed-width u64 constant.
+        const auto wrong = TargetLayout::create(
+            {.triple =
+                 bits == 32 ? "riscv64-unknown-elf" : "riscv32-unknown-elf"});
+        ASSERT_TRUE(wrong);
+        const auto rejected =
+            codegen::LLVMCodegen::emit_for_target(*mir, *wrong);
+        ASSERT_FALSE(rejected);
+        EXPECT_NE(rejected.error().find("semantic target pointer width"),
+                  std::string::npos);
+    }
+}
+
+TEST(Target, UsizeLayoutsRejectWrongWidthIncludingAggregates) {
+    const auto target = TargetLayout::create({.triple = "riscv32-unknown-elf"});
+    ASSERT_TRUE(target);
+    for (unsigned bits : {32U, 64U}) {
+        const auto scalar = Type::integer(bits, false, true);
+        Type record{Type::Record};
+        record.record_name = "R";
+        record.fields = {Type::Bool, scalar};
+        for (const auto& type : {scalar, Type::array(scalar, 2), record}) {
+            EXPECT_EQ(target->layout_of(type).has_value(), bits == 32);
+        }
+    }
+}
+
+TEST(Target, MirRejectsUnboundOrMismatchedUsize) {
+    using namespace pagos;
+    hir::Module hir;
+    hir.pointer_bits = 32;
+    hir.result = hir::make_constant(*IntegerValue::create({32, false, true}, 1),
+                                    sema::Type::usize(32), {});
+    auto module = mir::lower(hir);
+    ASSERT_TRUE(module);
+    for (unsigned bits : {0U, 16U, 64U}) {
+        module->pointer_bits = bits;
+        EXPECT_FALSE(mir::verify(*module));
+    }
+    module->pointer_bits = 32;
+    EXPECT_TRUE(mir::verify(*module));
+}
 
 TEST(Target, PointerWidthsAreSessionLocal) {
     auto rv32 = TargetLayout::create({.triple = "riscv32-unknown-elf"});

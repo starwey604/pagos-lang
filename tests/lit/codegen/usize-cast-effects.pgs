@@ -1,0 +1,5 @@
+// RUN: %run_residual %s 42 7 9
+// RUN: %run_optimized %s 42 7 9
+fn effect(x: usize) -> usize { external_input(); x }
+let discarded = effect(external_input() as usize) as u32;
+let result = 42;

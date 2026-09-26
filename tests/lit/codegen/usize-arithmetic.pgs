@@ -1,0 +1,17 @@
+// RUN: %run_residual %s 1 255 1
+// RUN: %run_residual %s 1 255 0
+// RUN: %run_optimized %s 1 255 1
+// RUN: %run_optimized %s 1 255 0
+fn fold(a: usize, b: usize) -> usize {
+    (a + b) ^ (a - b) ^ (a * b) ^ (a / b) ^ (a % b) ^
+    (~a) ^ (a & b) ^ (a | b) ^ (a << 1usize) ^ (a >> 1usize)
+}
+fn choose(a: usize, end: u32) -> usize {
+    let value = if a > 127usize { a } else { 127usize };
+    for i in 0..end { return value; }
+    255usize
+}
+let value = external_input() as usize;
+let selected = choose(value, external_input());
+let result = fold(selected, 3usize) == fold(255usize, 3usize) &&
+             ((-1i8 as usize) as i8) == -1i8;

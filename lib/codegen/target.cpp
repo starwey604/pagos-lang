@@ -130,6 +130,8 @@ std::expected<TypeLayout, std::string>
 TargetLayout::layout_of(const mir::Type& type) const {
     if (!type.valid())
         return std::unexpected("cannot lay out invalid MIR type");
+    if (!type.matches_pointer_width(pointer_bits()))
+        return std::unexpected("usize width does not match layout target");
     llvm::LLVMContext context;
     const llvm::DataLayout layout(layout_);
     auto* storage = detail::storage_type(type, context);

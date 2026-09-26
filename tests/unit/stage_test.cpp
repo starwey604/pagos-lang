@@ -226,18 +226,20 @@ TEST(StageGenerator, ResolvesLengthWithoutMutatingSemanticTypes) {
     StageInput input("let n = 3; runtime let table = [for i in 0..n { i }];");
     const auto& binding =
         static_cast<const syntax::BindingStmt&>(*input.module->statements[1]);
-    ASSERT_EQ(input.checker.types().at(binding.initializer.get()),
-              syntax::Type::array(syntax::TypeKind::Integer, 0));
+    ASSERT_EQ(input.checker.types().expressions.at(binding.initializer.get()),
+              sema::Type::array(sema::TypeKind::Integer, 0));
     stage::StageAnalyzer analyzer(input.diagnostics, input.checker.types());
     for (int iteration = 0; iteration < 2; ++iteration) {
         const auto result = analyzer.analyze(*input.module);
         ASSERT_FALSE(input.diagnostics.has_error());
         ASSERT_EQ(result->bindings.size(), 2U);
-        const auto expected = syntax::Type::array(syntax::TypeKind::Integer, 3);
+        const auto expected = sema::Type::array(sema::TypeKind::Integer, 3);
         EXPECT_EQ(result->bindings[1].type, expected);
         EXPECT_EQ(result->bindings[1].value->type, expected);
         EXPECT_EQ(result->bindings[1].value->operands[0]->type, expected);
-        EXPECT_EQ(input.checker.types().at(binding.initializer.get()).length,
+        EXPECT_EQ(input.checker.types()
+                      .expressions.at(binding.initializer.get())
+                      .length,
                   0U);
         EXPECT_EQ(analyzer.stats().array_elements_reserved, 3U);
     }

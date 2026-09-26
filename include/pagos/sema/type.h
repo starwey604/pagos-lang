@@ -30,7 +30,7 @@ struct Type {
 
     Type() = default;
     Type(TypeKind kind) : kind(kind) {}
-    Type(const syntax::Type& annotation);
+    explicit Type(const syntax::Type& annotation, unsigned pointer_bits = 0);
     Type(syntax::TypeKind kind) : Type(syntax::Type(kind)) {}
     bool operator==(const Type&) const = default;
     [[nodiscard]] bool is_record() const noexcept {
@@ -47,6 +47,13 @@ struct Type {
     [[nodiscard]] static Type record(std::string name) {
         Type type{TypeKind::Record};
         type.record_name = std::move(name);
+        return type;
+    }
+    [[nodiscard]] static Type usize(unsigned pointer_bits) {
+        if (pointer_bits != 32 && pointer_bits != 64)
+            return TypeKind::Error;
+        auto type = integer(pointer_bits);
+        type.integer_type.is_usize = true;
         return type;
     }
     [[nodiscard]] static Type array(const Type& element, std::uint32_t length) {

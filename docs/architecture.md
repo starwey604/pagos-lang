@@ -29,19 +29,24 @@ checked-operation diagnostics, and target semantics remain Pagos-owned.
 
 M3 preparation separates source annotations (`syntax::Type`) from semantic
 facts (`sema::Type`) and concrete residual descriptors (`mir::Type`). Semantic
-and MIR integers carry width/signedness, arrays carry a scalar element type
-and length, and record fields retain ordered types plus nominal identity.
+and MIR integers carry width/signedness and `usize` identity; arrays carry a
+scalar element type and length, and record fields retain ordered types plus
+nominal identity.
 Deferred semantic lengths and error/unknown types cannot become valid MIR.
 Source syntax admits the M2 subset plus signed/unsigned widths 8/16/32/64 and
-explicit integer conversions. Target-sized source types remain a separate M3
-slice. LLVM integer types erase signedness, so code generation retains the
+explicit integer conversions, plus target-sized unsigned `usize`.
+Source annotations and suffixes keep `usize` unresolved. The semantic type
+table owns the session's pointer width and resolves annotations explicitly;
+staging consumes the same table. It never mutates syntax or uses host `sizeof`.
+LLVM integer types erase signedness, so code generation retains the
 verified MIR definition's signedness for comparisons, division, right shift,
 and extension. Checked signed division/remainder guard both zero and MIN/-1.
 
 `IntegerValue` stores up to 64 bits inline and delegates checked arithmetic
 to a private APInt adapter. Wider values are rejected explicitly. Scalar,
 array, and record integer payloads all use this canonical representation,
-including width and signedness in specialization keys. Shared equality, hashing, scalar
+including width, signedness, and `usize` identity in specialization keys.
+Shared equality, hashing, scalar
 conversion, and printing preserve nominal record identity and scalar types.
 
 HIR nodes are shared immutable computations, but their `Constant` payloads
@@ -52,7 +57,13 @@ without a measured benefit. This is an explicit remaining optimization point,
 not a claim of zero-copy evaluation.
 
 `codegen::TargetConfig` carries the triple, CPU, and feature string for each
-emission session. `TargetLayout` obtains DataLayout from LLVM TargetMachine
+compilation session. The CLI resolves it once before semantic analysis, for
+all commands, and reuses it for emission. HIR/MIR retain the semantic pointer
+width, even after target-dependent expressions fold away; MIR verification,
+layout queries, and emission reject inconsistent `usize` widths. Unbound
+hand-built modules may contain fixed-width types, but not `usize`.
+MIR dumps expose `pointer_bits` and `usize32`/`usize64`; source/HIR spell `usize`.
+`TargetLayout` obtains DataLayout from LLVM TargetMachine
 and queries pointer width, allocation size, ABI alignment, and record field
 offsets. Layout and LLVM emission share one private storage-type conversion.
 No target-specific layout cache is global, and board MMIO addresses remain

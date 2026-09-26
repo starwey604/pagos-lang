@@ -2,7 +2,7 @@
 
 namespace pagos::sema {
 
-Type::Type(const syntax::Type& annotation) {
+Type::Type(const syntax::Type& annotation, unsigned pointer_bits) {
     switch (annotation.kind) {
     case syntax::TypeKind::Unknown:
         kind = TypeKind::Unknown;
@@ -14,7 +14,9 @@ Type::Type(const syntax::Type& annotation) {
         kind = TypeKind::Bool;
         break;
     case syntax::TypeKind::Integer:
-        *this = integer(annotation.integer_width, annotation.integer_signed);
+        *this = annotation.integer_usize ? usize(pointer_bits)
+                                         : integer(annotation.integer_width,
+                                                   annotation.integer_signed);
         break;
     case syntax::TypeKind::Never:
         kind = TypeKind::Never;
@@ -24,7 +26,8 @@ Type::Type(const syntax::Type& annotation) {
         break;
     case syntax::TypeKind::ArrayBool:
     case syntax::TypeKind::ArrayInteger:
-        *this = array(Type(annotation.element_type()), annotation.length);
+        *this = array(Type(annotation.element_type(), pointer_bits),
+                      annotation.length);
         break;
     case syntax::TypeKind::Record:
         *this = record(annotation.record_name);
@@ -41,6 +44,8 @@ std::string type_name(const Type& type) {
     case TypeKind::Bool:
         return "bool";
     case TypeKind::Integer:
+        if (type.integer_type.is_usize)
+            return "usize";
         return std::string(type.integer_type.is_signed ? "i" : "u") +
                std::to_string(type.integer_type.width);
     case TypeKind::Never:

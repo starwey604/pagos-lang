@@ -33,10 +33,20 @@ struct Type {
     bool operator==(const Type&) const = default;
     [[nodiscard]] bool is_record() const noexcept { return kind == Record; }
     [[nodiscard]] bool is_array() const noexcept { return kind == Array; }
-    [[nodiscard]] static Type integer(unsigned width,
-                                      bool is_signed = false) noexcept {
+    [[nodiscard]] bool matches_pointer_width(unsigned bits) const {
+        if ((kind == Integer || kind == Array) && integer_type.is_usize &&
+            integer_type.width != bits)
+            return false;
+        for (const auto& field : fields) {
+            if (!field.matches_pointer_width(bits))
+                return false;
+        }
+        return true;
+    }
+    [[nodiscard]] static Type integer(unsigned width, bool is_signed = false,
+                                      bool is_usize = false) noexcept {
         Type type{Integer};
-        type.integer_type = {width, is_signed};
+        type.integer_type = {width, is_signed, is_usize};
         return type;
     }
     [[nodiscard]] static Type array(const Type& element, std::uint32_t length) {
@@ -200,6 +210,7 @@ struct Function {
 
 struct Module {
     std::vector<Function> functions;
+    unsigned pointer_bits{}; // Zero only for target-independent hand-built MIR.
 };
 
 [[nodiscard]] std::string type_name(const Type& type);

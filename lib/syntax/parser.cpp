@@ -125,7 +125,7 @@ std::optional<Type> Parser::parse_type() {
             !check(TokenKind::KwU8) && !check(TokenKind::KwU16) &&
             !check(TokenKind::KwU64) && !check(TokenKind::KwI8) &&
             !check(TokenKind::KwI16) && !check(TokenKind::KwI32) &&
-            !check(TokenKind::KwI64)) {
+            !check(TokenKind::KwI64) && !check(TokenKind::KwUsize)) {
             diagnostics_.error("E1002",
                                "array elements must be `bool` or an integer",
                                element_span);
@@ -179,6 +179,8 @@ std::optional<Type> Parser::parse_type() {
         return Type::integer(32, true);
     if (match(TokenKind::KwI64))
         return Type::integer(64, true);
+    if (match(TokenKind::KwUsize))
+        return Type::usize();
     diagnostics_.error("E1002", "expected type", current().span,
                        "expected `bool`, an integer, a record name, or a "
                        "fixed-length scalar array");
@@ -742,7 +744,10 @@ std::unique_ptr<Expr> Parser::parse_primary() {
             std::string(token.lexeme.substr(0, suffix_start)), token.span);
         if (suffix_start != std::string_view::npos) {
             const auto suffix = token.lexeme.substr(suffix_start);
-            if (suffix == "u8" || suffix == "i8")
+            if (suffix == "usize") {
+                literal->width = 0;
+                literal->is_usize = true;
+            } else if (suffix == "u8" || suffix == "i8")
                 literal->width = 8;
             else if (suffix == "u16" || suffix == "i16")
                 literal->width = 16;

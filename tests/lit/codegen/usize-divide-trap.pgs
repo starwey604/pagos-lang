@@ -1,0 +1,6 @@
+// RUN: %run_residual %s 5 2
+// RUN: %run_residual %s trap 0
+// RUN: %run_optimized %s 5 2
+// RUN: %run_optimized %s trap 0
+let divisor = external_input() as usize;
+let result = (10usize / divisor) as u32;

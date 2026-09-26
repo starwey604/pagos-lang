@@ -27,6 +27,7 @@ struct Type {
     TypeKind kind{TypeKind::Error};
     unsigned integer_width{32};
     bool integer_signed{};
+    bool integer_usize{}; // Target-dependent spelling; width is unresolved.
     // Zero denotes a deferred array length in the semantic type table only.
     // Source array types and all residual array values must have positive size.
     std::uint32_t length{};
@@ -45,6 +46,11 @@ struct Type {
     [[nodiscard]] bool is_record() const noexcept {
         return kind == TypeKind::Record;
     }
+    [[nodiscard]] static Type usize() {
+        auto type = integer(0);
+        type.integer_usize = true;
+        return type;
+    }
     [[nodiscard]] static Type record(std::string name) {
         Type type{TypeKind::Record};
         type.record_name = std::move(name);
@@ -54,9 +60,9 @@ struct Type {
         return kind == TypeKind::ArrayBool || kind == TypeKind::ArrayInteger;
     }
     [[nodiscard]] Type element_type() const noexcept {
-        return kind == TypeKind::ArrayBool
-                   ? Type(TypeKind::Bool)
-                   : integer(integer_width, integer_signed);
+        return kind == TypeKind::ArrayBool ? Type(TypeKind::Bool)
+               : integer_usize ? usize()
+                               : integer(integer_width, integer_signed);
     }
     [[nodiscard]] static Type array(const Type& element, std::uint32_t length) {
         Type type{element == TypeKind::Bool ? TypeKind::ArrayBool
@@ -64,6 +70,7 @@ struct Type {
                   length};
         type.integer_width = element.integer_width;
         type.integer_signed = element.integer_signed;
+        type.integer_usize = element.integer_usize;
         return type;
     }
 };
@@ -122,6 +129,7 @@ struct IntegerExpr final : Expr {
     std::string spelling;
     unsigned width{32}; // Explicit literal suffix, not an inferred type.
     bool is_signed{};
+    bool is_usize{};
 };
 
 struct CastExpr final : Expr {

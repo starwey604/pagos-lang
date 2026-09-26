@@ -1,0 +1,3 @@
+// RUN: not %pagosc --target=riscv64-unknown-elf check %s 2>&1 | %FileCheck %s
+let overflow = 18446744073709551616usize;
+// CHECK: error[E1005]: integer literal does not fit `usize`

@@ -1,0 +1,15 @@
+// RUN: %pagosc --target=riscv32-unknown-elf emit-llvm %s | %FileCheck %s --check-prefix=RV32
+// RUN: %pagosc --target=riscv64-unknown-elf emit-llvm %s | %FileCheck %s --check-prefix=RV64
+// RUN: %run_residual %s 1 1 9
+// RUN: %run_optimized %s 1 1 9
+record R { count: usize, flag: bool }
+fn read(table: [usize; 2], index: u32) -> usize { table[index] }
+let index = external_input();
+let a = read([7usize, 9usize], index);
+runtime let config = R(count: 9usize, flag: true);
+let b = read([7usize, external_input() as usize], index);
+let result = a == b && b == config.count && config.flag;
+// RV32: private unnamed_addr constant [2 x i32] [i32 7, i32 9]
+// RV32: load i32
+// RV64: private unnamed_addr constant [2 x i64] [i64 7, i64 9]
+// RV64: load i64

@@ -11,12 +11,21 @@
 
 namespace pagos::sema {
 
-using TypeTable = std::unordered_map<const syntax::Expr*, sema::Type>;
+struct TypeTable {
+    // Zero permits target-independent library tests, but never resolves usize.
+    unsigned pointer_bits{};
+    std::unordered_map<const syntax::Expr*, sema::Type> expressions;
+
+    [[nodiscard]] Type resolve(const syntax::Type& annotation) const {
+        return Type(annotation, pointer_bits);
+    }
+};
 
 class TypeChecker {
   public:
-    explicit TypeChecker(source::DiagnosticEngine& diagnostics)
-        : diagnostics_(diagnostics) {}
+    explicit TypeChecker(source::DiagnosticEngine& diagnostics,
+                         unsigned pointer_bits = 0)
+        : diagnostics_(diagnostics), types_{.pointer_bits = pointer_bits} {}
 
     [[nodiscard]] bool check(syntax::Module& module);
     [[nodiscard]] const TypeTable& types() const noexcept { return types_; }

@@ -7,6 +7,21 @@
 
 namespace {
 
+TEST(Type, UsizeRequiresExplicitTargetAndKeepsNominalIdentity) {
+    using pagos::sema::Type;
+    const auto source = pagos::syntax::Type::usize();
+    EXPECT_EQ(source.integer_width, 0U);
+    EXPECT_EQ(Type(source), pagos::sema::TypeKind::Error);
+    EXPECT_EQ(Type(source, 16), pagos::sema::TypeKind::Error);
+    for (unsigned bits : {32U, 64U}) {
+        EXPECT_EQ(Type(source, bits), Type::usize(bits));
+        EXPECT_NE(Type(source, bits), Type::integer(bits));
+        EXPECT_EQ(Type(pagos::syntax::Type::array(source, 2), bits),
+                  Type::array(Type::usize(bits), 2));
+        EXPECT_EQ(pagos::sema::type_name(Type(source, bits)), "usize");
+    }
+}
+
 TEST(Type, SemanticAnnotationsAreDistinctAndComposable) {
     static_assert(!std::is_same_v<pagos::syntax::Type, pagos::sema::Type>);
     using pagos::sema::Type;
