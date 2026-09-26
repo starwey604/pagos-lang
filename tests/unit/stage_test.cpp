@@ -1,3 +1,4 @@
+#include "pagos/mir/lowering.h"
 #include "pagos/sema/type_checker.h"
 #include "pagos/source/diagnostic.h"
 #include "pagos/source/source_manager.h"
@@ -317,6 +318,159 @@ TEST(StageGenerator, ReturningBoundDoesNotReserveOrEvaluateLaterWork) {
     EXPECT_EQ(std::get<pagos::IntegerValue>(*result->result->constant).bits(),
               7U);
     EXPECT_EQ(analyzer.stats().aggregate_constructions, 0U);
+}
+
+TEST(ResidualSpecialization, ReusesDefinitionsAndResetsBetweenAnalyses) {
+    StageInput input("fn scale(k: u32, x: u32) -> u32 { "
+                     "let table = [for i in 0..16 { i }]; x * k + table[0] } "
+                     "let a = scale(2, external_input()); "
+                     "let b = scale(2, external_input());");
+    pagos::stage::AnalysisLimits limits;
+    limits.residual_specializations = 1;
+    limits.specializations = 0;
+    limits.array_elements = 16;
+    pagos::stage::StageAnalyzer analyzer(input.diagnostics,
+                                         input.checker.types(), limits);
+    for (int iteration = 0; iteration < 2; ++iteration) {
+        const auto hir = analyzer.analyze(*input.module);
+        ASSERT_FALSE(input.diagnostics.has_error());
+        EXPECT_EQ(analyzer.stats().residual_specializations, 1U);
+        EXPECT_EQ(analyzer.stats().residual_cache_hits, 1U);
+        EXPECT_EQ(analyzer.stats().specializations, 0U);
+        EXPECT_EQ(analyzer.stats().array_elements_reserved, 16U);
+        const auto mir = pagos::mir::lower(*hir);
+        ASSERT_TRUE(mir) << mir.error();
+        ASSERT_EQ(mir->functions.size(), 2U);
+        EXPECT_EQ(mir->functions[1].parameters.size(), 1U);
+    }
+}
+
+TEST(ResidualSpecialization, KeysSeparateValuesPositionsAndFunctions) {
+    StageInput input("fn f(a: u32, b: u32) -> u32 { a + b } "
+                     "fn g(a: u32, b: u32) -> u32 { a + b } "
+                     "let x = external_input(); "
+                     "let a = f(1, x); let b = f(2, x); "
+                     "let c = f(x, 1); let d = f(x, x); "
+                     "let e = g(1, x); let hit = f(1, x);");
+    pagos::stage::StageAnalyzer analyzer(input.diagnostics,
+                                         input.checker.types());
+    const auto hir = analyzer.analyze(*input.module);
+    ASSERT_FALSE(input.diagnostics.has_error());
+    EXPECT_EQ(analyzer.stats().residual_specializations, 5U);
+    EXPECT_EQ(analyzer.stats().residual_cache_hits, 1U);
+    const auto mir = pagos::mir::lower(*hir);
+    ASSERT_TRUE(mir) << mir.error();
+    EXPECT_EQ(mir->functions.size(), 6U);
+}
+
+TEST(ResidualSpecialization, RejectsOneOverBudgetAndReportsOnce) {
+    StageInput input("fn f(k: u32, x: u32) -> u32 { k + x } "
+                     "let a = f(1, external_input()); "
+                     "let b = f(2, external_input()); "
+                     "let c = f(3, external_input());");
+    pagos::stage::AnalysisLimits limits;
+    limits.residual_specializations = 1;
+    pagos::stage::StageAnalyzer analyzer(input.diagnostics,
+                                         input.checker.types(), limits);
+    (void)analyzer.analyze(*input.module);
+    ASSERT_EQ(input.diagnostics.size(), 1U);
+    EXPECT_EQ(input.diagnostics.diagnostics()[0].code, "E4012");
+    EXPECT_EQ(analyzer.stats().residual_specializations, 1U);
+    EXPECT_EQ(analyzer.stats().residual_cache_hits, 0U);
+}
+
+TEST(ResidualSpecialization, ZeroBudgetPermitsStaticResultsWithEffects) {
+    StageInput input("fn known(x: u32) -> u32 { x; external_input(); 7 } "
+                     "static let a = known(external_input()); "
+                     "static let b = known(external_input());");
+    pagos::stage::AnalysisLimits limits;
+    limits.residual_specializations = 0;
+    pagos::stage::StageAnalyzer analyzer(input.diagnostics,
+                                         input.checker.types(), limits);
+    const auto hir = analyzer.analyze(*input.module);
+    ASSERT_FALSE(input.diagnostics.has_error());
+    EXPECT_EQ(analyzer.stats().residual_specializations, 0U);
+    EXPECT_EQ(analyzer.stats().residual_cache_hits, 0U);
+    ASSERT_TRUE(hir->result->constant);
+    EXPECT_EQ(std::get<pagos::IntegerValue>(*hir->result->constant).bits(), 7U);
+    const auto mir = pagos::mir::lower(*hir);
+    ASSERT_TRUE(mir) << mir.error();
+    EXPECT_EQ(mir->functions.size(), 1U);
+}
+
+TEST(ResidualSpecialization, AllStaticArgumentsCanShareAnEffectfulBody) {
+    StageInput input("fn read(k: u32) -> u32 { external_input() + k } "
+                     "let a = read(1); let b = read(1);");
+    pagos::stage::AnalysisLimits limits;
+    limits.specializations = 1;
+    limits.residual_specializations = 1;
+    pagos::stage::StageAnalyzer analyzer(input.diagnostics,
+                                         input.checker.types(), limits);
+    const auto hir = analyzer.analyze(*input.module);
+    ASSERT_FALSE(input.diagnostics.has_error());
+    EXPECT_EQ(analyzer.stats().specializations, 1U);
+    EXPECT_EQ(analyzer.stats().cache_hits, 0U);
+    EXPECT_EQ(analyzer.stats().residual_specializations, 1U);
+    EXPECT_EQ(analyzer.stats().residual_cache_hits, 1U);
+    const auto mir = pagos::mir::lower(*hir);
+    ASSERT_TRUE(mir) << mir.error();
+    ASSERT_EQ(mir->functions.size(), 2U);
+    EXPECT_TRUE(mir->functions[1].parameters.empty());
+}
+
+TEST(ResidualSpecialization, FailedBodiesAreNotPublished) {
+    StageInput input("fn bad(x: u32) -> u32 { static let invalid = x; x } "
+                     "let a = bad(external_input()); "
+                     "let b = bad(external_input());");
+    pagos::stage::StageAnalyzer analyzer(input.diagnostics,
+                                         input.checker.types());
+    (void)analyzer.analyze(*input.module);
+    ASSERT_EQ(input.diagnostics.size(), 2U);
+    EXPECT_EQ(analyzer.stats().residual_specializations, 0U);
+    EXPECT_EQ(analyzer.stats().residual_cache_hits, 0U);
+    for (const auto& diagnostic : input.diagnostics.diagnostics()) {
+        EXPECT_EQ(diagnostic.code, "E2001");
+        EXPECT_EQ(
+            diagnostic.dependency_path,
+            (std::vector<std::string>{"external_input", "bad.x", "invalid"}));
+    }
+}
+
+TEST(ResidualSpecialization, CacheHitTraceUsesCurrentCallerThroughNestedCalls) {
+    StageInput input(
+        "fn inner(x: u32) -> u32 { x + x } "
+        "fn outer(x: u32) -> u32 { inner(x) } "
+        "let first = external_input(); let a = outer(first); "
+        "let second = external_input(); static let b = outer(second);");
+    pagos::stage::StageAnalyzer analyzer(input.diagnostics,
+                                         input.checker.types());
+    (void)analyzer.analyze(*input.module);
+    ASSERT_EQ(input.diagnostics.size(), 1U);
+    const auto& diagnostic = input.diagnostics.diagnostics()[0];
+    EXPECT_EQ(diagnostic.code, "E2001");
+    EXPECT_EQ(diagnostic.dependency_path,
+              (std::vector<std::string>{"external_input", "second", "outer.x",
+                                        "inner.x", "b"}));
+    EXPECT_EQ(analyzer.stats().residual_specializations, 2U);
+    EXPECT_EQ(analyzer.stats().residual_cache_hits, 1U);
+}
+
+TEST(ResidualSpecialization, StaticRecursionMayBuildDistinctResidualVersions) {
+    StageInput input(
+        "fn expand(n: u32) -> u32 { if n == 0 { external_input() } "
+        "else { expand(n - 1) + 1 } } "
+        "let a = expand(2); let b = expand(2);");
+    pagos::stage::AnalysisLimits limits;
+    limits.residual_specializations = 3;
+    pagos::stage::StageAnalyzer analyzer(input.diagnostics,
+                                         input.checker.types(), limits);
+    const auto hir = analyzer.analyze(*input.module);
+    ASSERT_FALSE(input.diagnostics.has_error());
+    EXPECT_EQ(analyzer.stats().residual_specializations, 3U);
+    EXPECT_EQ(analyzer.stats().residual_cache_hits, 1U);
+    const auto mir = pagos::mir::lower(*hir);
+    ASSERT_TRUE(mir) << mir.error();
+    EXPECT_EQ(mir->functions.size(), 4U);
 }
 
 } // namespace

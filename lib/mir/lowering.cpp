@@ -12,6 +12,7 @@ namespace {
 struct LoweringContext {
     Module output;
     std::unordered_map<std::string, Type> records;
+    std::unordered_map<const hir::ResidualFunction*, std::string> callees;
 };
 
 class Lowerer {
@@ -187,6 +188,8 @@ class Lowerer {
         case hir::Expr::Kind::Sequence:
             result = lower_sequence(expression);
             break;
+        case hir::Expr::Kind::Parameter:
+            return std::unexpected("unbound residual HIR parameter");
         case hir::Expr::Kind::LoopIndex:
             return std::unexpected("HIR loop index used outside its loop");
         case hir::Expr::Kind::RangeLoop:
@@ -505,8 +508,11 @@ class Lowerer {
 
     std::expected<ValueId, std::string>
     lower_call(const hir::ExprPtr& expression) {
-        if (!expression->call_body || !expression->variable_name)
-            return std::unexpected("HIR call requires a name and body");
+        if (!expression->callee || !expression->callee->body)
+            return std::unexpected("HIR call requires a residual definition");
+        const auto& definition = *expression->callee;
+        if (expression->operands.size() != definition.parameters.size())
+            return std::unexpected("HIR call argument count mismatch");
         std::vector<ValueId> arguments;
         arguments.reserve(expression->operands.size());
         for (const auto& operand : expression->operands) {
@@ -515,18 +521,25 @@ class Lowerer {
                 return value;
             arguments.push_back(*value);
         }
+        if (const auto found = context_.callees.find(&definition);
+            found != context_.callees.end()) {
+            return emit(type_of(expression->type),
+                        CallOperation{found->second, std::move(arguments)},
+                        expression->span);
+        }
         // Reserve a unique symbol before lowering nested calls. Separate
         // lowerers keep SSA IDs, dominance caches and return scopes local.
         const auto slot = context_.output.functions.size();
         const auto name =
-            "pagos." + *expression->variable_name + "." + std::to_string(slot);
+            "pagos." + definition.name + "." + std::to_string(slot);
         context_.output.functions.emplace_back();
+        context_.callees.emplace(&definition, name);
         Lowerer callee(context_);
         callee.function_.name = name;
         callee.function_.internal = true;
         callee.function_.result_type = type_of(expression->type);
-        callee.function_.parameters.reserve(expression->operands.size());
-        for (const auto& operand : expression->operands) {
+        callee.function_.parameters.reserve(definition.parameters.size());
+        for (const auto& operand : definition.parameters) {
             const auto type = type_of(operand->type);
             const auto index =
                 static_cast<std::uint32_t>(callee.function_.parameters.size());
@@ -535,7 +548,7 @@ class Lowerer {
                 callee.emit(type, ParameterOperation{index}, operand->span);
             callee.cache(operand.get(), parameter);
         }
-        auto value = callee.lower_expression(expression->call_body);
+        auto value = callee.lower_expression(definition.body);
         if (!value)
             return std::unexpected(value.error());
         if (!callee.live_)

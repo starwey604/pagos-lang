@@ -6,6 +6,7 @@
 #include "pagos/syntax/ast.h"
 #include "pagos/value.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <iosfwd>
 #include <memory>
@@ -24,9 +25,12 @@ struct RuntimeTrace {
     source::Span origin_span;
     std::string origin_name;
     std::vector<std::string> path;
+    // Symbolic provenance inside a reusable residual definition.
+    std::optional<std::size_t> parameter_id;
 };
 
 struct Expr;
+struct ResidualFunction;
 using ExprPtr = std::shared_ptr<const Expr>;
 
 struct Expr {
@@ -35,6 +39,7 @@ struct Expr {
         Reference, // Trace-only use of the same computation identity.
         RuntimeBoundary,
         ExternalInput,
+        Parameter,
         Unary,
         Cast,
         Binary,
@@ -65,7 +70,13 @@ struct Expr {
     std::optional<std::string> variable_name;
     std::uint32_t field_index{};
     std::vector<ExprPtr> operands;
-    ExprPtr call_body; // Specialized body, separate from caller-side operands.
+    std::shared_ptr<const ResidualFunction> callee;
+};
+
+struct ResidualFunction {
+    std::string name;
+    std::vector<ExprPtr> parameters;
+    ExprPtr body;
 };
 
 struct Binding {

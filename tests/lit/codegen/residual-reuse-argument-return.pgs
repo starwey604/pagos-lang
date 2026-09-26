@@ -1,0 +1,12 @@
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 10 1 2 1
+// RUN: %run_residual %s 18 1 2 0 4 11
+// RUN: %run_optimized %s 10 1 2 1
+// RUN: %run_optimized %s 18 1 2 0 4 11
+fn add(x: u32, y: u32) -> u32 { x + y }
+fn choose(flag: u32) -> u32 {
+    add(if flag != 0 { return 7; } else { external_input() }, external_input())
+}
+let warm = add(external_input(), external_input());
+let result = warm + choose(external_input());
+// CHECK: residual-specializations=2, residual-cache-hits=1

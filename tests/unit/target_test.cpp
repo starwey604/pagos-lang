@@ -77,6 +77,7 @@ TEST(Target, ResidualCallSignaturesUseTheSemanticTargetWidth) {
     using namespace pagos;
     const auto source = source::SourceFile::from_text(
         "call.pgs", "fn next(x: usize) -> usize { x + 1usize } "
+                    "let a = next(external_input() as usize); "
                     "let result = next(external_input() as usize);");
     source::DiagnosticEngine diagnostics(source);
     syntax::Lexer lexer(source, diagnostics);
@@ -84,7 +85,8 @@ TEST(Target, ResidualCallSignaturesUseTheSemanticTargetWidth) {
     syntax::Parser parser(tokens, diagnostics);
     auto syntax = parser.parse_module();
     ASSERT_FALSE(diagnostics.has_error());
-    for (const auto* triple : {"riscv32-unknown-elf", "riscv64-unknown-elf"}) {
+    for (const auto* triple : {"riscv32-unknown-elf", "riscv64-unknown-elf",
+                               "riscv32-unknown-elf"}) {
         const auto target = TargetLayout::create({.triple = triple});
         ASSERT_TRUE(target);
         sema::TypeChecker checker(diagnostics, target->pointer_bits());
@@ -92,6 +94,8 @@ TEST(Target, ResidualCallSignaturesUseTheSemanticTargetWidth) {
         stage::StageAnalyzer analyzer(diagnostics, checker.types());
         auto hir = analyzer.analyze(*syntax);
         ASSERT_FALSE(diagnostics.has_error());
+        EXPECT_EQ(analyzer.stats().residual_specializations, 1U);
+        EXPECT_EQ(analyzer.stats().residual_cache_hits, 1U);
         const auto module = mir::lower(*hir);
         ASSERT_TRUE(module) << module.error();
         ASSERT_EQ(module->functions.size(), 2U);

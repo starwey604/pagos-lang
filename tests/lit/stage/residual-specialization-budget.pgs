@@ -1,0 +1,14 @@
+// RUN: %pagosc --max-residual-specializations=2 explain-stage %s | %FileCheck %s --check-prefix=OK
+// RUN: not %pagosc --max-residual-specializations=1 check %s 2>&1 | %FileCheck %s --check-prefix=LIMIT
+// RUN: not %pagosc --max-residual-specializations=0 check %s 2>&1 | %FileCheck %s --check-prefix=ZERO
+fn scale(k: u32, x: u32) -> u32 { k * x }
+let a = scale(2, external_input());
+let b = scale(2, external_input());
+let c = scale(3, external_input());
+// OK: residual-specializations=2, residual-cache-hits=1
+// LIMIT: error[E4012]: residual specialization limit of 1 exceeded
+// LIMIT: cannot create a new version of `scale`; 1 residual specializations already created
+// LIMIT: help: increase --max-residual-specializations
+// LIMIT-NOT: error[
+// ZERO: error[E4012]: residual specialization limit of 0 exceeded
+// ZERO-NOT: error[

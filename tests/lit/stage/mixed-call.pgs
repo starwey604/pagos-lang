@@ -12,7 +12,7 @@ let output = scale(factor, input);
 // HIR: fn scale(u32, u32) -> u32
 // HIR: binding factor: u32 [Static] = 4
 // HIR: binding input: u32 [Runtime] = runtime(external_input())
-// HIR: binding output: u32 [Runtime] = sequence(runtime(external_input()), call scale(runtime(external_input())) {mul(4, runtime(external_input()))})
+// HIR: binding output: u32 [Runtime] = sequence(runtime(external_input()), call scale(runtime(external_input())) {mul(4, parameter(scale.value))})
 
 // IR-LABEL: define i32 @pagos_main()
 // IR: %[[INPUT:.*]] = call i32 @pagos_external_input()

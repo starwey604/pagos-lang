@@ -1,0 +1,12 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+fn inner(x: u32) -> u32 { x + x }
+fn outer(x: u32) -> u32 { inner(x) }
+let first = external_input();
+let warm = outer(first);
+let second = external_input();
+static let result = outer(second);
+// CHECK: error[E2001]: static binding `result` was thawed
+// CHECK: :6:14
+// CHECK: Runtime source `external_input`
+// CHECK: external_input -> second -> outer.x -> inner.x -> result
+// CHECK-NOT: first

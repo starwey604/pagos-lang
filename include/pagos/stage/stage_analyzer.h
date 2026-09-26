@@ -26,6 +26,7 @@ struct AnalysisLimits {
     // Cumulative construction quotas shared by arrays and records, not RSS.
     std::size_t aggregate_members{65'536};
     std::size_t aggregate_bytes{262'144};
+    std::size_t residual_specializations{4'096};
 };
 
 struct AnalysisStats {
@@ -38,6 +39,8 @@ struct AnalysisStats {
     std::size_t aggregate_constructions{};
     std::size_t aggregate_members_reserved{};
     std::size_t aggregate_bytes_reserved{};
+    std::size_t residual_specializations{};
+    std::size_t residual_cache_hits{};
 };
 
 class StageAnalyzer {
@@ -69,6 +72,31 @@ class StageAnalyzer {
     struct SpecializationKeyHash {
         std::size_t operator()(const SpecializationKey& key) const noexcept;
     };
+
+    struct ResidualArgument {
+        sema::Type type;
+        std::optional<hir::Constant> constant; // Empty denotes Runtime.
+        bool operator==(const ResidualArgument&) const = default;
+    };
+    struct ResidualKey {
+        const syntax::Function* function;
+        std::vector<ResidualArgument> arguments;
+        bool operator==(const ResidualKey&) const = default;
+    };
+    struct ResidualKeyHash {
+        std::size_t operator()(const ResidualKey& key) const noexcept;
+    };
+    using TraceArguments = std::unordered_map<std::size_t, hir::RuntimeTrace>;
+    [[nodiscard]] static hir::RuntimeTrace
+    substitute_trace(hir::RuntimeTrace trace, const TraceArguments& arguments);
+    [[nodiscard]] hir::ExprPtr
+    make_residual_call(std::shared_ptr<const hir::ResidualFunction> callee,
+                       const std::vector<hir::ExprPtr>& arguments,
+                       source::Span span) const;
+    [[nodiscard]] static hir::ExprPtr instantiate_inline(
+        const hir::ExprPtr& body,
+        const std::unordered_map<const hir::Expr*, hir::ExprPtr>& arguments,
+        const TraceArguments& traces);
 
     BlockResult analyze_block(const syntax::Block& block);
     BlockResult analyze_statement(const syntax::Stmt& statement,
@@ -128,8 +156,15 @@ class StageAnalyzer {
         specialization_cache_;
     std::unordered_set<SpecializationKey, SpecializationKeyHash>
         active_specializations_;
+    std::unordered_map<ResidualKey,
+                       std::shared_ptr<const hir::ResidualFunction>,
+                       ResidualKeyHash>
+        residual_cache_;
+    TraceArguments active_parameter_traces_;
+    std::size_t next_parameter_id_{};
     bool fuel_exhausted_{};
     bool construction_budget_exhausted_{};
+    bool residual_budget_exhausted_{};
 };
 
 } // namespace pagos::stage

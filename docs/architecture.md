@@ -189,9 +189,10 @@ Static values crossing the boundary are checked for embeddability.
 
 The current evaluator supports bounded Static recursion and memoizes pure,
 fully Static results. `AnalysisLimits` controls fuel, recursion depth, and the
-number of specializations; `AnalysisStats` exposes consumption, cache hits, and
-maximum depth. Runtime recursion and full host-memory accounting remain future
-work.
+number of Static specializations and, separately, completed scalar residual
+definitions. `AnalysisStats` exposes both counts and cache-hit counters, along
+with consumption and maximum depth. Runtime recursion and full host-memory
+accounting remain future work.
 
 Array generators retain bound expressions in compact AST nodes through type
 checking, without per-element AST expansion. The semantic type table retains
@@ -365,13 +366,25 @@ have code.
 
 ### Runtime calls and effect migration
 
-Scalar-argument calls with Runtime scalar results now retain an HIR `Call`
-boundary around the already specialized body. Caller-side operands capture
-argument computation identities with residual work; pure Static arguments
-stay embedded. Lowering evaluates captures in source order and maps each to
-a callee parameter, so reads, loops and traps are not duplicated. Each outlined
-body has its own SSA/dominance cache and return scopes. Aggregate and
-Static-result calls retain their existing inline path and projection precision.
+Scalar-argument calls with Runtime scalar results retain an HIR `Call` and
+share an immutable `ResidualFunction` containing generic `Parameter` nodes.
+The staging key includes source identity, typed Static values, and Runtime
+positions/types; session-local caches cannot cross semantic target layouts.
+Caller-side sequencing retains all argument work, while only Runtime values
+are passed to parameters. Static values with effects are embedded as pure
+constants after preserving their effects in the caller. Each call remains a
+distinct HIR computation identity. Lowering interns definition identities into
+module-local symbols, with a separate SSA/dominance cache and return scopes
+per function. Aggregate calls retain their inline path and projection precision.
+Scalar Static-result bodies are instantiated back into the caller with a
+DAG-preserving parameter substitution, not forced into Runtime calls.
+
+Parameter traces carry symbolic IDs. Invocation substitutes current argument
+provenance, and diagnostics during analysis resolve active parameter chains.
+Completed Runtime definitions alone enter the residual cache; failed analyses
+do not publish partial entries. Hits skip body analysis but still analyze and
+evaluate the caller's arguments. Version budgets count completed definitions,
+not call sites, emitted bytes, or peak memory.
 
 `mir::Function` has typed parameters and internal linkage; `ParameterOperation`
 and `CallOperation` represent parameter values and direct symbol calls.
@@ -381,11 +394,10 @@ LLVM declares all signatures before emitting bodies. Generated symbols use
 `pagos.<source-name>.<module-local-id>` and are internal; LLVM may inline them
 during optimization. `pagos_main` keeps the existing test entry ABI.
 
-This slice still stages per invocation, creates separate residual bodies, and
-rejects Runtime recursion. Reusable residual specializations and recursive
-signatures are next, before object emission and explicit foreign declarations/
-calling conventions. Do not infer aggregate C ABI classification from storage
-layout alone.
+Runtime recursion remains rejected; recursive signatures are a separate next
+slice, before object emission and explicit foreign declarations/calling
+conventions. Do not infer aggregate C ABI classification from storage layout
+alone.
 
 Ordinary external calls are Runtime and conservatively effectful unless a
 separate, explicit compile-time capability exists. A Static address never

@@ -137,17 +137,34 @@ Runtime. Backend strength reduction, such as replacing multiplication by a
 shift, is outside the staging semantics.
 
 Calls with scalar arguments (`bool` or integers) and a Runtime scalar result
-now produce internal residual functions and typed MIR/LLVM calls. Pure Static
-arguments remain embedded in the specialized body. Arguments with residual
-work are evaluated once, left-to-right in the caller, and passed as values;
-this includes Static arguments whose evaluation has Runtime effects.
+now produce internal residual functions and typed MIR/LLVM calls. Typed Static
+values remain embedded in the specialized body; Runtime values become generic
+parameters. All argument work executes once, left-to-right in the caller,
+including Static arguments whose evaluation has Runtime effects. Such effects
+are not embedded in the shared definition or included in its key.
 Nested calls, loop-index arguments, checked traps, and early returns retain
 their existing semantics. A callee's return never exits its caller.
 
-This first call slice extracts bodies after per-invocation staging. It does not
-yet intern equivalent Runtime specializations or residualize recursive calls.
-Per-invocation analysis still consumes fuel and respects depth limits; a
-dedicated residual-version budget belongs with the upcoming reuse mechanism.
+Equivalent scalar specializations reuse both staging results and residual
+definitions within one analysis. The key contains source-function identity,
+typed Static values, and Runtime parameter positions/types. Target configuration
+is fixed for the session, and all caches reset between analyses. Each call is
+still a separate execution: sharing code never memoizes Runtime results or
+merges reads/traps. Symbolic parameter provenance is rebound at the call site,
+so cache hits report the current caller's dependency path.
+
+`--max-residual-specializations` defaults to 4,096 completed definitions.
+Hits consume no additional version slot; misses are charged after successful
+body analysis, before publication. Fuel/depth/construction limits protect that
+analysis too. Exceeding the count produces `E4012`, never a silent staging
+fallback. Zero permits programs needing no residual definitions. This is not
+a machine-code-size or process-memory limit. `explain-stage` reports
+`residual-specializations` and `residual-cache-hits` separately from the Static
+cache statistics. Body constructions are counted once per analyzed definition;
+call-argument constructions still occur on every call.
+An all-Static-argument miss also consumes the existing Static specialization
+budget, even if its body returns Runtime; a residual hit consumes neither
+another Static specialization nor another residual version.
 Calls with aggregate arguments/results, and Static-result calls with residual
 effects, continue through the existing inline HIR path. This preserves precise
 aggregate projections and known results; having Runtime work alone does not
@@ -157,8 +174,8 @@ The compiler memoizes specializations by function identity, static arguments,
 target configuration, and relevant effect dependencies. It must enforce a
 specialization budget to prevent accidental code-size explosion.
 
-The current implementation caches a call only when every argument and the
-result are Static and evaluating the specialized body has no residual work.
+The separate Static-result cache applies when every argument and the result
+are Static and evaluating the specialized body has no residual work.
 Argument evaluation is preserved separately, including on cache hits. Its key
 contains function identity and the typed argument constants; target
 configuration is fixed for each analysis and the cache resets between analyses;

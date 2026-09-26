@@ -92,6 +92,9 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
     case Expr::Kind::ExternalInput:
         output << "external_input()";
         break;
+    case Expr::Kind::Parameter:
+        output << "parameter(" << expression->variable_name.value() << ')';
+        break;
     case Expr::Kind::Call:
         output << "call " << expression->variable_name.value() << '(';
         for (std::size_t index = 0; index < expression->operands.size();
@@ -101,7 +104,7 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
             print_expression(expression->operands[index], output);
         }
         output << ") {";
-        print_expression(expression->call_body, output);
+        print_expression(expression->callee->body, output);
         output << '}';
         break;
     case Expr::Kind::Cast:

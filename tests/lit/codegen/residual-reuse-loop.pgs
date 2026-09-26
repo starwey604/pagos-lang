@@ -1,0 +1,8 @@
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 7 9 8 3 4 5 6
+// RUN: %run_optimized %s 7 9 8 3 4 5 6
+fn sample(x: u32) -> u32 { x + external_input() }
+sample(external_input());
+for i in 0..external_input() { sample(i); }
+let result = 7;
+// CHECK: residual-specializations=1, residual-cache-hits=1

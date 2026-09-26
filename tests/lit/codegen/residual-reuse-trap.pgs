@@ -1,0 +1,8 @@
+// RUN: %pagosc --max-residual-specializations=1 explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s trap 2 0
+// RUN: %run_optimized %s trap 2 0
+fn divide(x: u32) -> u32 { 8 / x }
+divide(external_input());
+divide(external_input());
+let result = external_input();
+// CHECK: residual-specializations=1, residual-cache-hits=1

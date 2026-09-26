@@ -155,8 +155,11 @@ All CLI commands accept target options. General C ABI support remains pending.
 Runtime scalar calls now emit internal functions with typed parameters and
 real MIR/LLVM calls; Static arguments still specialize their bodies. See the
 [nested-call example](tests/lit/codegen/residual-call-scalar.pgs).
-Aggregate calls retain the inline path. Runtime recursion and reusable Runtime
-specializations are not implemented yet; these internal signatures are not C ABI.
+Equivalent scalar specializations share one definition within an analysis;
+see the [reuse example](tests/lit/codegen/residual-reuse.pgs). The independent
+`--max-residual-specializations` limit bounds their count. Aggregate and
+Static-result calls retain the inline path. Runtime recursion is not implemented
+yet; these internal signatures are not C ABI.
 
 ## Development
 

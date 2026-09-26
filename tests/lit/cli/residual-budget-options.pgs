@@ -1,0 +1,10 @@
+// RUN: not %pagosc --max-residual-specializations=-1 check %s 2>&1 | %FileCheck %s --check-prefix=INVALID
+// RUN: not %pagosc --max-residual-specializations= check %s 2>&1 | %FileCheck %s --check-prefix=INVALID
+// RUN: not %pagosc --max-residual-specializations=oops check %s 2>&1 | %FileCheck %s --check-prefix=INVALID
+// RUN: not %pagosc --max-residual-specializations=184467440737095516160 check %s 2>&1 | %FileCheck %s --check-prefix=INVALID
+// RUN: %pagosc --max-residual-specializations=0 check %s
+// RUN: %pagosc --max-residual-specializations=3 explain-stage %s --max-residual-specializations=0 | %FileCheck %s --check-prefix=STATS
+fn known(x: u32) -> u32 { x; 7 }
+static let result = known(external_input());
+// INVALID: error: invalid numeric option
+// STATS: residual-specializations=0, residual-cache-hits=0

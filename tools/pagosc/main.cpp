@@ -34,6 +34,7 @@ void print_usage() {
                  "usage: pagosc [--max-fuel=N] "
                  "[--max-recursion-depth=N] "
                  "[--max-specializations=N] "
+                 "[--max-residual-specializations=N] "
                  "[--max-array-elements=N] [--max-array-bytes=N] "
                  "[--max-aggregate-members=N] [--max-aggregate-bytes=N] "
                  "[--target=TRIPLE] [--cpu=CPU] [--features=FEATURES] "
@@ -87,6 +88,8 @@ std::expected<Options, std::string> parse_options(int argument_count,
         constexpr std::string_view depth_prefix = "--max-recursion-depth=";
         constexpr std::string_view specialization_prefix =
             "--max-specializations=";
+        constexpr std::string_view residual_specialization_prefix =
+            "--max-residual-specializations=";
         constexpr std::string_view array_elements_prefix =
             "--max-array-elements=";
         constexpr std::string_view array_bytes_prefix = "--max-array-bytes=";
@@ -125,6 +128,12 @@ std::expected<Options, std::string> parse_options(int argument_count,
                 return std::unexpected(value.error());
             }
             limits.specializations = *value;
+        } else if (argument.starts_with(residual_specialization_prefix)) {
+            auto value = parse_limit(argument, residual_specialization_prefix);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            limits.residual_specializations = *value;
         } else if (argument.starts_with(array_elements_prefix)) {
             auto value = parse_limit(argument, array_elements_prefix);
             if (!value) {
@@ -235,7 +244,8 @@ int main(int argument_count, char** arguments) {
                      "analysis: fuel={}, specializations={}, cache-hits={}, "
                      "max-depth={}, array-elements={}, array-bytes={}, "
                      "aggregate-constructions={}, aggregate-members={}, "
-                     "aggregate-bytes={}",
+                     "aggregate-bytes={}, residual-specializations={}, "
+                     "residual-cache-hits={}",
                      stage_analyzer.stats().fuel_consumed,
                      stage_analyzer.stats().specializations,
                      stage_analyzer.stats().cache_hits,
@@ -244,7 +254,9 @@ int main(int argument_count, char** arguments) {
                      stage_analyzer.stats().array_bytes_reserved,
                      stage_analyzer.stats().aggregate_constructions,
                      stage_analyzer.stats().aggregate_members_reserved,
-                     stage_analyzer.stats().aggregate_bytes_reserved);
+                     stage_analyzer.stats().aggregate_bytes_reserved,
+                     stage_analyzer.stats().residual_specializations,
+                     stage_analyzer.stats().residual_cache_hits);
         return 0;
     case Command::EmitMir:
     case Command::EmitLlvm:

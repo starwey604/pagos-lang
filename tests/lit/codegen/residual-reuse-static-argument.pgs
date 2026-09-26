@@ -1,0 +1,14 @@
+// RUN: %pagosc --max-residual-specializations=3 explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 15 9 3 4 5 6
+// RUN: %run_optimized %s 15 9 3 4 5 6
+fn known() -> i8 { external_input(); -1i8 }
+fn adjust(up: bool, k: i8, x: i8) -> i8 {
+    if up { x + k } else { x - k }
+}
+let a = adjust(true, known(), external_input() as i8);
+// Same typed Static value, with no effectful argument on the cache hit.
+let b = adjust(true, -1i8, external_input() as i8);
+let c = adjust(false, -1i8, external_input() as i8);
+let d = adjust(true, -2i8, external_input() as i8);
+let result = (a + b + c + d) as u32;
+// CHECK: residual-specializations=3, residual-cache-hits=1

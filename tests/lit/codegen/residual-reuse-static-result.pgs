@@ -1,0 +1,11 @@
+// RUN: %pagosc --max-residual-specializations=1 explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 14 1 2 3 4
+// RUN: %run_optimized %s 14 1 2 3 4
+fn touch(x: u32) -> u32 { x + external_input() }
+fn known(x: u32) -> u32 { touch(x); 7 }
+static let a = known(external_input());
+static let b = known(external_input());
+let result = a + b;
+// CHECK: a: Static
+// CHECK: b: Static
+// CHECK: residual-specializations=1, residual-cache-hits=1

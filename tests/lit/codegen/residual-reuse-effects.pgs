@@ -1,0 +1,13 @@
+// RUN: %pagosc --max-residual-specializations=1 explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 24 3 2 7 9 4 8 5 10
+// RUN: %run_optimized %s 24 3 2 7 9 4 8 5 10
+fn known() -> u32 { external_input(); 2 }
+fn calculate(unused: u32, k: u32, x: u32) -> u32 {
+    external_input();
+    k * x + x
+}
+let shared = external_input();
+let a = calculate(external_input(), known(), shared);
+let b = calculate(external_input(), known(), external_input());
+let result = a + b;
+// CHECK: residual-specializations=1, residual-cache-hits=1

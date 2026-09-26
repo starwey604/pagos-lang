@@ -1,0 +1,14 @@
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 22 1 4 11
+// RUN: %run_residual %s 20 0 4 11 2 3
+// RUN: %run_optimized %s 22 1 4 11
+// RUN: %run_optimized %s 20 0 4 11 2 3
+fn add(x: u32, y: u32) -> u32 { x + y }
+fn choose(flag: u32) -> u32 {
+    add(if flag != 0 { return 7; } else { external_input() }, external_input())
+}
+// The first analysis of add sees caller-side early-return control.
+let first = choose(external_input());
+let second = add(external_input(), external_input());
+let result = first + second;
+// CHECK: residual-specializations=2, residual-cache-hits=1

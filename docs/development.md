@@ -137,6 +137,7 @@ command:
 build/debug/pagosc --max-fuel=100000 check source.pgs
 build/debug/pagosc --max-recursion-depth=64 explain-stage source.pgs
 build/debug/pagosc --max-specializations=512 emit-mir source.pgs
+build/debug/pagosc --max-residual-specializations=512 emit-mir source.pgs
 build/debug/pagosc --max-array-elements=4096 --max-array-bytes=16384 check source.pgs
 build/debug/pagosc --max-aggregate-members=8192 --max-aggregate-bytes=32768 check source.pgs
 ```
@@ -149,6 +150,16 @@ integers cost width/8 bytes and `bool` one logical byte per planned element.
 Reservations precede expansion and are not refunded on early return. Cache
 hits and aliases do not reconstruct arrays. A zero array quota permits scalar
 code, but rejects any analyzed array construction.
+
+The residual-definition limit defaults to 4,096, independently of the Static
+specialization limit. `residual-specializations` counts successfully analyzed
+Runtime scalar versions; `residual-cache-hits` counts their reuse. A hit keeps
+argument work but skips body analysis and another version charge. A miss is
+charged after successful analysis; its fuel/depth/construction costs still
+apply. Exceeding the limit reports `E4012`. Zero allows pure Static and inline
+Static-result calls. This quota is not a generated-byte or total-memory limit.
+All-Static-argument misses still consume the existing Static specialization
+budget even when the analyzed body produces a Runtime result.
 
 Shared array/record quotas additionally default to 65,536 aggregate members and
 262,144 logical bytes. `explain-stage` appends `aggregate-constructions`,

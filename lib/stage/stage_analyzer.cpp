@@ -94,6 +94,87 @@ std::size_t StageAnalyzer::SpecializationKeyHash::operator()(
     return hash;
 }
 
+std::size_t StageAnalyzer::ResidualKeyHash::operator()(
+    const ResidualKey& key) const noexcept {
+    auto hash = std::hash<const syntax::Function*>{}(key.function);
+    const auto mix = [&](std::size_t value) {
+        hash ^= value + 0x9e3779b9U + (hash << 6U) + (hash >> 2U);
+    };
+    for (const auto& argument : key.arguments) {
+        mix(static_cast<std::size_t>(argument.type.kind));
+        mix(argument.type.integer_type.width);
+        mix(argument.type.integer_type.is_signed);
+        mix(argument.type.integer_type.is_usize);
+        mix(argument.constant.has_value());
+        if (argument.constant)
+            mix(constant_hash(*argument.constant));
+    }
+    return hash;
+}
+
+hir::RuntimeTrace
+StageAnalyzer::substitute_trace(hir::RuntimeTrace trace,
+                                const TraceArguments& arguments) {
+    while (trace.parameter_id) {
+        const auto found = arguments.find(*trace.parameter_id);
+        if (found == arguments.end())
+            break;
+        auto source = found->second;
+        source.path.insert(source.path.end(), trace.path.begin(),
+                           trace.path.end());
+        trace = std::move(source);
+    }
+    return trace;
+}
+
+hir::ExprPtr StageAnalyzer::make_residual_call(
+    std::shared_ptr<const hir::ResidualFunction> callee,
+    const std::vector<hir::ExprPtr>& arguments, source::Span span) const {
+    auto call = std::make_shared<hir::Expr>();
+    call->kind = hir::Expr::Kind::Call;
+    call->type = callee->body->type;
+    call->stage = hir::Stage::Runtime;
+    call->span = span;
+    call->variable_name = callee->name;
+    TraceArguments traces;
+    for (const auto& argument : arguments) {
+        if (argument->stage != hir::Stage::Runtime)
+            continue;
+        const auto& parameter = callee->parameters.at(call->operands.size());
+        traces.emplace(*parameter->trace->parameter_id, *argument->trace);
+        call->operands.push_back(argument);
+    }
+    if (callee->body->trace)
+        call->trace = substitute_trace(*callee->body->trace, traces);
+    call->callee = std::move(callee);
+    return call;
+}
+
+hir::ExprPtr StageAnalyzer::instantiate_inline(
+    const hir::ExprPtr& body,
+    const std::unordered_map<const hir::Expr*, hir::ExprPtr>& arguments,
+    const TraceArguments& traces) {
+    // Preserve DAG identity: repeated uses must not repeat Runtime work.
+    auto instances = arguments;
+    const auto instantiate = [&](this auto&& self,
+                                 const hir::ExprPtr& value) -> hir::ExprPtr {
+        if (!value)
+            return nullptr;
+        if (const auto found = instances.find(value.get());
+            found != instances.end())
+            return found->second;
+        auto copy = std::make_shared<hir::Expr>(*value);
+        for (auto& operand : copy->operands)
+            operand = self(operand);
+        if (copy->trace)
+            copy->trace = substitute_trace(*copy->trace, traces);
+        // Nested residual definitions have their own parameter scope.
+        instances.emplace(value.get(), copy);
+        return copy;
+    };
+    return instantiate(body);
+}
+
 std::unique_ptr<hir::Module>
 StageAnalyzer::analyze(const syntax::Module& module) {
     stats_ = {};
@@ -103,8 +184,12 @@ StageAnalyzer::analyze(const syntax::Module& module) {
     call_stack_.clear();
     specialization_cache_.clear();
     active_specializations_.clear();
+    residual_cache_.clear();
+    active_parameter_traces_.clear();
+    next_parameter_id_ = 0;
     fuel_exhausted_ = false;
     construction_budget_exhausted_ = false;
+    residual_budget_exhausted_ = false;
 
     auto result = std::make_unique<hir::Module>();
     result->pointer_bits = types_.pointer_bits;
@@ -668,7 +753,8 @@ hir::ExprPtr StageAnalyzer::analyze_array_generator(
         if (value->stage == hir::Stage::Static) {
             return true;
         }
-        const auto& trace = *value->trace;
+        const auto trace =
+            substitute_trace(*value->trace, active_parameter_traces_);
         auto path = trace.path;
         path.push_back("array generator " + position);
         diagnostics_.report({
@@ -1005,6 +1091,24 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
             argument_work.push_back(argument);
         }
     }
+    const auto scalar = [](const sema::Type& type) {
+        return type.kind == sema::TypeKind::Integer ||
+               type.kind == sema::TypeKind::Bool;
+    };
+    std::optional<ResidualKey> residual_key;
+    if (scalar(types_.resolve(function.result)) &&
+        std::ranges::all_of(arguments, [&](const auto& argument) {
+            return scalar(argument->type);
+        })) {
+        residual_key = ResidualKey{.function = &function};
+        residual_key->arguments.reserve(arguments.size());
+        for (const auto& argument : arguments) {
+            residual_key->arguments.push_back(
+                {argument->type, argument->stage == hir::Stage::Static
+                                     ? argument->constant
+                                     : std::nullopt});
+        }
+    }
     auto key = specialization_key(function, arguments);
     if (key) {
         if (const auto cached = specialization_cache_.find(*key);
@@ -1026,21 +1130,6 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
             });
             return nullptr;
         }
-        if (stats_.specializations >= limits_.specializations) {
-            diagnostics_.report({
-                .severity = source::Severity::Error,
-                .code = "E4006",
-                .message = "compile-time specialization limit of " +
-                           std::to_string(limits_.specializations) +
-                           " exceeded",
-                .primary = {.span = expression.span,
-                            .message = std::to_string(stats_.specializations) +
-                                       " specializations already created"},
-                .help = "increase --max-specializations or reduce distinct "
-                        "Static call arguments",
-            });
-            return nullptr;
-        }
     } else if (std::ranges::find(call_stack_, expression.callee) !=
                call_stack_.end()) {
         diagnostics_.report({
@@ -1050,6 +1139,30 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
             .primary = {.span = expression.span,
                         .message = "recursive arguments are not all Static"},
             .help = "make recursive control and arguments Static",
+        });
+        return nullptr;
+    }
+    if (residual_key) {
+        if (const auto cached = residual_cache_.find(*residual_key);
+            cached != residual_cache_.end()) {
+            ++stats_.residual_cache_hits;
+            return make_sequence(
+                std::move(argument_work),
+                make_residual_call(cached->second, arguments, expression.span),
+                expression.span);
+        }
+    }
+    if (key && stats_.specializations >= limits_.specializations) {
+        diagnostics_.report({
+            .severity = source::Severity::Error,
+            .code = "E4006",
+            .message = "compile-time specialization limit of " +
+                       std::to_string(limits_.specializations) + " exceeded",
+            .primary = {.span = expression.span,
+                        .message = std::to_string(stats_.specializations) +
+                                   " specializations already created"},
+            .help = "increase --max-specializations or reduce distinct "
+                    "Static call arguments",
         });
         return nullptr;
     }
@@ -1073,17 +1186,43 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
         ++stats_.specializations;
     }
     scopes_.emplace_back();
+    std::vector<hir::ExprPtr> parameters;
+    std::unordered_map<const hir::Expr*, hir::ExprPtr> substitutions;
+    TraceArguments traces;
     for (std::size_t index = 0; index < function.parameters.size(); ++index) {
         auto value = arguments[index];
-        if (value->stage == hir::Stage::Runtime) {
-            value = hir::with_trace_step(
-                value, function.name + "." + function.parameters[index].name);
+        const auto name = function.name + "." + function.parameters[index].name;
+        if (residual_key && value->stage == hir::Stage::Runtime) {
+            const auto id = next_parameter_id_++;
+            auto parameter = std::make_shared<hir::Expr>();
+            parameter->kind = hir::Expr::Kind::Parameter;
+            parameter->type = value->type;
+            parameter->stage = hir::Stage::Runtime;
+            parameter->span = function.parameters[index].name_span;
+            parameter->variable_name = name;
+            parameter->trace = {.origin_span = parameter->span,
+                                .origin_name = name,
+                                .path = {name},
+                                .parameter_id = id};
+            parameters.push_back(parameter);
+            substitutions.emplace(parameter.get(), value);
+            traces.emplace(id, *value->trace);
+            active_parameter_traces_.emplace(id, *value->trace);
+            value = std::move(parameter);
+        } else if (residual_key) {
+            // Caller-side effects belong to argument_work, never the cached
+            // body. The typed Static value alone determines specialization.
+            value =
+                hir::make_constant(*value->constant, value->type, value->span);
+        } else if (value->stage == hir::Stage::Runtime) {
+            value = hir::with_trace_step(value, name);
         }
         define(function.parameters[index].name, std::move(value));
     }
     call_stack_.push_back(function.name);
     stats_.maximum_recursion_depth =
         std::max(stats_.maximum_recursion_depth, call_stack_.size());
+    const auto diagnostics_before = diagnostics_.size();
     auto block_result = analyze_block(*function.body);
     auto result =
         make_sequence(std::move(block_result.effects),
@@ -1108,34 +1247,56 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
     }
     call_stack_.pop_back();
     scopes_.pop_back();
+    for (const auto& parameter : parameters)
+        active_parameter_traces_.erase(*parameter->trace->parameter_id);
     if (key) {
         active_specializations_.erase(*key);
-        if (hir::is_cacheable_result(result)) {
+        if (diagnostics_.size() == diagnostics_before &&
+            hir::is_cacheable_result(result)) {
             specialization_cache_.emplace(std::move(*key), result);
         }
     }
-    const auto scalar = [](const sema::Type& type) {
-        return type.kind == sema::TypeKind::Integer ||
-               type.kind == sema::TypeKind::Bool;
-    };
-    if (result && result->stage == hir::Stage::Runtime &&
-        scalar(result->type) &&
-        std::ranges::all_of(arguments, [&](const auto& argument) {
-            return scalar(argument->type);
-        })) {
-        auto call = std::make_shared<hir::Expr>();
-        call->kind = hir::Expr::Kind::Call;
-        call->type = result->type;
-        call->stage = hir::Stage::Runtime;
-        call->span = expression.span;
-        call->trace = result->trace;
-        call->variable_name = function.name;
-        call->call_body = std::move(result);
-        // Pure Static arguments are embedded in the specialized body. Values
-        // with residual work are evaluated in the caller and captured once,
-        // including known Static values whose evaluation still has effects.
-        call->operands = argument_work;
-        result = std::move(call);
+    if (diagnostics_.size() != diagnostics_before)
+        return nullptr;
+    if (result && residual_key) {
+        if (result->stage == hir::Stage::Runtime) {
+            // Charge completed definitions, not calls. Miss analysis remains
+            // bounded by fuel/depth/construction quotas before this point.
+            if (stats_.residual_specializations >=
+                limits_.residual_specializations) {
+                if (!residual_budget_exhausted_) {
+                    diagnostics_.report({
+                        .severity = source::Severity::Error,
+                        .code = "E4012",
+                        .message =
+                            "residual specialization limit of " +
+                            std::to_string(limits_.residual_specializations) +
+                            " exceeded",
+                        .primary =
+                            {.span = expression.span,
+                             .message =
+                                 "cannot create a new version of `" +
+                                 function.name + "`; " +
+                                 std::to_string(
+                                     stats_.residual_specializations) +
+                                 " residual specializations already created"},
+                        .help = "increase --max-residual-specializations or "
+                                "reduce distinct Static arguments and Runtime "
+                                "parameter patterns",
+                    });
+                    residual_budget_exhausted_ = true;
+                }
+                return nullptr;
+            }
+            auto definition = std::make_shared<hir::ResidualFunction>(
+                function.name, std::move(parameters), std::move(result));
+            residual_cache_.emplace(std::move(*residual_key), definition);
+            ++stats_.residual_specializations;
+            result = make_residual_call(std::move(definition), arguments,
+                                        expression.span);
+        } else {
+            result = instantiate_inline(result, substitutions, traces);
+        }
     }
     return make_sequence(std::move(argument_work), std::move(result),
                          expression.span);
@@ -1293,8 +1454,11 @@ bool StageAnalyzer::check_resolved_type(const sema::Type& expected,
     return false;
 }
 
-void StageAnalyzer::report_static_failure(const syntax::BindingStmt& binding,
-                                          const hir::RuntimeTrace& trace) {
+void StageAnalyzer::report_static_failure(
+    const syntax::BindingStmt& binding,
+    const hir::RuntimeTrace& symbolic_trace) {
+    const auto trace =
+        substitute_trace(symbolic_trace, active_parameter_traces_);
     source::Diagnostic diagnostic{
         .severity = source::Severity::Error,
         .code = "E2001",
