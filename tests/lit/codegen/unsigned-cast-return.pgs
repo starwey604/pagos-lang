@@ -1,0 +1,8 @@
+// RUN: %run_residual %s 255 1
+// RUN: %run_residual %s 2 0 258
+// RUN: %run_optimized %s 255 1
+// RUN: %run_optimized %s 2 0 258
+fn choose(flag: u32) -> u8 {
+    (if flag != 0 { return 255u8; } else { external_input() }) as u8
+}
+let result = choose(external_input());

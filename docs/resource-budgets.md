@@ -12,7 +12,7 @@ process RSS limits, allocation counts, target RAM estimates, or a sandbox.
 | `--max-array-elements` | 65,536 | Array elements only |
 | `--max-array-bytes` | 262,144 | Array logical payload only |
 
-Each `u32` costs four bytes; each `bool` costs one. Record field names, padding,
+Each integer costs width/8 bytes; each `bool` costs one. Record field names, padding,
 and container overhead do not contribute. Arrays whose continuation type is
 `never` conservatively cost four bytes per element; record costs use declared
 field types. Zero shared limits allow scalar programs and unused declarations,

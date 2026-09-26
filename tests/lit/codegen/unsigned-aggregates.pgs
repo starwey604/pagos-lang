@@ -1,0 +1,16 @@
+// RUN: %pagosc emit-llvm %s | %FileCheck %s
+// RUN: %run_residual %s 1 2 255 65535
+// RUN: %run_optimized %s 1 2 255 65535
+record Mixed { byte: u8, half: u16, wide: u64, flag: bool }
+fn select(a: [u64; 3], i: u32) -> u64 { a[i] }
+static let table = [for i in 0..3 { (i as u64 << 32u64) | 7u64 }];
+let selected = select(table, external_input());
+let config = Mixed(wide: selected, byte: external_input() as u8,
+                   flag: true, half: external_input() as u16);
+let arrays = [config.byte, 2u8];
+let result = config.wide == 8589934599u64 && config.half == 65535u16 &&
+             arrays[0] == 255u8 && config.flag;
+// CHECK: @pagos.table = private unnamed_addr constant [3 x i64]
+// CHECK: load i64
+// CHECK: insertvalue { i8, i16, i64, i1 }
+// CHECK: insertvalue [2 x i8]

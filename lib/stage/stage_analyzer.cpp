@@ -3,6 +3,7 @@
 #include "pagos/vm/evaluator.h"
 
 #include <algorithm>
+#include <bit>
 #include <charconv>
 #include <cstdint>
 #include <functional>
@@ -19,16 +20,6 @@ hir::RuntimeTrace first_trace(const hir::ExprPtr& left,
         return left->trace.value();
     }
     return right->trace.value();
-}
-
-std::uint32_t parse_u32(const std::string& spelling) {
-    std::string digits;
-    digits.reserve(spelling.size());
-    std::ranges::copy_if(spelling, std::back_inserter(digits),
-                         [](char character) { return character != '_'; });
-    std::uint32_t value{};
-    (void)std::from_chars(digits.data(), digits.data() + digits.size(), value);
-    return value;
 }
 
 struct AggregateProjection {
@@ -248,9 +239,10 @@ StageAnalyzer::analyze_for(const syntax::ForStmt& loop_statement) {
     }
     if (begin->stage == hir::Stage::Static &&
         end->stage == hir::Stage::Static) {
-        const auto begin_value =
-            std::get<std::uint32_t>(begin->constant.value());
-        const auto end_value = std::get<std::uint32_t>(end->constant.value());
+        const auto begin_value = static_cast<std::uint32_t>(
+            std::get<IntegerValue>(begin->constant.value()).bits());
+        const auto end_value =
+            std::get<IntegerValue>(end->constant.value()).bits();
         std::vector<hir::ExprPtr> effects;
         if (has_residual_work(begin)) {
             effects.push_back(begin);
@@ -372,8 +364,11 @@ hir::ExprPtr StageAnalyzer::analyze_expression(const syntax::Expr& expression) {
     case syntax::Expr::Kind::Integer: {
         const auto& integer =
             static_cast<const syntax::IntegerExpr&>(expression);
-        return hir::make_constant(parse_u32(integer.spelling),
-                                  sema::TypeKind::Integer, expression.span);
+        const auto type = type_of(expression);
+        return hir::make_constant(
+            IntegerValue::parse_decimal(type.integer_type, integer.spelling)
+                .value(),
+            type, expression.span);
     }
     case syntax::Expr::Kind::Boolean: {
         const auto& boolean =
@@ -384,6 +379,25 @@ hir::ExprPtr StageAnalyzer::analyze_expression(const syntax::Expr& expression) {
     case syntax::Expr::Kind::Name: {
         const auto& name = static_cast<const syntax::NameExpr&>(expression);
         return lookup(name.name);
+    }
+    case syntax::Expr::Kind::Cast: {
+        const auto& cast = static_cast<const syntax::CastExpr&>(expression);
+        auto operand = analyze_expression(*cast.operand);
+        if (!operand || !operand->falls_through)
+            return operand;
+        const auto type = type_of(expression);
+        if (operand->stage == hir::Stage::Static) {
+            auto value =
+                hir::make_constant(std::get<IntegerValue>(*operand->constant)
+                                       .convert(type.integer_type)
+                                       .value(),
+                                   type, expression.span);
+            return has_residual_work(operand)
+                       ? make_sequence({operand}, value, expression.span)
+                       : value;
+        }
+        return make_runtime(hir::Expr::Kind::Cast, type, expression.span,
+                            {operand}, *operand->trace);
     }
     case syntax::Expr::Kind::Unary:
         return analyze_unary(static_cast<const syntax::UnaryExpr&>(expression));
@@ -413,13 +427,15 @@ hir::ExprPtr StageAnalyzer::analyze_expression(const syntax::Expr& expression) {
 hir::ExprPtr
 StageAnalyzer::analyze_record(const syntax::RecordExpr& expression) {
     const auto& declaration = *records_.at(expression.name);
-    const auto bool_members = static_cast<std::size_t>(
-        std::ranges::count_if(declaration.fields, [](const auto& field) {
-            return sema::Type(field.type) == sema::TypeKind::Bool;
-        }));
-    if (!reserve_aggregate(bool_members,
-                           declaration.fields.size() - bool_members,
-                           expression.span)) {
+    std::array<std::size_t, 4> width_counts{};
+    for (const auto& field : declaration.fields) {
+        const sema::Type type(field.type);
+        const auto bytes = type.kind == sema::TypeKind::Bool
+                               ? 1U
+                               : type.integer_type.width / 8;
+        ++width_counts[static_cast<std::size_t>(std::countr_zero(bytes))];
+    }
+    if (!reserve_aggregate(width_counts, expression.span)) {
         return nullptr;
     }
     std::vector<hir::ExprPtr> fields(declaration.fields.size());
@@ -457,7 +473,7 @@ StageAnalyzer::analyze_record(const syntax::RecordExpr& expression) {
                 constant.fields.emplace_back(std::get<bool>(*value->constant));
             } else {
                 constant.fields.emplace_back(
-                    std::get<std::uint32_t>(*value->constant));
+                    std::get<IntegerValue>(*value->constant));
             }
         }
         result = hir::make_constant(std::move(constant), type_of(expression),
@@ -533,8 +549,9 @@ bool StageAnalyzer::reserve_array(std::size_t count, const sema::Type& type,
     if (construction_budget_exhausted_) {
         return false;
     }
-    const std::size_t width =
-        type.element_type() == sema::TypeKind::Bool ? 1 : 4;
+    const std::size_t width = type.element_type() == sema::TypeKind::Bool
+                                  ? 1
+                                  : type.integer_type.width / 8;
     const auto element_room =
         limits_.array_elements - stats_.array_elements_reserved;
     const auto byte_room = limits_.array_bytes - stats_.array_bytes_reserved;
@@ -560,8 +577,9 @@ bool StageAnalyzer::reserve_array(std::size_t count, const sema::Type& type,
         });
         return false;
     }
-    if (!reserve_aggregate(width == 1 ? count : 0, width == 4 ? count : 0,
-                           span)) {
+    std::array<std::size_t, 4> width_counts{};
+    width_counts[static_cast<std::size_t>(std::countr_zero(width))] = count;
+    if (!reserve_aggregate(width_counts, span)) {
         return false;
     }
     stats_.array_elements_reserved += count;
@@ -569,9 +587,8 @@ bool StageAnalyzer::reserve_array(std::size_t count, const sema::Type& type,
     return true;
 }
 
-bool StageAnalyzer::reserve_aggregate(std::size_t bool_members,
-                                      std::size_t u32_members,
-                                      source::Span span) {
+bool StageAnalyzer::reserve_aggregate(
+    const std::array<std::size_t, 4>& width_counts, source::Span span) {
     if (construction_budget_exhausted_) {
         return false;
     }
@@ -579,10 +596,22 @@ bool StageAnalyzer::reserve_aggregate(std::size_t bool_members,
         limits_.aggregate_members - stats_.aggregate_members_reserved;
     const auto byte_room =
         limits_.aggregate_bytes - stats_.aggregate_bytes_reserved;
-    // Check remaining capacity before sums/products, including at SIZE_MAX.
-    if (bool_members > member_room ||
-        u32_members > member_room - bool_members || bool_members > byte_room ||
-        u32_members > (byte_room - bool_members) / 4) {
+    std::size_t members = 0;
+    std::size_t bytes = 0;
+    bool exceeds = false;
+    for (std::size_t index = 0; index < width_counts.size(); ++index) {
+        const auto width = std::size_t{1} << index;
+        const auto count = width_counts[index];
+        // Check capacity before either sum or product, including at SIZE_MAX.
+        if (count > member_room - members ||
+            count > (byte_room - bytes) / width) {
+            exceeds = true;
+            break;
+        }
+        members += count;
+        bytes += count * width;
+    }
+    if (exceeds) {
         construction_budget_exhausted_ = true;
         diagnostics_.report({
             .severity = source::Severity::Error,
@@ -590,9 +619,11 @@ bool StageAnalyzer::reserve_aggregate(std::size_t bool_members,
             .message = "aggregate construction budget exceeded",
             .primary = {.span = span,
                         .message =
-                            "request " + std::to_string(bool_members) +
-                            " bool members and " + std::to_string(u32_members) +
-                            " u32 members; reserved " +
+                            "request members by byte width [1, 2, 4, 8]: [" +
+                            std::to_string(width_counts[0]) + ", " +
+                            std::to_string(width_counts[1]) + ", " +
+                            std::to_string(width_counts[2]) + ", " +
+                            std::to_string(width_counts[3]) + "]; reserved " +
                             std::to_string(stats_.aggregate_members_reserved) +
                             "/" + std::to_string(limits_.aggregate_members) +
                             " members, " +
@@ -608,8 +639,8 @@ bool StageAnalyzer::reserve_aggregate(std::size_t bool_members,
         return false;
     }
     ++stats_.aggregate_constructions;
-    stats_.aggregate_members_reserved += bool_members + u32_members;
-    stats_.aggregate_bytes_reserved += bool_members + u32_members * 4;
+    stats_.aggregate_members_reserved += members;
+    stats_.aggregate_bytes_reserved += bytes;
     return true;
 }
 
@@ -658,8 +689,10 @@ hir::ExprPtr StageAnalyzer::analyze_array_generator(
         !require_static(end, expression.end->span, "end")) {
         return nullptr;
     }
-    const auto first = std::get<std::uint32_t>(*begin->constant);
-    const auto last = std::get<std::uint32_t>(*end->constant);
+    const auto first = static_cast<std::uint32_t>(
+        std::get<IntegerValue>(*begin->constant).bits());
+    const auto last = static_cast<std::uint32_t>(
+        std::get<IntegerValue>(*end->constant).bits());
     if (last <= first) {
         diagnostics_.error(
             "E1005", "array generator range must be nonempty and increasing",
@@ -735,10 +768,10 @@ hir::ExprPtr StageAnalyzer::finish_array(std::vector<hir::ExprPtr> elements,
         }
         constant = std::move(values);
     } else {
-        std::vector<std::uint32_t> values;
+        std::vector<IntegerValue> values;
         values.reserve(elements.size());
         for (const auto& element : elements) {
-            values.push_back(std::get<std::uint32_t>(*element->constant));
+            values.push_back(std::get<IntegerValue>(*element->constant));
         }
         constant = std::move(values);
     }
@@ -764,7 +797,8 @@ hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
     }
     std::optional<hir::RuntimeTrace> selected_trace;
     if (index->stage == hir::Stage::Static) {
-        const auto offset = std::get<std::uint32_t>(*index->constant);
+        const auto offset = static_cast<std::uint32_t>(
+            std::get<IntegerValue>(*index->constant).bits());
         if (offset >= array->type.length) {
             diagnostics_.error("E4007", "array index out of bounds",
                                expression.index->span,
@@ -778,7 +812,7 @@ hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
                 value = static_cast<bool>(
                     std::get<std::vector<bool>>(*array->constant)[offset]);
             } else {
-                value = std::get<std::vector<std::uint32_t>>(
+                value = std::get<std::vector<IntegerValue>>(
                     *array->constant)[offset];
             }
         } else if (auto selected = project_aggregate_member(array, offset)) {
@@ -871,8 +905,11 @@ StageAnalyzer::analyze_binary(const syntax::BinaryExpr& expression) {
     if ((expression.operation == ShiftLeft ||
          expression.operation == ShiftRight) &&
         right->stage == hir::Stage::Static &&
-        std::get<std::uint32_t>(*right->constant) >= 32) {
-        diagnostics_.error("E4009", "shift count must be less than 32",
+        std::get<IntegerValue>(*right->constant).bits() >=
+            left->type.integer_type.width) {
+        diagnostics_.error("E4009",
+                           "shift count must be less than " +
+                               std::to_string(left->type.integer_type.width),
                            expression.right->span);
         return nullptr;
     }

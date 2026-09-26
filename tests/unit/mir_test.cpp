@@ -32,6 +32,72 @@ TEST(MirVerifier, AcceptsTypedConstantFunction) {
     EXPECT_TRUE(result.has_value());
 }
 
+TEST(MirVerifier, IntegerConstantsMustMatchEveryPayloadWidth) {
+    using namespace pagos;
+    using namespace pagos::mir;
+    for (unsigned width : {8U, 16U, 32U, 64U}) {
+        auto module = constant_module();
+        auto& function = module.functions[0];
+        auto& instruction = function.blocks[0].instructions[0];
+        function.result_type = instruction.type = Type::integer(width);
+        const auto value = *IntegerValue::create({width, false}, 42);
+        instruction.operation = ConstantOperation{.value = value};
+        EXPECT_TRUE(verify(module));
+        instruction.operation = ConstantOperation{
+            .value = *IntegerValue::create({width, true}, 42)};
+        EXPECT_FALSE(verify(module));
+        function.result_type = instruction.type =
+            Type::array(Type::integer(width), 2);
+        instruction.operation =
+            ConstantOperation{.value = std::vector<IntegerValue>{value, value}};
+        EXPECT_TRUE(verify(module));
+        instruction.operation = ConstantOperation{
+            .value = std::vector<IntegerValue>{
+                value,
+                *IntegerValue::create({width == 64 ? 8U : 64U, false}, 42)}};
+        EXPECT_FALSE(verify(module));
+        Type record{Type::Record};
+        record.record_name = "R";
+        record.fields = {Type::integer(width)};
+        function.result_type = instruction.type = record;
+        instruction.operation =
+            ConstantOperation{.value = RecordConstant{"R", {value}}};
+        EXPECT_TRUE(verify(module));
+        instruction.operation =
+            ConstantOperation{.value = RecordConstant{"R", {true}}};
+        EXPECT_FALSE(verify(module));
+    }
+}
+
+TEST(MirVerifier, IntegerCastsRequireUnsignedTypesAndDominatingValues) {
+    using namespace pagos::mir;
+    auto module = constant_module();
+    auto& function = module.functions[0];
+    auto& block = function.blocks[0];
+    block.instructions.push_back(
+        {.result = 1,
+         .type = Type::integer(8),
+         .operation = IntegerCastOperation{.operand = 0},
+         .span = {}});
+    block.terminator = Return{.value = 1};
+    function.result_type = Type::integer(8);
+    EXPECT_TRUE(verify(module));
+    for (const auto& type : {Type(Type::Bool), Type::integer(8, true),
+                             Type::array(Type::U32, 1)}) {
+        function.result_type = block.instructions[1].type = type;
+        EXPECT_FALSE(verify(module));
+    }
+    function.result_type = block.instructions[1].type = Type::integer(8);
+    block.instructions[1].operation = IntegerCastOperation{.operand = 2};
+    EXPECT_FALSE(verify(module));
+    block.instructions[1].operation = IntegerCastOperation{.operand = 1};
+    EXPECT_FALSE(verify(module));
+    block.instructions[1].operation = IntegerCastOperation{.operand = 0};
+    block.instructions[0].type = Type::Bool;
+    block.instructions[0].operation = ConstantOperation{.value = true};
+    EXPECT_FALSE(verify(module));
+}
+
 pagos::mir::Module record_module() {
     using namespace pagos::mir;
     auto module = constant_module();
@@ -381,7 +447,7 @@ TEST(MirVerifier, AcceptsArraysAndCheckedIndexing) {
     EXPECT_TRUE(verify(module));
     auto& array = module.functions[0].blocks[0].instructions[2];
     array.operation =
-        ConstantOperation{.value = std::vector<std::uint32_t>{0, 42}};
+        ConstantOperation{.value = std::vector<pagos::IntegerValue>{0, 42}};
     EXPECT_TRUE(verify(module));
 }
 
@@ -390,13 +456,14 @@ TEST(MirVerifier, RejectsMalformedArrayConstants) {
     auto module = array_module();
     auto& array = module.functions[0].blocks[0].instructions[2];
     array.operation =
-        ConstantOperation{.value = std::vector<std::uint32_t>{42}};
+        ConstantOperation{.value = std::vector<pagos::IntegerValue>{42}};
     EXPECT_FALSE(verify(module));
     array.operation =
         ConstantOperation{.value = std::vector<bool>{true, false}};
     EXPECT_FALSE(verify(module));
     array.type = Type::array(Type::U32, 0);
-    array.operation = ConstantOperation{.value = std::vector<std::uint32_t>{}};
+    array.operation =
+        ConstantOperation{.value = std::vector<pagos::IntegerValue>{}};
     EXPECT_FALSE(verify(module));
 }
 

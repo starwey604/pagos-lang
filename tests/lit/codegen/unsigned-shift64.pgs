@@ -1,0 +1,5 @@
+// RUN: %run_residual %s 1 63
+// RUN: %run_residual %s trap 64
+// RUN: %run_optimized %s 1 63
+// RUN: %run_optimized %s trap 64
+let result = 18446744073709551615u64 >> external_input() as u64;

@@ -139,6 +139,14 @@ Explicit-target LLVM IR is available; Pagos object emission, pointers/MMIO,
 and firmware execution remain M3 work. CI has been exercised locally in the
 fixed container, not yet on GitHub Actions.
 
+M3 now includes `u8/u16/u32/u64`, typed literals (`255u8`), and explicit
+conversions (`external_input() as u8`). Arithmetic wraps at the declared width;
+Static and Runtime checked operations agree. Arrays and records retain element
+widths, and construction quotas count logical bytes. See the
+[integer rules](docs/grammar.md#core-type-rules) and
+[multi-width example](tests/lit/codegen/unsigned-widths.pgs).
+Signed integers, `usize`, and general C ABI support are not implemented yet.
+
 ## Development
 
 Configure, build, and test the default Clang 22 development preset:

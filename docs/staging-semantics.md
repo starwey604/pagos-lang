@@ -77,7 +77,7 @@ static let clock = config.clock_hz;
 ```
 
 The runtime `revision` field must not thaw `clock_hz` or unrelated device
-topology. Minimal named records now implement this rule for `u32`/`bool`
+topology. Minimal named records now implement this rule for integer/`bool`
 fields. Field precision is an analysis property, not a stage annotation in the
 record type. Constructors evaluate named initializers in source order, then
 store values in declaration order. A Static field read preserves all constructor
@@ -265,28 +265,41 @@ tables, or target-specific sections.
 Compile-time arithmetic must agree with target execution. The evaluator uses
 explicit target-width representations rather than native host C++ arithmetic.
 
-The Milestone 1 core has only `bool` and `u32`. Decimal literals are exact,
-untyped non-negative values until context supplies `u32`; without another
-context, a literal binding defaults to `u32`. A literal that does not fit is a
-compile error. Unary `-` is outside the core grammar until signed types are
-specified.
+The first Milestone 3 integer slice supports `bool` and `u8/u16/u32/u64`.
+Decimal literals default to `u32`, independently of surrounding annotations;
+an adjacent suffix selects another width (`255u8`, `18_446_744_073_709_551_615u64`).
+A literal that does not fit is a compile error. Unary `-` remains outside the
+core grammar until signed types are specified.
 
-`u32` addition, subtraction, and multiplication wrap modulo 2^32 at both
+Unsigned addition, subtraction, and multiplication wrap modulo 2^width at both
 stages. Division or remainder by zero is an error during static evaluation and
 a defined runtime trap in residual code. Comparisons produce `bool`. The
 evaluator must implement these rules explicitly and must not inherit the host
 C++ integer model.
 
-Milestone 2 adds strict `u32` bitwise `&`, `|`, `^`, and complement `~`.
-`<<` shifts left modulo 2^32; `>>` is logical (zero-filling), not arithmetic.
-Both operands are `u32` and evaluate left-to-right. A Static shift count of
-32 or more reports `E4009` when the operation is analyzed, even if the left
-operand is Runtime. A Runtime count is checked against 32 before execution;
+Strict integer bitwise operators are `&`, `|`, `^`, and complement `~`.
+`<<` shifts left modulo 2^width; `>>` is logical (zero-filling), not arithmetic.
+Both operands have the same integer type and evaluate left-to-right. A Static
+shift count at least as large as the width reports `E4009` when analyzed, even
+if the left operand is Runtime. A Runtime count is checked before execution;
 invalid counts trap, including in discarded expressions. Counts are never
 implicitly masked. Explicit Runtime boundaries remain opaque to staging.
 The LLVM backend must not execute an out-of-range shift or add overflow/exact
 flags that contradict these rules. Static and residual evaluation agree at
-counts 0 and 31 and on discarded high bits.
+counts 0 and width minus one and on discarded high bits.
+
+Explicit `as` conversions truncate low bits when narrowing and zero-extend
+when widening. They do not change binding time, discard effects, or permit an
+out-of-range literal: `256u8` fails, whereas `256 as u8` is zero. Integer width
+and signedness belong to scalar, array, record, and specialization-key values.
+Aggregate construction quotas count width/8 logical bytes per integer slot,
+not the host representation's storage size or target record padding.
+
+The research entry wrapper still exports `u32 pagos_main()`: narrower integer
+results zero-extend, wider results truncate to `u32`, booleans become 0/1, and
+aggregates return zero after evaluating their effects. `external_input()`,
+range bounds/indices, and array indices remain `u32`. This is a test ABI,
+not general C ABI support.
 
 Signed integers, floating point, implicit conversions, and `usize` are outside
 the core grammar. Before introduction, each must define overflow and target

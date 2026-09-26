@@ -20,19 +20,6 @@ bool compatible(const sema::Type& expected, const sema::Type& actual) {
             (expected.length == 0 || actual.length == 0));
 }
 
-bool valid_u32_literal(const std::string& spelling) {
-    std::string digits;
-    digits.reserve(spelling.size());
-    std::ranges::copy_if(spelling, std::back_inserter(digits),
-                         [](char character) { return character != '_'; });
-    std::uint64_t value{};
-    const auto result =
-        std::from_chars(digits.data(), digits.data() + digits.size(), value);
-    return result.ec == std::errc{} &&
-           result.ptr == digits.data() + digits.size() &&
-           value <= std::numeric_limits<std::uint32_t>::max();
-}
-
 } // namespace
 
 bool TypeChecker::check(syntax::Module& module) {
@@ -74,11 +61,12 @@ void TypeChecker::collect_records(const syntax::Module& module) {
                                    "duplicate field `" + field.name + "`",
                                    field.name_span);
             }
-            if (sema::Type(field.type) != sema::TypeKind::Integer &&
+            if (sema::Type(field.type).kind != sema::TypeKind::Integer &&
                 sema::Type(field.type) != sema::TypeKind::Bool) {
-                diagnostics_.error("E1008",
-                                   "record fields must be `bool` or `u32`",
-                                   field.name_span);
+                diagnostics_.error(
+                    "E1008",
+                    "record fields must be `bool` or an unsigned integer",
+                    field.name_span);
             }
         }
     }
@@ -244,11 +232,15 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
         break;
     case syntax::Expr::Kind::Integer: {
         const auto& integer = static_cast<syntax::IntegerExpr&>(expression);
-        if (!valid_u32_literal(integer.spelling)) {
-            diagnostics_.error("E1005", "integer literal does not fit `u32`",
+        const auto literal_type = Type::integer(integer.width);
+        if (!IntegerValue::parse_decimal(literal_type.integer_type,
+                                         integer.spelling)) {
+            diagnostics_.error("E1005",
+                               "integer literal does not fit `" +
+                                   type_name(literal_type) + "`",
                                integer.span, "no truncation is performed");
         } else {
-            type = sema::TypeKind::Integer;
+            type = literal_type;
         }
         break;
     }
@@ -268,8 +260,10 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
             break;
         }
         const auto expected = unary.operation == syntax::UnaryOperator::Not
-                                  ? sema::TypeKind::Bool
-                                  : sema::TypeKind::Integer;
+                                  ? Type(sema::TypeKind::Bool)
+                              : operand_type.kind == TypeKind::Integer
+                                  ? operand_type
+                                  : Type(TypeKind::Integer);
         if (!compatible(expected, operand_type)) {
             type_mismatch(unary.operand->span, expected, operand_type,
                           unary.operation == syntax::UnaryOperator::Not
@@ -277,6 +271,22 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
                               : "operand of `~`");
         } else {
             type = expected;
+        }
+        break;
+    }
+    case syntax::Expr::Kind::Cast: {
+        auto& cast = static_cast<syntax::CastExpr&>(expression);
+        const auto operand = check_expression(*cast.operand);
+        const Type destination(cast.destination);
+        if (destination.kind != TypeKind::Integer ||
+            (operand.kind != TypeKind::Integer &&
+             operand.kind != TypeKind::Never &&
+             operand.kind != TypeKind::Error)) {
+            diagnostics_.error(
+                "E1007", "`as` requires integer source and destination types",
+                expression.span);
+        } else {
+            type = operand.kind == TypeKind::Never ? operand : destination;
         }
         break;
     }
@@ -309,10 +319,11 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
                 continue;
             }
             if (actual != sema::TypeKind::Bool &&
-                actual != sema::TypeKind::Integer) {
-                diagnostics_.error("E1008",
-                                   "array elements must be `bool` or `u32`",
-                                   element->span);
+                actual.kind != sema::TypeKind::Integer) {
+                diagnostics_.error(
+                    "E1008",
+                    "array elements must be `bool` or an unsigned integer",
+                    element->span);
                 continue;
             }
             if (element_type == sema::TypeKind::Unknown) {
@@ -351,7 +362,7 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
         scopes_.pop_back();
         if (element == sema::TypeKind::Never) {
             type = sema::TypeKind::Never;
-        } else if (element == sema::TypeKind::Integer ||
+        } else if (element.kind == sema::TypeKind::Integer ||
                    element == sema::TypeKind::Bool) {
             if (begin == sema::TypeKind::Never ||
                 end == sema::TypeKind::Never) {
@@ -383,9 +394,10 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
             }
             type = sema::Type::array(element, length);
         } else if (element != sema::TypeKind::Error) {
-            diagnostics_.error(
-                "E1008", "array generator body must produce `bool` or `u32`",
-                generator.body->span);
+            diagnostics_.error("E1008",
+                               "array generator body must produce `bool` or an "
+                               "unsigned integer",
+                               generator.body->span);
         }
         break;
     }
@@ -487,7 +499,7 @@ sema::Type TypeChecker::check_field(syntax::FieldExpr& expression) {
 }
 
 sema::Type TypeChecker::check_binary(syntax::BinaryExpr& expression) {
-    const auto left = check_expression(*expression.left);
+    auto left = check_expression(*expression.left);
     const auto right = check_expression(*expression.right);
     using enum syntax::BinaryOperator;
     const auto operation = expression.operation;
@@ -524,19 +536,20 @@ sema::Type TypeChecker::check_binary(syntax::BinaryExpr& expression) {
         }
         return sema::TypeKind::Bool;
     }
-    if (!compatible(sema::TypeKind::Integer, left)) {
+    if (left.kind != TypeKind::Integer &&
+        !compatible(sema::TypeKind::Integer, left)) {
         type_mismatch(expression.left->span, sema::TypeKind::Integer, left,
                       "left arithmetic operand");
     }
-    if (!compatible(sema::TypeKind::Integer, right)) {
-        type_mismatch(expression.right->span, sema::TypeKind::Integer, right,
+    if (!compatible(left, right)) {
+        type_mismatch(expression.right->span, left, right,
                       "right arithmetic operand");
     }
     if (operation == Less || operation == LessEqual || operation == Greater ||
         operation == GreaterEqual) {
         return sema::TypeKind::Bool;
     }
-    return sema::TypeKind::Integer;
+    return left;
 }
 
 sema::Type TypeChecker::check_call(syntax::CallExpr& expression) {

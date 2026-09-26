@@ -1,0 +1,31 @@
+// RUN: %pagosc emit-llvm %s | %FileCheck %s
+// RUN: %run_residual %s 1 255 65535 4294967295
+// RUN: %run_optimized %s 1 255 65535 4294967295
+fn fold8(a: u8, b: u8) -> u8 {
+    (a + b) ^ (a - b) ^ (a * b) ^ (a / b) ^ (a % b) ^
+    (~a) ^ (a & b) ^ (a | b) ^ (a << 1u8) ^ (a >> 1u8)
+}
+fn fold16(a: u16, b: u16) -> u16 {
+    (a + b) ^ (a - b) ^ (a * b) ^ (a / b) ^ (a % b) ^
+    (~a) ^ (a & b) ^ (a | b) ^ (a << 15u16) ^ (a >> 15u16)
+}
+fn fold64(a: u64, b: u64) -> u64 {
+    (a + b) ^ (a - b) ^ (a * b) ^ (a / b) ^ (a % b) ^
+    (~a) ^ (a & b) ^ (a | b) ^ (a << 63u64) ^ (a >> 63u64)
+}
+let a = external_input() as u8;
+let b = external_input() as u16;
+let c = (external_input() as u64 << 32u64) | 4294967295u64;
+let result = fold8(a, 3u8) == fold8(255u8, 3u8) &&
+             fold16(b, 7u16) == fold16(65535u16, 7u16) &&
+             fold64(c, 11u64) == fold64(18446744073709551615u64, 11u64) &&
+             a > 127u8 && b >= 32768u16 && c > 9223372036854775807u64;
+// CHECK-DAG: trunc i32 {{.*}} to i8
+// CHECK-DAG: trunc i32 {{.*}} to i16
+// CHECK-DAG: zext i32 {{.*}} to i64
+// CHECK-DAG: add i8
+// CHECK-DAG: udiv i8
+// CHECK-DAG: add i16
+// CHECK-DAG: udiv i16
+// CHECK-DAG: add i64
+// CHECK-DAG: udiv i64

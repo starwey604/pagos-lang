@@ -1,0 +1,10 @@
+// RUN: %run_residual %s 128 7
+// RUN: %run_residual %s trap 8
+// RUN: %run_residual %s trap 255
+// RUN: %run_optimized %s 128 7
+// RUN: %run_optimized %s trap 8
+// RUN: %pagosc emit-llvm %s | %FileCheck %s
+let result = 1u8 << external_input() as u8;
+// CHECK: icmp ult i8 {{.*}}, 8
+// CHECK: call void @llvm.trap()
+// CHECK: shl i8

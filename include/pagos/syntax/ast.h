@@ -15,16 +15,17 @@ enum class TypeKind {
     Unknown,
     Void,
     Bool,
-    U32,
+    Integer,
     Never,
     Error,
     ArrayBool,
-    ArrayU32,
+    ArrayInteger,
     Record
 };
 
 struct Type {
     TypeKind kind{TypeKind::Error};
+    unsigned integer_width{32};
     // Zero denotes a deferred array length in the semantic type table only.
     // Source array types and all residual array values must have positive size.
     std::uint32_t length{};
@@ -34,6 +35,11 @@ struct Type {
     Type(TypeKind kind, std::uint32_t length = 0)
         : kind(kind), length(length) {}
     bool operator==(const Type&) const = default;
+    [[nodiscard]] static Type integer(unsigned width) {
+        Type type{TypeKind::Integer};
+        type.integer_width = width;
+        return type;
+    }
     [[nodiscard]] bool is_record() const noexcept {
         return kind == TypeKind::Record;
     }
@@ -43,15 +49,18 @@ struct Type {
         return type;
     }
     [[nodiscard]] bool is_array() const noexcept {
-        return kind == TypeKind::ArrayBool || kind == TypeKind::ArrayU32;
+        return kind == TypeKind::ArrayBool || kind == TypeKind::ArrayInteger;
     }
     [[nodiscard]] Type element_type() const noexcept {
-        return kind == TypeKind::ArrayBool ? TypeKind::Bool : TypeKind::U32;
+        return kind == TypeKind::ArrayBool ? Type(TypeKind::Bool)
+                                           : integer(integer_width);
     }
     [[nodiscard]] static Type array(const Type& element, std::uint32_t length) {
-        return {element == TypeKind::Bool ? TypeKind::ArrayBool
-                                          : TypeKind::ArrayU32,
-                length};
+        Type type{element == TypeKind::Bool ? TypeKind::ArrayBool
+                                            : TypeKind::ArrayInteger,
+                  length};
+        type.integer_width = element.integer_width;
+        return type;
     }
 };
 enum class BindingKind { Inferred, Static, Runtime };
@@ -85,6 +94,7 @@ struct Expr {
         Boolean,
         Name,
         Unary,
+        Cast,
         Binary,
         Call,
         If,
@@ -106,6 +116,15 @@ struct IntegerExpr final : Expr {
     IntegerExpr(std::string spelling, source::Span span)
         : Expr(Kind::Integer, span), spelling(std::move(spelling)) {}
     std::string spelling;
+    unsigned width{32}; // Explicit literal suffix, not an inferred type.
+};
+
+struct CastExpr final : Expr {
+    CastExpr(std::unique_ptr<Expr> operand, Type destination, source::Span span)
+        : Expr(Kind::Cast, span), operand(std::move(operand)),
+          destination(std::move(destination)) {}
+    std::unique_ptr<Expr> operand;
+    Type destination;
 };
 
 struct BooleanExpr final : Expr {

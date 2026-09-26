@@ -7,6 +7,34 @@
 
 namespace {
 
+TEST(Parser, IntegerWidthsAndCastPrecedenceAreSyntaxFacts) {
+    using namespace pagos::syntax;
+    const auto source = pagos::source::SourceFile::from_text(
+        "widths.pgs", "fn f(a: [u16; 2]) -> u64 { ~1u8 as u16 as u64 * 2u64 }");
+    pagos::source::DiagnosticEngine diagnostics(source);
+    Lexer lexer(source, diagnostics);
+    const auto tokens = lexer.tokenize();
+    Parser parser(tokens, diagnostics);
+    const auto module = parser.parse_module();
+    ASSERT_FALSE(diagnostics.has_error());
+    ASSERT_EQ(module->functions.size(), 1U);
+    const auto& function = *module->functions.front();
+    EXPECT_EQ(function.parameters[0].type, Type::array(Type::integer(16), 2));
+    EXPECT_EQ(function.result, Type::integer(64));
+    ASSERT_EQ(function.body->tail->kind, Expr::Kind::Binary);
+    const auto& multiply = static_cast<const BinaryExpr&>(*function.body->tail);
+    ASSERT_EQ(multiply.left->kind, Expr::Kind::Cast);
+    const auto& outer = static_cast<const CastExpr&>(*multiply.left);
+    EXPECT_EQ(outer.destination, Type::integer(64));
+    ASSERT_EQ(outer.operand->kind, Expr::Kind::Cast);
+    const auto& inner = static_cast<const CastExpr&>(*outer.operand);
+    EXPECT_EQ(inner.destination, Type::integer(16));
+    ASSERT_EQ(inner.operand->kind, Expr::Kind::Unary);
+    const auto& unary = static_cast<const UnaryExpr&>(*inner.operand);
+    ASSERT_EQ(unary.operand->kind, Expr::Kind::Integer);
+    EXPECT_EQ(static_cast<const IntegerExpr&>(*unary.operand).width, 8U);
+}
+
 TEST(Parser, ParsesArrayTypesLiteralsAndPostfixIndexing) {
     using namespace pagos::syntax;
     const auto source = pagos::source::SourceFile::from_text(
@@ -21,7 +49,7 @@ TEST(Parser, ParsesArrayTypesLiteralsAndPostfixIndexing) {
     ASSERT_EQ(module->functions.size(), 1U);
     EXPECT_EQ(module->functions[0]->parameters[0].type,
               Type::array(TypeKind::Bool, 10));
-    EXPECT_EQ(module->functions[0]->result, Type::array(TypeKind::U32, 2));
+    EXPECT_EQ(module->functions[0]->result, Type::array(TypeKind::Integer, 2));
     ASSERT_EQ(module->functions[0]->body->tail->kind, Expr::Kind::Array);
     const auto& array =
         static_cast<const ArrayExpr&>(*module->functions[0]->body->tail);
@@ -63,8 +91,10 @@ TEST(Parser, PreservesCompactArrayGeneratorSyntax) {
 
 TEST(SyntaxType, ArrayLengthAndElementTypeParticipateInEquality) {
     using namespace pagos::syntax;
-    EXPECT_NE(Type::array(TypeKind::U32, 2), Type::array(TypeKind::U32, 3));
-    EXPECT_NE(Type::array(TypeKind::Bool, 2), Type::array(TypeKind::U32, 2));
+    EXPECT_NE(Type::array(TypeKind::Integer, 2),
+              Type::array(TypeKind::Integer, 3));
+    EXPECT_NE(Type::array(TypeKind::Bool, 2),
+              Type::array(TypeKind::Integer, 2));
     EXPECT_EQ(type_name(Type::array(TypeKind::Bool, 2)), "[bool; 2]");
 }
 

@@ -24,6 +24,10 @@ constexpr std::array keywords{
     std::pair<std::string_view, TokenKind>{"false", TokenKind::KwFalse},
     std::pair<std::string_view, TokenKind>{"bool", TokenKind::KwBool},
     std::pair<std::string_view, TokenKind>{"u32", TokenKind::KwU32},
+    std::pair<std::string_view, TokenKind>{"u8", TokenKind::KwU8},
+    std::pair<std::string_view, TokenKind>{"u16", TokenKind::KwU16},
+    std::pair<std::string_view, TokenKind>{"u64", TokenKind::KwU64},
+    std::pair<std::string_view, TokenKind>{"as", TokenKind::KwAs},
 };
 
 bool is_identifier_start(char character) {
@@ -99,8 +103,7 @@ void Lexer::lex_identifier(std::vector<Token>& tokens) {
 void Lexer::lex_integer(std::vector<Token>& tokens) {
     const auto begin = offset_;
     advance();
-    while (std::isdigit(static_cast<unsigned char>(peek())) != 0 ||
-           peek() == '_') {
+    while (is_identifier_continue(peek())) {
         advance();
     }
     add(tokens, TokenKind::Integer, begin, offset_);

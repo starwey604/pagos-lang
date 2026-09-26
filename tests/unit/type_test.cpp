@@ -21,8 +21,9 @@ TEST(Type, SemanticAnnotationsAreDistinctAndComposable) {
     }
     EXPECT_EQ(pagos::sema::type_name(Type::array(Type::integer(16, true), 7)),
               "[i16; 7]");
-    EXPECT_EQ(Type(pagos::syntax::Type::array(pagos::syntax::TypeKind::U32, 7)),
-              Type::array(Type::integer(32), 7));
+    EXPECT_EQ(
+        Type(pagos::syntax::Type::array(pagos::syntax::TypeKind::Integer, 7)),
+        Type::array(Type::integer(32), 7));
     EXPECT_NE(Type::record("A"), Type::record("B"));
 }
 
@@ -50,7 +51,7 @@ TEST(Type, UnresolvedHirCannotSilentlyBecomeU32) {
     }
     pagos::hir::Module module;
     module.result = pagos::hir::make_constant(
-        std::vector<std::uint32_t>{1},
+        std::vector<pagos::IntegerValue>{1},
         pagos::sema::Type::array(pagos::sema::Type::integer(32), 0), {});
     EXPECT_FALSE(pagos::mir::lower(module));
 }

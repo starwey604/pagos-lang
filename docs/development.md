@@ -136,7 +136,7 @@ build/debug/pagosc --max-aggregate-members=8192 --max-aggregate-bytes=32768 chec
 specializations, cache hits, maximum recursion depth, reserved array elements,
 and reserved array data bytes. Array limits are cumulative construction
 quotas, not process-memory caps. Defaults are 65,536 elements and 262,144 bytes;
-`u32` costs four bytes and `bool` one logical byte per planned element.
+integers cost width/8 bytes and `bool` one logical byte per planned element.
 Reservations precede expansion and are not refunded on early return. Cache
 hits and aliases do not reconstruct arrays. A zero array quota permits scalar
 code, but rejects any analyzed array construction.
@@ -161,7 +161,7 @@ build/debug/pagosc emit-llvm tests/lit/stage/array-lookup.pgs
 ```
 
 The lookup example embeds one read-only table and retains a checked Runtime
-index. Arrays currently support nonempty one-dimensional `u32`/`bool` values;
+index. Arrays support nonempty one-dimensional unsigned-integer/`bool` values;
 Static-index reads preserve individual element stages through aliases and
 direct calls. Inspect `tests/lit/stage/array-projection.pgs` for a Static
 result that still retains an unrelated Runtime input read. Nested arrays and

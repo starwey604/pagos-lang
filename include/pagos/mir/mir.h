@@ -141,6 +141,10 @@ struct BoolToU32Operation {
     ValueId operand;
 };
 
+struct IntegerCastOperation {
+    ValueId operand;
+};
+
 struct PhiIncoming {
     BlockId block;
     ValueId value;
@@ -150,10 +154,11 @@ struct PhiOperation {
     std::vector<PhiIncoming> incoming;
 };
 
-using Operation = std::variant<ConstantOperation, ExternalInputOperation,
-                               UnaryOperation, BinaryOperation,
-                               BoolToU32Operation, PhiOperation, ArrayOperation,
-                               IndexOperation, RecordOperation, FieldOperation>;
+using Operation =
+    std::variant<ConstantOperation, ExternalInputOperation, UnaryOperation,
+                 BinaryOperation, BoolToU32Operation, IntegerCastOperation,
+                 PhiOperation, ArrayOperation, IndexOperation, RecordOperation,
+                 FieldOperation>;
 
 struct Instruction {
     ValueId result;

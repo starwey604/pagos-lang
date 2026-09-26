@@ -6,6 +6,6 @@ record R { value: u32, flag: bool }
 let result = R(flag: true, value: 7).value;
 // OK: array-elements=0, array-bytes=0, aggregate-constructions=1, aggregate-members=2, aggregate-bytes=5
 // MEMBERS: error[E4010]: aggregate construction budget exceeded
-// MEMBERS: request 1 bool members and 1 u32 members; reserved 0/1 members, 0/262144 bytes
+// MEMBERS: request members by byte width [1, 2, 4, 8]: [1, 0, 1, 0]; reserved 0/1 members, 0/262144 bytes
 // BYTES: error[E4010]: aggregate construction budget exceeded
-// BYTES: request 1 bool members and 1 u32 members; reserved 0/65536 members, 0/4 bytes
+// BYTES: request members by byte width [1, 2, 4, 8]: [1, 0, 1, 0]; reserved 0/65536 members, 0/4 bytes

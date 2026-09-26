@@ -32,14 +32,14 @@ facts (`sema::Type`) and concrete residual descriptors (`mir::Type`). Semantic
 and MIR integers carry width/signedness, arrays carry a scalar element type
 and length, and record fields retain ordered types plus nominal identity.
 Deferred semantic lengths and error/unknown types cannot become valid MIR.
-Source syntax still admits only the M2 subset; representation support does
-not enable additional language types or generalize every MIR operation.
+Source syntax admits the M2 subset plus unsigned widths 8/16/32/64 and explicit
+integer conversions. Signed arithmetic and target-sized source types remain
+separate M3 slices; MIR rejects unsupported signed arithmetic and casts.
 
 `IntegerValue` stores up to 64 bits inline and delegates checked arithmetic
-to a private APInt adapter. Wider values are rejected explicitly. Existing
-M2 constant payloads remain compact u32/bool vectors; their evaluator ingress
-uses the integer adapter. Multi-width constant payload admission and signed
-source-language rules belong to M3. Shared constant equality, hashing, scalar
+to a private APInt adapter. Wider values are rejected explicitly. Scalar,
+array, and record integer payloads all use this canonical representation,
+including width and signedness in specialization keys. Shared equality, hashing, scalar
 conversion, and printing preserve nominal record identity and scalar types.
 
 HIR nodes are shared immutable computations, but their `Constant` payloads

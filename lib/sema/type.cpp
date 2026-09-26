@@ -13,8 +13,8 @@ Type::Type(const syntax::Type& annotation) {
     case syntax::TypeKind::Bool:
         kind = TypeKind::Bool;
         break;
-    case syntax::TypeKind::U32:
-        kind = TypeKind::Integer;
+    case syntax::TypeKind::Integer:
+        *this = integer(annotation.integer_width);
         break;
     case syntax::TypeKind::Never:
         kind = TypeKind::Never;
@@ -23,7 +23,7 @@ Type::Type(const syntax::Type& annotation) {
         kind = TypeKind::Error;
         break;
     case syntax::TypeKind::ArrayBool:
-    case syntax::TypeKind::ArrayU32:
+    case syntax::TypeKind::ArrayInteger:
         *this = array(Type(annotation.element_type()), annotation.length);
         break;
     case syntax::TypeKind::Record:

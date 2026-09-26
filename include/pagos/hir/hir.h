@@ -36,6 +36,7 @@ struct Expr {
         RuntimeBoundary,
         ExternalInput,
         Unary,
+        Cast,
         Binary,
         If,
         Sequence, // Ordered evaluations followed by the result value.

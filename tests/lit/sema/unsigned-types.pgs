@@ -1,0 +1,17 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let byte: u8 = 1;
+let mixed = 1u8 + 2u16;
+let compare = 1u64 == 1;
+let shift = 1u8 << 1;
+let array = [1u8, 1u64];
+let boolean = true as u8;
+let cast = 1 as bool;
+let aggregate = [1] as u32;
+let index = [1u8][0u8];
+// CHECK: expected `u8`, found `u32`
+// CHECK: expected `u8`, found `u16`
+// CHECK: expected `u64`, found `u32`
+// CHECK: expected `u8`, found `u32`
+// CHECK: expected `u8`, found `u64`
+// CHECK-COUNT-3: `as` requires integer source and destination types
+// CHECK: expected `u32`, found `u8`

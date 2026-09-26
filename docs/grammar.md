@@ -1,11 +1,11 @@
 # Core Grammar Sketch
 
-Status: normative syntax baseline, including the Milestone 2 loop and array
-slices. Later milestones should not silently change accepted programs.
+Status: normative syntax baseline, including the first Milestone 3 unsigned
+integer slice. Later milestones should not silently change accepted programs.
 
 ## Scope
 
-The compiler supports `bool`, `u32`, fixed-length scalar arrays, immutable
+The compiler supports `bool`, `u8/u16/u32/u64`, fixed-length scalar arrays, immutable
 bindings, functions, calls, `if` expressions, explicit stage constraints, and
 range-based `for` statements.
 Static ranges execute during analysis; Runtime ranges residualize as target
@@ -14,7 +14,8 @@ enclosing function, including when the compiler inlines that function.
 
 Source files use UTF-8. Keywords and identifiers are case-sensitive. An
 identifier starts with an ASCII letter or `_` and continues with ASCII letters,
-digits, or `_`. Decimal integer literals may contain `_` separators. `//`
+digits, or `_`. Decimal integer literals may contain `_` separators and an
+optional `u8`, `u16`, `u32`, or `u64` suffix, for example `65_535u16`. `//`
 starts a line comment. The source extension is `.pgs`.
 
 ## Grammar
@@ -32,7 +33,8 @@ function        = "fn" identifier "(" [ parameters ] ")"
                   "->" type block ;
 parameters      = parameter { "," parameter } ;
 parameter       = identifier ":" type ;
-scalar-type     = "bool" | "u32" ;
+integer-type    = "u8" | "u16" | "u32" | "u64" ;
+scalar-type     = "bool" | integer-type ;
 type            = scalar-type | identifier | "[" scalar-type ";" integer "]" ;
 
 block           = "{" { statement } [ expression ] "}" ;
@@ -56,12 +58,13 @@ equality        = comparison { ( "==" | "!=" ) comparison } ;
 comparison      = shift { ( "<" | "<=" | ">" | ">=" ) shift } ;
 shift           = additive { ( "<<" | ">>" ) additive } ;
 additive        = multiplicative { ( "+" | "-" ) multiplicative } ;
-multiplicative  = unary { ( "*" | "/" | "%" ) unary } ;
+multiplicative  = cast { ( "*" | "/" | "%" ) cast } ;
+cast            = unary { "as" integer-type } ;
 unary           = ( "!" | "~" ) unary | call ;
 call            = primary { "(" [ arguments ] ")" | "[" expression "]"
                           | "." identifier } ;
 arguments       = expression { "," expression } ;
-primary         = integer | "true" | "false" | identifier
+primary         = integer [ integer-type ] | "true" | "false" | identifier
                 | identifier "(" named-fields [ "," ] ")"
                 | "(" expression ")" | "[" arguments [ "," ] "]"
                 | "[" "for" identifier "in" expression ".." expression block "]" ;
@@ -84,16 +87,28 @@ branches of a terminating `if` can instead return directly.
 
 ## Core Type Rules
 
-Arithmetic operators require `u32`. Ordering comparisons also require `u32`
-and return `bool`; equality requires two scalar operands of the same type.
+Arithmetic and ordering operators require two integers of the same type.
+Ordering returns `bool`; equality requires two scalar operands of the same type.
 `!`, `&&`, and `||` require `bool`. An `if` condition must be `bool`, and a
 range's bounds must be `u32`. Initializers and return expressions must match
 their declared or inferred type. There are no implicit conversions in the
 core language.
 
-`~`, `&`, `|`, `^`, `<<`, and `>>` require `u32` operands and return `u32`.
+Unsuffixed literals default to `u32`; annotations do not retarget literals in
+this slice. Use `let byte: u8 = 255u8`, not `let byte: u8 = 255`. A suffixed
+literal must fit its type; `256u8` is an error, not a truncation. The suffix
+must be adjacent to the digits. Source array lengths remain unsuffixed literals.
+
+`value as u8` explicitly retains the low eight bits; widening, such as
+`byte as u64`, zero-extends. Same-type casts are allowed. Casts evaluate their
+operand exactly once, preserve its stage and effects, bind below unary operators
+and above multiplication, and associate left-to-right. Only integer-to-integer
+casts are supported; booleans, aggregates, and pointers cannot be cast.
+
+`~`, `&`, `|`, `^`, `<<`, and `>>` accept unsigned integers and preserve their
+type. Binary operands, including shift counts, must have the same type.
 Bitwise binary operators are strict, not short-circuiting. Right shift fills
-with zeros; left shift discards high bits. Shift counts must be below 32:
+with zeros; left shift discards high bits. Shift counts must be below the width:
 an analyzed Static count outside this range reports `E4009`, even with a Runtime
 left operand; a Runtime count is checked before shifting and traps if invalid.
 Unselected Static branches and skipped short-circuit operands are not evaluated.
@@ -108,7 +123,7 @@ Declarations are module-level and may be referenced before their declaration.
 Record and function names may not collide. Type names have a separate namespace
 from local bindings. Positional record construction is not supported.
 
-Fields are `u32` or `bool` only. Nested records, array fields, arrays of records,
+Fields are unsigned integers or `bool`. Nested records, array fields, arrays of records,
 empty records, methods, mutation, structural equality, and generics are deferred.
 Two differently named records remain distinct even with identical fields.
 Function parameters/results, annotations, and continuing `if` arms must agree
@@ -162,8 +177,8 @@ The implicit entry returns zero when its final value is an array.
 `[for i in 0..256 { i * i }]` constructs a 256-element array in ascending
 index order. Both bounds must evaluate to Static `u32` values, and the end
 must exceed the start. Its type has length `end - start`; each body
-must produce `u32` or `bool`. The immutable index is Static and scoped to each
-iteration. A body may call functions, bind locals, or return from the enclosing
+must produce an unsigned integer or `bool`. The immutable index is Static and
+scoped to each iteration. A body may call functions, bind locals, or return from the enclosing
 function. A definite return stops generation; Runtime returns remain residual.
 
 ```pagos
@@ -206,7 +221,7 @@ and budgeted; unselected Static branches do not generate or consume budget.
 Array construction has cumulative per-analysis quotas, charged before reserve
 or body evaluation: `--max-array-elements` (default 65,536 slots) and
 `--max-array-bytes` (default 262,144 logical data bytes). Each planned element
-costs one slot and four bytes for `u32` or one for `bool`. Non-continuing arrays
+costs one slot and width/8 bytes for integers or one for `bool`. Non-continuing arrays
 whose element type is `never` conservatively reserve four bytes per slot.
 Reservations are not refunded on early return. Literals and Runtime arrays
 share the quotas; aliases and specialization-cache hits do not reconstruct
@@ -221,7 +236,7 @@ Full host-memory accounting remains future work.
 
 All array and record constructors share `--max-aggregate-members` (default
 65,536) and `--max-aggregate-bytes` (default 262,144). An array element or record
-field costs one member; `u32` costs four logical bytes and `bool` one, without
+field costs one member; integers cost width/8 logical bytes and `bool` one, without
 target padding. Arrays whose continuation type is `never` reserve four bytes
 per element. A record uses its declared scalar field types even when an
 initializer returns early. Shared quota exhaustion reports `E4010`.

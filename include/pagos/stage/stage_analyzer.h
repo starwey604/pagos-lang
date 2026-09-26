@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "pagos/hir/hir.h"
 #include "pagos/sema/type_checker.h"
 #include "pagos/source/diagnostic.h"
@@ -86,7 +88,7 @@ class StageAnalyzer {
                               const sema::Type& type, source::Span span);
     bool reserve_array(std::size_t count, const sema::Type& type,
                        source::Span span);
-    bool reserve_aggregate(std::size_t bool_members, std::size_t u32_members,
+    bool reserve_aggregate(const std::array<std::size_t, 4>& width_counts,
                            source::Span span);
     hir::ExprPtr analyze_index(const syntax::IndexExpr& expression);
     hir::ExprPtr analyze_record(const syntax::RecordExpr& expression);

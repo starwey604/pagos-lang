@@ -1,0 +1,4 @@
+// RUN: %run_residual %s 4294967295 1
+// RUN: %run_residual %s trap 0
+// RUN: %run_optimized %s trap 0
+let result = 18446744073709551615u64 / external_input() as u64;

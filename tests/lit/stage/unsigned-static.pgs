@@ -1,0 +1,19 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s
+static let byte = 255u8 + 1u8;
+static let half = 0u16 - 1u16;
+static let wide = 18446744073709551615u64;
+static let wrap = wide + 1u64;
+static let narrow = wide as u8;
+static let widen = narrow as u64;
+static let precedence = ~0u8 as u64;
+static let chain = 65535 as u8 as u64;
+static let skipped = if false { 1u8 << 8u8 } else { 7u8 };
+// CHECK: byte: u8 [Static] = 0
+// CHECK: half: u16 [Static] = 65535
+// CHECK: wide: u64 [Static] = 18446744073709551615
+// CHECK: wrap: u64 [Static] = 0
+// CHECK: narrow: u8 [Static] = 255
+// CHECK: widen: u64 [Static] = 255
+// CHECK: precedence: u64 [Static] = 255
+// CHECK: chain: u64 [Static] = 255
+// CHECK: skipped: u8 [Static] = 7

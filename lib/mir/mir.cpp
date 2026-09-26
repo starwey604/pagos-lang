@@ -1,7 +1,9 @@
 #include "pagos/mir/mir.h"
 
+#include <algorithm>
 #include <ostream>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -206,7 +208,7 @@ std::expected<void, std::string> verify_function(const Function& function) {
             if (const auto* constant =
                     std::get_if<ConstantOperation>(&instruction.operation)) {
                 const auto* integers =
-                    std::get_if<std::vector<std::uint32_t>>(&constant->value);
+                    std::get_if<std::vector<IntegerValue>>(&constant->value);
                 const auto* booleans =
                     std::get_if<std::vector<bool>>(&constant->value);
                 if (const auto* record =
@@ -220,10 +222,17 @@ std::expected<void, std::string> verify_function(const Function& function) {
                     }
                     for (std::size_t field = 0; field < record->fields.size();
                          ++field) {
-                        const auto type =
-                            std::holds_alternative<bool>(record->fields[field])
-                                ? Type::Bool
-                                : Type::U32;
+                        const auto type = std::visit(
+                            [](auto scalar) -> Type {
+                                if constexpr (std::is_same_v<decltype(scalar),
+                                                             bool>)
+                                    return Type::Bool;
+                                else
+                                    return Type::integer(
+                                        scalar.type().width,
+                                        scalar.type().is_signed);
+                            },
+                            record->fields[field]);
                         if (type != instruction.type.fields[field]) {
                             return std::unexpected(
                                 "MIR record constant field type mismatch");
@@ -231,15 +240,26 @@ std::expected<void, std::string> verify_function(const Function& function) {
                     }
                     continue;
                 }
+                const auto matches_integer = [](const Type& type,
+                                                const IntegerValue& value) {
+                    return type.kind == Type::Integer &&
+                           type.integer_type == value.type();
+                };
+                const auto* integer =
+                    std::get_if<IntegerValue>(&constant->value);
                 const bool valid =
-                    (instruction.type.is_array() &&
-                     instruction.type.element_type() == Type::U32 && integers &&
-                     integers->size() == instruction.type.length) ||
+                    (instruction.type.is_array() && integers &&
+                     integers->size() == instruction.type.length &&
+                     std::ranges::all_of(
+                         *integers,
+                         [&](const auto& value) {
+                             return matches_integer(
+                                 instruction.type.element_type(), value);
+                         })) ||
                     (instruction.type.is_array() &&
                      instruction.type.element_type() == Type::Bool &&
                      booleans && booleans->size() == instruction.type.length) ||
-                    (instruction.type == Type::U32 &&
-                     std::holds_alternative<std::uint32_t>(constant->value)) ||
+                    (integer && matches_integer(instruction.type, *integer)) ||
                     (instruction.type == Type::Bool &&
                      std::holds_alternative<bool>(constant->value));
                 if (!valid) {
@@ -268,10 +288,12 @@ std::expected<void, std::string> verify_function(const Function& function) {
                     return valid;
                 }
                 const auto expected = unary->operation == UnaryOperator::Not
-                                          ? Type::Bool
-                                          : Type::U32;
+                                          ? Type(Type::Bool)
+                                          : *operand;
                 if ((unary->operation != UnaryOperator::Not &&
                      unary->operation != UnaryOperator::BitNot) ||
+                    (unary->operation == UnaryOperator::BitNot &&
+                     operand->kind != Type::Integer) ||
                     *operand != expected || instruction.type != expected) {
                     return std::unexpected("invalid MIR unary operation");
                 }
@@ -311,12 +333,30 @@ std::expected<void, std::string> verify_function(const Function& function) {
                                             binary->operation == Greater ||
                                             binary->operation == GreaterEqual;
                     const auto result_type =
-                        comparison ? Type::Bool : Type::U32;
-                    if (*left != Type::U32 || *right != Type::U32 ||
+                        comparison ? Type(Type::Bool) : *left;
+                    if (left->kind != Type::Integer ||
+                        left->integer_type.is_signed || *right != *left ||
                         instruction.type != result_type) {
                         return std::unexpected(
                             "invalid MIR arithmetic operation");
                     }
+                }
+                continue;
+            }
+            if (const auto* cast =
+                    std::get_if<IntegerCastOperation>(&instruction.operation)) {
+                const auto operand = value_type(cast->operand);
+                if (!operand)
+                    return std::unexpected(operand.error());
+                if (auto valid =
+                        require_dominance(cast->operand, block.id, index);
+                    !valid)
+                    return valid;
+                if (operand->kind != Type::Integer ||
+                    instruction.type.kind != Type::Integer ||
+                    operand->integer_type.is_signed ||
+                    instruction.type.integer_type.is_signed) {
+                    return std::unexpected("invalid MIR unsigned integer cast");
                 }
                 continue;
             }
@@ -506,6 +546,9 @@ void print_instruction(const Instruction& instruction, std::ostream& output) {
                    std::get_if<BinaryOperation>(&instruction.operation)) {
         output << binary_name(binary->operation) << ' '
                << value_name(binary->left) << ", " << value_name(binary->right);
+    } else if (const auto* integer_cast =
+                   std::get_if<IntegerCastOperation>(&instruction.operation)) {
+        output << "integer_cast " << value_name(integer_cast->operand);
     } else if (const auto* cast =
                    std::get_if<BoolToU32Operation>(&instruction.operation)) {
         output << "bool_to_u32 " << value_name(cast->operand);

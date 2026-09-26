@@ -62,7 +62,7 @@ invalid declarations/types/fields, and opaque Runtime boundaries.
 
 ## Deliberate limits
 
-Records must be nonempty, with `u32`/`bool` fields only. Nested records, array
+Records must be nonempty, with unsigned-integer/`bool` fields. Nested records, array
 fields, arrays of records, methods, mutation, equality, generics, packing, and
 stable C ABI are not supported. An aggregate-valued implicit entry returns zero.
 Fuel, recursion depth, and specialization limits apply normally. Shared

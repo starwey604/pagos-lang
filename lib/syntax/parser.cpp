@@ -121,10 +121,12 @@ std::optional<Type> Parser::parse_type() {
     }
     if (match(TokenKind::LeftBracket)) {
         const auto element_span = current().span;
-        if (!check(TokenKind::KwBool) && !check(TokenKind::KwU32)) {
-            diagnostics_.error("E1002",
-                               "array elements must be `bool` or `u32`",
-                               element_span);
+        if (!check(TokenKind::KwBool) && !check(TokenKind::KwU32) &&
+            !check(TokenKind::KwU8) && !check(TokenKind::KwU16) &&
+            !check(TokenKind::KwU64)) {
+            diagnostics_.error(
+                "E1002", "array elements must be `bool` or an unsigned integer",
+                element_span);
             return std::nullopt;
         }
         const auto element = parse_type();
@@ -159,11 +161,18 @@ std::optional<Type> Parser::parse_type() {
         return TypeKind::Bool;
     }
     if (match(TokenKind::KwU32)) {
-        return TypeKind::U32;
+        return TypeKind::Integer;
     }
-    diagnostics_.error("E1002", "expected type", current().span,
-                       "expected `bool`, `u32`, a record name, or a "
-                       "fixed-length scalar array");
+    if (match(TokenKind::KwU8))
+        return Type::integer(8);
+    if (match(TokenKind::KwU16))
+        return Type::integer(16);
+    if (match(TokenKind::KwU64))
+        return Type::integer(64);
+    diagnostics_.error(
+        "E1002", "expected type", current().span,
+        "expected `bool`, an unsigned integer, a record name, or a "
+        "fixed-length scalar array");
     return std::nullopt;
 }
 
@@ -533,7 +542,7 @@ std::unique_ptr<Expr> Parser::parse_additive() {
 }
 
 std::unique_ptr<Expr> Parser::parse_multiplicative() {
-    auto expression = parse_unary();
+    auto expression = parse_cast();
     while (check(TokenKind::Star) || check(TokenKind::Slash) ||
            check(TokenKind::Percent)) {
         const auto kind = current().kind;
@@ -545,7 +554,21 @@ std::unique_ptr<Expr> Parser::parse_multiplicative() {
             operation = BinaryOperator::Remainder;
         }
         expression =
-            parse_binary(std::move(expression), operation, parse_unary());
+            parse_binary(std::move(expression), operation, parse_cast());
+    }
+    return expression;
+}
+
+std::unique_ptr<Expr> Parser::parse_cast() {
+    auto expression = parse_unary();
+    while (expression && match(TokenKind::KwAs)) {
+        const auto destination = parse_type();
+        if (!destination)
+            return nullptr;
+        const auto span = source::Span{.begin = expression->span.begin,
+                                       .end = previous().span.end};
+        expression = std::make_unique<CastExpr>(std::move(expression),
+                                                *destination, span);
     }
     return expression;
 }
@@ -690,8 +713,27 @@ std::unique_ptr<Expr> Parser::parse_primary() {
             source::Span{.begin = start, .end = right->span.end});
     }
     if (match(TokenKind::Integer)) {
-        return std::make_unique<IntegerExpr>(std::string(previous().lexeme),
-                                             previous().span);
+        const auto token = previous();
+        const auto suffix_start = token.lexeme.find_first_not_of("0123456789_");
+        auto literal = std::make_unique<IntegerExpr>(
+            std::string(token.lexeme.substr(0, suffix_start)), token.span);
+        if (suffix_start != std::string_view::npos) {
+            const auto suffix = token.lexeme.substr(suffix_start);
+            if (suffix == "u8")
+                literal->width = 8;
+            else if (suffix == "u16")
+                literal->width = 16;
+            else if (suffix == "u32")
+                literal->width = 32;
+            else if (suffix == "u64")
+                literal->width = 64;
+            else {
+                diagnostics_.error("E1005", "invalid integer literal suffix",
+                                   token.span, "expected u8, u16, u32, or u64");
+                return nullptr;
+            }
+        }
+        return literal;
     }
     if (match(TokenKind::KwTrue)) {
         return std::make_unique<BooleanExpr>(true, previous().span);

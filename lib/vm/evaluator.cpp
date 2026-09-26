@@ -43,10 +43,7 @@ Evaluator::unary(syntax::UnaryOperator operation,
     case syntax::UnaryOperator::Not:
         return hir::Constant{!std::get<bool>(operand)};
     case syntax::UnaryOperator::BitNot:
-        return hir::Constant{static_cast<std::uint32_t>(
-            IntegerValue::from_u32(std::get<std::uint32_t>(operand))
-                .bit_not()
-                .bits())};
+        return hir::Constant{std::get<IntegerValue>(operand).bit_not()};
     }
     return std::unexpected(
         EvaluationError{.code = "E4002", .message = "unknown unary operation"});
@@ -65,15 +62,16 @@ Evaluator::binary(syntax::BinaryOperator operation, const hir::Constant& left,
         const auto equal = constant_equal(left, right);
         return hir::Constant{operation == Equal ? equal : !equal};
     }
-    const auto lhs = IntegerValue::from_u32(std::get<std::uint32_t>(left));
-    const auto rhs = IntegerValue::from_u32(std::get<std::uint32_t>(right));
+    const auto lhs = std::get<IntegerValue>(left);
+    const auto rhs = std::get<IntegerValue>(right);
     if (const auto integer_op = integer_operation(operation)) {
         const auto result = lhs.apply(*integer_op, rhs);
         if (!result) {
             if (result.error() == IntegerError::InvalidShift) {
                 return std::unexpected(EvaluationError{
                     .code = "E4009",
-                    .message = "shift count must be less than 32"});
+                    .message = "shift count must be less than " +
+                               std::to_string(lhs.type().width)});
             }
             if (result.error() == IntegerError::DivideByZero) {
                 return std::unexpected(EvaluationError{
@@ -84,7 +82,7 @@ Evaluator::binary(syntax::BinaryOperator operation, const hir::Constant& left,
             return std::unexpected(EvaluationError{
                 .code = "E4002", .message = "invalid integer operation"});
         }
-        return hir::Constant{static_cast<std::uint32_t>(result->bits())};
+        return hir::Constant{*result};
     }
     const auto order = lhs.compare(rhs).value();
     switch (operation) {

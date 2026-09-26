@@ -1,5 +1,7 @@
 #pragma once
 
+#include "pagos/integer.h"
+
 #include <cstdint>
 #include <iosfwd>
 #include <string>
@@ -10,13 +12,13 @@ namespace pagos {
 
 // Target-independent value payloads shared by HIR and MIR. Record fields
 // are scalar and ordered by declaration, never by initializer spelling.
-using ScalarConstant = std::variant<std::uint32_t, bool>;
+using ScalarConstant = std::variant<IntegerValue, bool>;
 struct RecordConstant {
     std::string name;
     std::vector<ScalarConstant> fields;
     bool operator==(const RecordConstant&) const = default;
 };
-using Constant = std::variant<std::uint32_t, bool, std::vector<std::uint32_t>,
+using Constant = std::variant<IntegerValue, bool, std::vector<IntegerValue>,
                               std::vector<bool>, RecordConstant>;
 
 [[nodiscard]] std::size_t constant_hash(const Constant& value) noexcept;

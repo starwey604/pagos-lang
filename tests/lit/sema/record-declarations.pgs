@@ -10,8 +10,8 @@ let value: Unknown = 1;
 let another = Unknown(value: 1);
 // CHECK: empty records are not supported
 // CHECK: duplicate field `value`
-// CHECK: record fields must be `bool` or `u32`
-// CHECK: record fields must be `bool` or `u32`
+// CHECK: record fields must be `bool` or an unsigned integer
+// CHECK: record fields must be `bool` or an unsigned integer
 // CHECK: duplicate or reserved record name `Pair`
 // CHECK: function and record share name `Pair`
 // CHECK: unknown record type `Unknown`

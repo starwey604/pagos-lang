@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <expected>
 #include <string>
+#include <string_view>
 
 namespace pagos {
 
@@ -22,7 +23,8 @@ enum class IntegerError {
     TypeMismatch,
     DivideByZero,
     InvalidShift,
-    SignedOverflow
+    SignedOverflow,
+    InvalidLiteral
 };
 enum class IntegerOperation {
     Add,
@@ -40,8 +42,14 @@ enum class IntegerOperation {
 // Inline bits: no heap allocation per scalar and no LLVM types in public APIs.
 class IntegerValue {
   public:
+    // Compatibility ingress for compiler-created u32 loop/index constants.
+    IntegerValue(std::uint32_t bits = 0) noexcept : type_{}, bits_(bits) {}
     [[nodiscard]] static std::expected<IntegerValue, IntegerError>
     create(IntegerType type, std::uint64_t bits);
+    [[nodiscard]] static std::expected<IntegerValue, IntegerError>
+    parse_decimal(IntegerType type, std::string_view spelling);
+    [[nodiscard]] std::expected<IntegerValue, IntegerError>
+    convert(IntegerType destination) const;
     [[nodiscard]] static IntegerValue from_u32(std::uint32_t bits) noexcept {
         return IntegerValue({}, bits);
     }

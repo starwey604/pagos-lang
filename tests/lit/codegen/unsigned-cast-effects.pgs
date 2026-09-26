@@ -1,0 +1,6 @@
+// RUN: %run_residual %s 259 41 99
+// RUN: %run_optimized %s 259 41 99
+fn value(x: u32) -> u64 { 258u64 }
+let first = value(external_input()) as u8;
+let second = value(external_input()) as u16;
+let result = first as u32 + second as u32 - 1;

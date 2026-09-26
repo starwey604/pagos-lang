@@ -44,9 +44,9 @@ TEST(StageBudget, ResetsReservationsBetweenAnalyses) {
         EXPECT_EQ(analyzer.stats().array_elements_reserved, 3U);
         EXPECT_EQ(analyzer.stats().array_bytes_reserved, 12U);
         ASSERT_TRUE(result->result->constant);
-        EXPECT_EQ(
-            std::get<std::vector<std::uint32_t>>(*result->result->constant),
-            (std::vector<std::uint32_t>{4, 9, 16}));
+        EXPECT_EQ(std::get<std::vector<pagos::IntegerValue>>(
+                      *result->result->constant),
+                  (std::vector<pagos::IntegerValue>{4, 9, 16}));
     }
 }
 
@@ -112,7 +112,9 @@ TEST(StageRecord, CanonicalFieldsParticipateInSpecializationKeys) {
         EXPECT_EQ(analyzer.stats().specializations, 3U);
         EXPECT_EQ(analyzer.stats().cache_hits, 1U);
         ASSERT_TRUE(result->result->constant);
-        EXPECT_EQ(std::get<std::uint32_t>(*result->result->constant), 22U);
+        EXPECT_EQ(
+            std::get<pagos::IntegerValue>(*result->result->constant).bits(),
+            22U);
     }
 }
 
@@ -225,13 +227,13 @@ TEST(StageGenerator, ResolvesLengthWithoutMutatingSemanticTypes) {
     const auto& binding =
         static_cast<const syntax::BindingStmt&>(*input.module->statements[1]);
     ASSERT_EQ(input.checker.types().at(binding.initializer.get()),
-              syntax::Type::array(syntax::TypeKind::U32, 0));
+              syntax::Type::array(syntax::TypeKind::Integer, 0));
     stage::StageAnalyzer analyzer(input.diagnostics, input.checker.types());
     for (int iteration = 0; iteration < 2; ++iteration) {
         const auto result = analyzer.analyze(*input.module);
         ASSERT_FALSE(input.diagnostics.has_error());
         ASSERT_EQ(result->bindings.size(), 2U);
-        const auto expected = syntax::Type::array(syntax::TypeKind::U32, 3);
+        const auto expected = syntax::Type::array(syntax::TypeKind::Integer, 3);
         EXPECT_EQ(result->bindings[1].type, expected);
         EXPECT_EQ(result->bindings[1].value->type, expected);
         EXPECT_EQ(result->bindings[1].value->operands[0]->type, expected);
@@ -250,12 +252,18 @@ TEST(StageGenerator, ResolvesEachSpecializationIndependently) {
     const auto result = analyzer.analyze(*input.module);
     ASSERT_FALSE(input.diagnostics.has_error());
     ASSERT_EQ(result->bindings.size(), 3U);
-    EXPECT_EQ(std::get<std::uint32_t>(*result->bindings[0].value->constant),
-              1U);
-    EXPECT_EQ(std::get<std::uint32_t>(*result->bindings[1].value->constant),
-              3U);
-    EXPECT_EQ(std::get<std::uint32_t>(*result->bindings[2].value->constant),
-              1U);
+    EXPECT_EQ(
+        std::get<pagos::IntegerValue>(*result->bindings[0].value->constant)
+            .bits(),
+        1U);
+    EXPECT_EQ(
+        std::get<pagos::IntegerValue>(*result->bindings[1].value->constant)
+            .bits(),
+        3U);
+    EXPECT_EQ(
+        std::get<pagos::IntegerValue>(*result->bindings[2].value->constant)
+            .bits(),
+        1U);
     EXPECT_EQ(analyzer.stats().array_elements_reserved, 6U);
     EXPECT_EQ(analyzer.stats().cache_hits, 1U);
 }
@@ -304,7 +312,8 @@ TEST(StageGenerator, ReturningBoundDoesNotReserveOrEvaluateLaterWork) {
     const auto result = analyzer.analyze(*input.module);
     ASSERT_FALSE(input.diagnostics.has_error());
     ASSERT_TRUE(result->result->constant);
-    EXPECT_EQ(std::get<std::uint32_t>(*result->result->constant), 7U);
+    EXPECT_EQ(std::get<pagos::IntegerValue>(*result->result->constant).bits(),
+              7U);
     EXPECT_EQ(analyzer.stats().aggregate_constructions, 0U);
 }
 

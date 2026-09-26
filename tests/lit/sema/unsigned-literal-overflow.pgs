@@ -1,0 +1,11 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let a = 256u8;
+let b = 65536u16;
+let c = 4294967296u32;
+let d = 18446744073709551616u64;
+let e = 4294967296 as u64;
+// CHECK: integer literal does not fit `u8`
+// CHECK: integer literal does not fit `u16`
+// CHECK: integer literal does not fit `u32`
+// CHECK: integer literal does not fit `u64`
+// CHECK: integer literal does not fit `u32`

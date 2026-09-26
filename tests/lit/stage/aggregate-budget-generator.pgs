@@ -4,4 +4,4 @@ record R { value: u32, flag: bool }
 let a = [for i in 0..3 { R(value: i, flag: true).value }];
 // OK: array-elements=3, array-bytes=12, aggregate-constructions=4, aggregate-members=9, aggregate-bytes=27
 // FAIL: error[E4010]
-// FAIL: request 1 bool members and 1 u32 members; reserved 7/8 members, 22/262144 bytes
+// FAIL: request members by byte width [1, 2, 4, 8]: [1, 0, 1, 0]; reserved 7/8 members, 22/262144 bytes

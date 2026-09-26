@@ -86,4 +86,40 @@ TEST(Integer, U32MatchesDefinedUnsignedArithmetic) {
     }
 }
 
+TEST(Integer, DecimalParsingNeverTruncates) {
+    EXPECT_EQ(IntegerValue::parse_decimal({8, false}, "2_55")->bits(), 255U);
+    EXPECT_EQ(IntegerValue::parse_decimal({8, false}, "256").error(),
+              IntegerError::InvalidLiteral);
+    EXPECT_EQ(IntegerValue::parse_decimal({64, false}, "18446744073709551615")
+                  ->bits(),
+              ~std::uint64_t{0});
+    EXPECT_EQ(IntegerValue::parse_decimal({64, false}, "18446744073709551616")
+                  .error(),
+              IntegerError::InvalidLiteral);
+    for (const auto* text : {"", "_", "-1", "12bad"}) {
+        EXPECT_EQ(IntegerValue::parse_decimal({32, false}, text).error(),
+                  IntegerError::InvalidLiteral);
+    }
+    EXPECT_EQ(IntegerValue::parse_decimal({0, false}, "0").error(),
+              IntegerError::InvalidWidth);
+}
+
+TEST(Integer, ConversionsPreserveLowBitsAndExtendAccordingToSource) {
+    for (unsigned width : {8U, 16U, 32U, 64U}) {
+        auto source = *IntegerValue::create({width, false}, ~std::uint64_t{0});
+        for (unsigned destination : {8U, 16U, 32U, 64U}) {
+            auto converted = source.convert({destination, false});
+            ASSERT_TRUE(converted);
+            EXPECT_EQ(converted->type(),
+                      (pagos::IntegerType{destination, false}));
+            EXPECT_EQ(converted->bits(),
+                      IntegerValue::create({destination, false}, source.bits())
+                          ->bits());
+        }
+    }
+    auto negative = *IntegerValue::create({8, true}, 255);
+    EXPECT_EQ(negative.convert({64, false})->bits(), ~std::uint64_t{0});
+    EXPECT_EQ(negative.convert({0, false}).error(), IntegerError::InvalidWidth);
+}
+
 } // namespace

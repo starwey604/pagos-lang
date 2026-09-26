@@ -92,6 +92,11 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
     case Expr::Kind::ExternalInput:
         output << "external_input()";
         break;
+    case Expr::Kind::Cast:
+        output << "cast<" << sema::type_name(expression->type) << ">(";
+        print_expression(expression->operands.front(), output);
+        output << ')';
+        break;
     case Expr::Kind::Unary:
         output << (expression->unary_operation == syntax::UnaryOperator::Not
                        ? "not("

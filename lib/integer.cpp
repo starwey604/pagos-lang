@@ -3,7 +3,43 @@
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/SmallString.h>
 
+#include <algorithm>
+#include <charconv>
+
 namespace pagos {
+
+std::expected<IntegerValue, IntegerError>
+IntegerValue::parse_decimal(IntegerType type, std::string_view spelling) {
+    if (!type.valid()) {
+        return std::unexpected(IntegerError::InvalidWidth);
+    }
+    std::string digits(spelling);
+    std::erase(digits, '_');
+    std::uint64_t bits{};
+    const auto parsed =
+        std::from_chars(digits.data(), digits.data() + digits.size(), bits);
+    const auto maximum =
+        type.is_signed
+            ? llvm::APInt::getSignedMaxValue(type.width).getZExtValue()
+            : llvm::APInt::getMaxValue(type.width).getZExtValue();
+    if (parsed.ec != std::errc{} ||
+        parsed.ptr != digits.data() + digits.size() || bits > maximum) {
+        return std::unexpected(IntegerError::InvalidLiteral);
+    }
+    return IntegerValue(type, bits);
+}
+
+std::expected<IntegerValue, IntegerError>
+IntegerValue::convert(IntegerType destination) const {
+    if (!destination.valid()) {
+        return std::unexpected(IntegerError::InvalidWidth);
+    }
+    const llvm::APInt value(type_.width, bits_);
+    return IntegerValue(destination,
+                        (type_.is_signed ? value.sextOrTrunc(destination.width)
+                                         : value.zextOrTrunc(destination.width))
+                            .getZExtValue());
+}
 
 std::expected<IntegerValue, IntegerError>
 IntegerValue::create(IntegerType type, std::uint64_t bits) {

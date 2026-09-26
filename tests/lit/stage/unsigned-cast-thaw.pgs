@@ -1,0 +1,6 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let input = external_input();
+static let byte = input as u8;
+// CHECK: error[E2001]: static binding `byte` was thawed
+// CHECK: dependency path:
+// CHECK: external_input -> input -> byte

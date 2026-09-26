@@ -6,6 +6,6 @@ let r = R(value: 1, flag: true);
 let a = [2, 3];
 // OK: array-elements=2, array-bytes=8, aggregate-constructions=2, aggregate-members=4, aggregate-bytes=13
 // FAIL: error[E4010]
-// FAIL: request 0 bool members and 2 u32 members; reserved 2/3 members, 5/262144 bytes
+// FAIL: request members by byte width [1, 2, 4, 8]: [0, 0, 2, 0]; reserved 2/3 members, 5/262144 bytes
 // BYTES: error[E4010]
-// BYTES: request 0 bool members and 2 u32 members; reserved 2/65536 members, 5/12 bytes
+// BYTES: request members by byte width [1, 2, 4, 8]: [0, 0, 2, 0]; reserved 2/65536 members, 5/12 bytes

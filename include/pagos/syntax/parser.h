@@ -48,6 +48,7 @@ class Parser {
     std::unique_ptr<Expr> parse_additive();
     std::unique_ptr<Expr> parse_multiplicative();
     std::unique_ptr<Expr> parse_unary();
+    std::unique_ptr<Expr> parse_cast();
     std::unique_ptr<Expr> parse_call();
     std::unique_ptr<Expr> parse_primary();
     std::unique_ptr<Expr> parse_array_generator(source::Span start);

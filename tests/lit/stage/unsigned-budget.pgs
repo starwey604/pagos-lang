@@ -1,0 +1,11 @@
+// RUN: %pagosc --max-array-bytes=16 --max-aggregate-bytes=28 explain-stage %s | %FileCheck %s --check-prefix=OK
+// RUN: not %pagosc --max-array-bytes=15 check %s 2>&1 | %FileCheck %s --check-prefix=ARRAY
+// RUN: not %pagosc --max-aggregate-bytes=27 check %s 2>&1 | %FileCheck %s --check-prefix=RECORD
+record R { a: u8, b: u16, c: u64, d: bool }
+let table = [1u64, 2u64];
+let result = R(a: 1u8, b: 2u16, c: table[1], d: true);
+// OK: array-elements=2, array-bytes=16, aggregate-constructions=2, aggregate-members=6, aggregate-bytes=28
+// ARRAY: error[E4008]: array construction budget exceeded
+// ARRAY: request 2 elements at 8 bytes each
+// RECORD: error[E4010]: aggregate construction budget exceeded
+// RECORD: request members by byte width [1, 2, 4, 8]: [2, 1, 0, 1]

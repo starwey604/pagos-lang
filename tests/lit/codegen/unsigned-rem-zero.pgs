@@ -1,0 +1,5 @@
+// RUN: %run_residual %s 42 1
+// RUN: %run_residual %s trap 0
+// RUN: %run_optimized %s trap 0
+255u8 % external_input() as u8;
+let result = 42;

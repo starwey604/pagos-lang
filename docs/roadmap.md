@@ -95,8 +95,14 @@ Acceptance criteria:
 The [M3 preparation baseline](m3-preparation.md) is complete as of 2026-09-26.
 It covers measurement, locally exercised pinned CI, type/value foundations,
 target layout, effect interfaces, and the RV32 environment probe. Full M3
-language features remain to be implemented; remote CI and static-component
+language work has begun; remote CI and static-component
 LLVM linking are not claimed as verified.
+
+The first M3 slice implements `u8/u16/u32/u64`, typed decimal literals,
+explicit integer `as` conversions, and width-aware constants, arrays, records,
+construction budgets, MIR checks, and LLVM arithmetic. Existing `u32` programs
+retain their behavior. Signed integers and target-dependent `usize` are next;
+general Runtime calls, C ABI, object emission, memory, and MMIO remain open.
 
 Add the minimum systems features needed for real firmware:
 

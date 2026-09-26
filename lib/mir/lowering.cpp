@@ -37,6 +37,12 @@ class Lowerer {
             if (hir_module.result->type == sema::TypeKind::Bool) {
                 result = emit(Type::U32, BoolToU32Operation{.operand = result},
                               hir_module.result->span);
+            } else if (hir_module.result->type.kind ==
+                           sema::TypeKind::Integer &&
+                       hir_module.result->type != sema::TypeKind::Integer) {
+                result =
+                    emit(Type::U32, IntegerCastOperation{.operand = result},
+                         hir_module.result->span);
             } else if (hir_module.result->type.is_array() ||
                        hir_module.result->type.is_record()) {
                 result = emit(Type::U32,
@@ -152,6 +158,17 @@ class Lowerer {
             result =
                 emit(Type::U32, ExternalInputOperation{}, expression->span);
             break;
+        case hir::Expr::Kind::Cast: {
+            const auto operand = lower_expression(expression->operands.at(0));
+            if (!operand)
+                return std::unexpected(operand.error());
+            if (!live_)
+                return *operand;
+            result = emit(type_of(expression->type),
+                          IntegerCastOperation{.operand = *operand},
+                          expression->span);
+            break;
+        }
         case hir::Expr::Kind::Unary:
             result = lower_unary(expression);
             break;

@@ -171,9 +171,10 @@ class Generator {
     llvm::Value* emit_instruction(const mir::Instruction& instruction) {
         if (const auto* constant =
                 std::get_if<mir::ConstantOperation>(&instruction.operation)) {
-            if (std::holds_alternative<std::uint32_t>(constant->value)) {
-                return builder_.getInt32(
-                    std::get<std::uint32_t>(constant->value));
+            if (const auto* integer =
+                    std::get_if<IntegerValue>(&constant->value)) {
+                return llvm::ConstantInt::get(llvm_type(instruction.type),
+                                              integer->bits());
             }
             if (std::holds_alternative<bool>(constant->value)) {
                 return builder_.getInt1(std::get<bool>(constant->value));
@@ -188,7 +189,10 @@ class Generator {
                                                          bool>) {
                                 fields.push_back(builder_.getInt1(value));
                             } else {
-                                fields.push_back(builder_.getInt32(value));
+                                fields.push_back(llvm::ConstantInt::get(
+                                    llvm::IntegerType::get(context_,
+                                                           value.type().width),
+                                    value.bits()));
                             }
                         },
                         field);
@@ -203,9 +207,16 @@ class Generator {
                 [&](const auto& values) {
                     if constexpr (requires { values.size(); }) {
                         for (auto value : values) {
-                            elements.push_back(llvm::ConstantInt::get(
-                                llvm_type(instruction.type.element_type()),
-                                value));
+                            if constexpr (std::is_same_v<decltype(value),
+                                                         IntegerValue>) {
+                                elements.push_back(llvm::ConstantInt::get(
+                                    llvm_type(instruction.type.element_type()),
+                                    value.bits()));
+                            } else {
+                                elements.push_back(llvm::ConstantInt::get(
+                                    llvm_type(instruction.type.element_type()),
+                                    value));
+                            }
                         }
                     }
                 },
@@ -229,6 +240,12 @@ class Generator {
         if (const auto* binary =
                 std::get_if<mir::BinaryOperation>(&instruction.operation)) {
             return emit_binary(*binary);
+        }
+        if (const auto* cast = std::get_if<mir::IntegerCastOperation>(
+                &instruction.operation)) {
+            return builder_.CreateZExtOrTrunc(values_.at(cast->operand),
+                                              llvm_type(instruction.type),
+                                              "integer.cast");
         }
         if (const auto* cast =
                 std::get_if<mir::BoolToU32Operation>(&instruction.operation)) {
@@ -372,14 +389,16 @@ class Generator {
         // A known valid count needs no guard. Never emit an out-of-range
         // LLVM shift on an executed path: it would produce poison.
         const auto* count = llvm::dyn_cast<llvm::ConstantInt>(right);
-        if (!count || count->getZExtValue() >= 32) {
+        const auto width = left->getType()->getIntegerBitWidth();
+        if (!count || count->getZExtValue() >= width) {
             auto* function = builder_.GetInsertBlock()->getParent();
             auto* trap_block =
                 llvm::BasicBlock::Create(context_, "shift.oob", function);
             auto* continue_block =
                 llvm::BasicBlock::Create(context_, "shift.cont", function);
-            auto* valid = builder_.CreateICmpULT(right, builder_.getInt32(32),
-                                                 "shift.valid");
+            auto* valid = builder_.CreateICmpULT(
+                right, llvm::ConstantInt::get(right->getType(), width),
+                "shift.valid");
             builder_.CreateCondBr(valid, continue_block, trap_block);
             builder_.SetInsertPoint(trap_block);
             auto* trap = llvm::Intrinsic::getOrInsertDeclaration(

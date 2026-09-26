@@ -13,7 +13,7 @@ void print_scalar(const ScalarConstant& value, std::ostream& output) {
             if constexpr (std::is_same_v<decltype(scalar), bool>) {
                 output << (scalar ? "true" : "false");
             } else {
-                output << scalar;
+                output << scalar.decimal();
             }
         },
         value);
@@ -26,6 +26,15 @@ std::size_t constant_hash(const Constant& argument) noexcept {
     const auto mix = [&](std::size_t part) {
         hash ^= part + 0x9e3779b9U + (hash << 6U) + (hash >> 2U);
     };
+    const auto mix_scalar = [&](auto scalar) {
+        if constexpr (std::is_same_v<decltype(scalar), IntegerValue>) {
+            mix(scalar.type().width);
+            mix(scalar.type().is_signed);
+            mix(std::hash<std::uint64_t>{}(scalar.bits()));
+        } else {
+            mix(static_cast<std::size_t>(scalar));
+        }
+    };
     std::visit(
         [&](const auto& value) {
             if constexpr (std::is_same_v<std::decay_t<decltype(value)>,
@@ -34,19 +43,15 @@ std::size_t constant_hash(const Constant& argument) noexcept {
                 mix(value.fields.size());
                 for (const auto& field : value.fields) {
                     mix(field.index());
-                    std::visit(
-                        [&](auto scalar) {
-                            mix(static_cast<std::size_t>(scalar));
-                        },
-                        field);
+                    std::visit(mix_scalar, field);
                 }
             } else if constexpr (requires { value.size(); }) {
                 mix(value.size());
                 for (auto element : value) {
-                    mix(static_cast<std::size_t>(element));
+                    mix_scalar(element);
                 }
             } else {
-                mix(static_cast<std::size_t>(value));
+                mix_scalar(value);
             }
         },
         argument);

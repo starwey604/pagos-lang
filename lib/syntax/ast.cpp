@@ -38,7 +38,7 @@ std::string type_name(const Type& type) {
     case TypeKind::Record:
         return type.record_name;
     case TypeKind::ArrayBool:
-    case TypeKind::ArrayU32:
+    case TypeKind::ArrayInteger:
         return "[" + type_name(type.element_type()) + "; " +
                (type.length == 0 ? "?" : std::to_string(type.length)) + "]";
     case TypeKind::Unknown:
@@ -49,8 +49,8 @@ std::string type_name(const Type& type) {
         return "never";
     case TypeKind::Bool:
         return "bool";
-    case TypeKind::U32:
-        return "u32";
+    case TypeKind::Integer:
+        return "u" + std::to_string(type.integer_width);
     case TypeKind::Error:
         return "<error>";
     }
