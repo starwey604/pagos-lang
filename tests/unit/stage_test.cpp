@@ -473,4 +473,119 @@ TEST(ResidualSpecialization, StaticRecursionMayBuildDistinctResidualVersions) {
     EXPECT_EQ(mir->functions.size(), 4U);
 }
 
+TEST(RuntimeRecursion, ModuleOwnsCyclesWithoutKeepingThemAlive) {
+    StageInput input(
+        "fn a(n: u32) -> u32 { if n == 0 { 0 } else { b(n - 1) } } "
+        "fn b(n: u32) -> u32 { if n == 0 { 1 } else { a(n - 1) } } "
+        "let result = a(external_input());");
+    std::unique_ptr<pagos::hir::Module> hir;
+    std::weak_ptr<const pagos::hir::ResidualFunction> observed;
+    {
+        pagos::stage::StageAnalyzer analyzer(input.diagnostics,
+                                             input.checker.types());
+        hir = analyzer.analyze(*input.module);
+        ASSERT_FALSE(input.diagnostics.has_error());
+        ASSERT_EQ(hir->residual_functions.size(), 2U);
+        observed = hir->residual_functions.front();
+    }
+    // Calls survive the analyzer, but cyclic call edges do not own definitions.
+    ASSERT_FALSE(observed.expired());
+    const auto mir = pagos::mir::lower(*hir);
+    ASSERT_TRUE(mir) << mir.error();
+    EXPECT_EQ(mir->functions.size(), 3U);
+    hir.reset();
+    EXPECT_TRUE(observed.expired());
+}
+
+TEST(RuntimeRecursion, ReusesActiveSignatureAndResetsSessions) {
+    StageInput input(
+        "fn sum(n: u32) -> u32 { if n == 0 { 0 } "
+        "else { n + sum(n - 1) } } "
+        "let a = sum(external_input()); let b = sum(external_input());");
+    pagos::stage::AnalysisLimits limits;
+    limits.recursion_depth = 1;
+    limits.residual_specializations = 1;
+    pagos::stage::StageAnalyzer analyzer(input.diagnostics,
+                                         input.checker.types(), limits);
+    const auto first = analyzer.analyze(*input.module);
+    ASSERT_FALSE(input.diagnostics.has_error());
+    const auto second = analyzer.analyze(*input.module);
+    ASSERT_FALSE(input.diagnostics.has_error());
+    EXPECT_EQ(analyzer.stats().maximum_recursion_depth, 1U);
+    EXPECT_EQ(analyzer.stats().residual_specializations, 1U);
+    EXPECT_EQ(analyzer.stats().residual_cache_hits, 2U);
+    ASSERT_EQ(first->residual_functions.size(), 1U);
+    ASSERT_EQ(second->residual_functions.size(), 1U);
+    EXPECT_NE(first->residual_functions[0], second->residual_functions[0]);
+    EXPECT_TRUE(pagos::mir::lower(*first));
+    EXPECT_TRUE(pagos::mir::lower(*second));
+}
+
+TEST(RuntimeRecursion, StaticSubcallsRemainStaticInsideRuntimeVersions) {
+    StageInput input("fn f(n: u32) -> u32 { if n == 0 { 7 } else { "
+                     "static let base = f(0); base + n } } "
+                     "let result = f(external_input());");
+    pagos::stage::AnalysisLimits limits;
+    limits.residual_specializations = 1;
+    pagos::stage::StageAnalyzer analyzer(input.diagnostics,
+                                         input.checker.types(), limits);
+    const auto hir = analyzer.analyze(*input.module);
+    ASSERT_FALSE(input.diagnostics.has_error());
+    EXPECT_EQ(analyzer.stats().specializations, 1U);
+    EXPECT_EQ(analyzer.stats().residual_specializations, 1U);
+    EXPECT_FALSE(hir->residual_functions[0]->recursive);
+    EXPECT_TRUE(pagos::mir::lower(*hir));
+}
+
+TEST(RuntimeRecursion, VersionGrowthIsBoundedBeforeDepthExhaustion) {
+    StageInput input("fn grow(k: u32, n: u32) -> u32 { if n == 0 { k } "
+                     "else { grow(k + 1, n - 1) } } "
+                     "let result = grow(0, external_input());");
+    pagos::stage::AnalysisLimits limits;
+    limits.residual_specializations = 3;
+    pagos::stage::StageAnalyzer analyzer(input.diagnostics,
+                                         input.checker.types(), limits);
+    const auto hir = analyzer.analyze(*input.module);
+    ASSERT_EQ(input.diagnostics.size(), 1U);
+    EXPECT_EQ(input.diagnostics.diagnostics()[0].code, "E4012");
+    EXPECT_EQ(analyzer.stats().residual_specializations, 0U);
+    EXPECT_LE(analyzer.stats().maximum_recursion_depth, 4U);
+    EXPECT_TRUE(hir->residual_functions.empty());
+}
+
+TEST(RuntimeRecursion, FailedComponentsAreNotReused) {
+    StageInput input(
+        "fn a(n: u32) -> u32 { b(n); static let invalid = n; n } "
+        "fn b(n: u32) -> u32 { a(n) } "
+        "let first = a(external_input()); let second = b(external_input());");
+    pagos::stage::StageAnalyzer analyzer(input.diagnostics,
+                                         input.checker.types());
+    (void)analyzer.analyze(*input.module);
+    ASSERT_EQ(input.diagnostics.size(), 2U);
+    for (const auto& diagnostic : input.diagnostics.diagnostics())
+        EXPECT_EQ(diagnostic.code, "E2001");
+    // Both hits are active backedges, not reuse of the failed first component.
+    EXPECT_EQ(analyzer.stats().residual_cache_hits, 2U);
+}
+
+TEST(RuntimeRecursion,
+     EffectfulInfiniteCycleIsResidualButPureCycleIsStaticError) {
+    for (const bool effectful : {false, true}) {
+        StageInput input(std::string("fn spin() -> u32 { ") +
+                         (effectful ? "external_input(); " : "") +
+                         "spin() } let result = spin();");
+        pagos::stage::StageAnalyzer analyzer(input.diagnostics,
+                                             input.checker.types());
+        const auto hir = analyzer.analyze(*input.module);
+        if (effectful) {
+            ASSERT_FALSE(input.diagnostics.has_error());
+            EXPECT_EQ(analyzer.stats().residual_specializations, 1U);
+            EXPECT_TRUE(pagos::mir::lower(*hir));
+        } else {
+            ASSERT_EQ(input.diagnostics.size(), 1U);
+            EXPECT_EQ(input.diagnostics.diagnostics()[0].code, "E4003");
+        }
+    }
+}
+
 } // namespace

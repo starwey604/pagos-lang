@@ -104,7 +104,16 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
             print_expression(expression->operands[index], output);
         }
         output << ") {";
-        print_expression(expression->callee->body, output);
+        if (const auto callee = expression->callee.lock()) {
+            // Recursive definitions are printed separately below, never
+            // recursively expanded through call edges.
+            if (callee->recursive)
+                output << "recursive";
+            else
+                print_expression(callee->body, output);
+        } else {
+            output << "<missing definition>";
+        }
         output << '}';
         break;
     case Expr::Kind::Cast:
@@ -214,6 +223,14 @@ ExprPtr with_trace_step(const ExprPtr& expression, std::string step) {
 }
 
 void print(const Module& module, std::ostream& output) {
+    for (const auto& function : module.residual_functions) {
+        if (!function->recursive)
+            continue;
+        output << "recursive fn " << function->name << " -> "
+               << sema::type_name(function->result_type) << " = ";
+        print_expression(function->body, output);
+        output << '\n';
+    }
     for (const auto& record : module.records) {
         output << "record " << record.name << " {";
         for (std::size_t index = 0; index < record.fields.size(); ++index) {

@@ -1,0 +1,17 @@
+// RUN: %pagosc --max-recursion-depth=1 --max-residual-specializations=1 explain-stage %s | %FileCheck %s --check-prefix=STATS
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %run_residual %s 55 10
+// RUN: %run_optimized %s 55 10
+fn sum(n: u32) -> u32 {
+    if n == 0 { return 0; } else { return n + sum(n - 1); }
+}
+let result = sum(external_input());
+// STATS: max-depth=1
+// STATS-SAME: residual-specializations=1, residual-cache-hits=1
+// HIR: recursive fn sum -> u32 =
+// HIR-SAME: call sum(
+// HIR-SAME: {recursive}
+// MIR: func @pagos.sum.0(u32) -> u32
+// MIR: call @pagos.sum.0
+// MIR-NOT: func @

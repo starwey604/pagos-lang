@@ -153,21 +153,26 @@ still a separate execution: sharing code never memoizes Runtime results or
 merges reads/traps. Symbolic parameter provenance is rebound at the call site,
 so cache hits report the current caller's dependency path.
 
-`--max-residual-specializations` defaults to 4,096 completed definitions.
-Hits consume no additional version slot; misses are charged after successful
-body analysis, before publication. Fuel/depth/construction limits protect that
+`--max-residual-specializations` defaults to 4,096 versions. Non-recursive
+misses are charged after successful body analysis, before publication. Runtime
+recursive chains reserve slots before following recursive edges, including
+expansion through changing Static arguments with Runtime parameters. Completed
+definitions and active reservations share the limit; failed active reservations
+are released. Hits use no extra slot. Fuel/depth/construction limits protect
 analysis too. Exceeding the count produces `E4012`, never a silent staging
 fallback. Zero permits programs needing no residual definitions. This is not
 a machine-code-size or process-memory limit. `explain-stage` reports
 `residual-specializations` and `residual-cache-hits` separately from the Static
-cache statistics. Body constructions are counted once per analyzed definition;
+cache statistics; the hit counter includes active recursive backedges, not
+target executions. The version statistic counts completed definitions. Body
+constructions are counted once per analyzed definition;
 call-argument constructions still occur on every call.
 An all-Static-argument miss also consumes the existing Static specialization
 budget, even if its body returns Runtime; a residual hit consumes neither
 another Static specialization nor another residual version.
-Calls with aggregate arguments/results, and Static-result calls with residual
-effects, continue through the existing inline HIR path. This preserves precise
-aggregate projections and known results; having Runtime work alone does not
+Calls with aggregate arguments/results, and non-recursive Static-result calls
+with residual effects, continue through the existing inline HIR path. This
+preserves precise aggregate projections and known results; Runtime work alone does not
 force the result to Runtime. Internal signatures are not a public C ABI.
 
 The compiler memoizes specializations by function identity, static arguments,
@@ -184,9 +189,26 @@ Record keys contain the nominal name and typed scalar fields in declaration
 order, so reordered initializers share a key without reordering their effects.
 Static recursion is permitted when selected
 Static branches change the arguments and terminate within the configured fuel,
-depth, and specialization limits. Re-entering an active key is a recursive
-specialization cycle. Runtime recursion is not residualized yet and is rejected
-explicitly.
+depth, and specialization limits. Re-entering a pure Static active key is a
+recursive specialization cycle (`E4003`). A different all-Static key still
+evaluates normally, even when reached from a Runtime version of that function.
+Such expansion remains subject to Static fuel/depth/specialization budgets.
+
+Scalar direct and mutual Runtime recursion use predeclared signatures. An
+active key with Runtime parameters, or Runtime work already encountered in its
+call chain, becomes a residual backedge instead of another analysis. This also
+supports zero-argument recursion controlled by `external_input()`. Arguments,
+checked traps, and return scopes behave exactly as in non-recursive calls.
+The recursive chain conservatively produces Runtime results, including a known
+constant returned after recursive work: no termination/value fixed-point
+analysis is attempted. Active-call traces use current argument provenance when
+available, otherwise an explicit recursive-call origin, without expanding an
+infinite dependency path. Aggregate-signature recursive calls remain unsupported.
+
+Compilation limits bound analysis and specialization growth, not recursion
+depth on the target. Programs may fail to terminate or exhaust the target stack;
+there is no guaranteed tail-call optimization or runtime stack guard in this
+slice.
 
 ## 5. Control flow
 

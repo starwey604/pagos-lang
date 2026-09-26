@@ -70,13 +70,16 @@ struct Expr {
     std::optional<std::string> variable_name;
     std::uint32_t field_index{};
     std::vector<ExprPtr> operands;
-    std::shared_ptr<const ResidualFunction> callee;
+    // The module owns definitions; call edges must not own recursive cycles.
+    std::weak_ptr<const ResidualFunction> callee;
 };
 
 struct ResidualFunction {
     std::string name;
     std::vector<ExprPtr> parameters;
     ExprPtr body;
+    sema::Type result_type;
+    bool recursive{};
 };
 
 struct Binding {
@@ -102,6 +105,7 @@ struct Module {
     };
     std::vector<RecordType> records;
     std::vector<FunctionSummary> functions;
+    std::vector<std::shared_ptr<const ResidualFunction>> residual_functions;
     std::vector<Binding> bindings;
     ExprPtr result;
     // Semantic target width, including dependencies folded away during staging.

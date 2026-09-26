@@ -1,4 +1,4 @@
-// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+// RUN: %pagosc --max-recursion-depth=1 --max-residual-specializations=1 emit-mir %s | %FileCheck %s
 
 fn recurse(value: u32) -> u32 {
     recurse(value)
@@ -7,6 +7,9 @@ fn recurse(value: u32) -> u32 {
 runtime let input = external_input();
 let result = recurse(input);
 
-// CHECK: error[E4003]: Runtime-recursive call cannot be specialized
-// CHECK: recursive arguments are not all Static
-// CHECK: help: make recursive control and arguments Static
+// No termination guarantee: compile only, never execute this infinite loop.
+// CHECK: func @pagos_main() -> u32
+// CHECK: call @pagos.recurse.0
+// CHECK: func @pagos.recurse.0(u32) -> u32
+// CHECK: call @pagos.recurse.0
+// CHECK-NOT: func @

@@ -1,0 +1,11 @@
+// RUN: %run_residual %s 114 3 5
+// RUN: %run_optimized %s 114 3 5
+fn down(n: i8) -> i8 {
+    if n == 0i8 { 0i8 } else { n + down(n + 1i8) }
+}
+fn fact(n: i64) -> i64 {
+    if n <= 1i64 { 1i64 } else { n * fact(n - 1i64) }
+}
+let a = down(-(external_input() as i8)) as i64;
+let b = fact(external_input() as i64);
+let result = (a + b) as u32;

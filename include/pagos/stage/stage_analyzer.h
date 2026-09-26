@@ -86,13 +86,19 @@ class StageAnalyzer {
     struct ResidualKeyHash {
         std::size_t operator()(const ResidualKey& key) const noexcept;
     };
+    struct ResidualEntry {
+        std::shared_ptr<hir::ResidualFunction> definition;
+        bool runtime_seen{};
+        bool reserved{};
+    };
+    void note_runtime_work();
+    bool reserve_residual(ResidualEntry& entry, source::Span span);
     using TraceArguments = std::unordered_map<std::size_t, hir::RuntimeTrace>;
     [[nodiscard]] static hir::RuntimeTrace
     substitute_trace(hir::RuntimeTrace trace, const TraceArguments& arguments);
-    [[nodiscard]] hir::ExprPtr
-    make_residual_call(std::shared_ptr<const hir::ResidualFunction> callee,
-                       const std::vector<hir::ExprPtr>& arguments,
-                       source::Span span) const;
+    [[nodiscard]] hir::ExprPtr make_residual_call(
+        const std::shared_ptr<const hir::ResidualFunction>& callee,
+        const std::vector<hir::ExprPtr>& arguments, source::Span span);
     [[nodiscard]] static hir::ExprPtr instantiate_inline(
         const hir::ExprPtr& body,
         const std::unordered_map<const hir::Expr*, hir::ExprPtr>& arguments,
@@ -124,11 +130,11 @@ class StageAnalyzer {
 
     void define(const std::string& name, hir::ExprPtr value);
     [[nodiscard]] hir::ExprPtr lookup(const std::string& name) const;
-    [[nodiscard]] hir::ExprPtr make_runtime(
-        hir::Expr::Kind kind, sema::Type type, source::Span span,
-        std::vector<hir::ExprPtr> operands, hir::RuntimeTrace trace,
-        std::optional<syntax::UnaryOperator> unary = std::nullopt,
-        std::optional<syntax::BinaryOperator> binary = std::nullopt) const;
+    [[nodiscard]] hir::ExprPtr
+    make_runtime(hir::Expr::Kind kind, sema::Type type, source::Span span,
+                 std::vector<hir::ExprPtr> operands, hir::RuntimeTrace trace,
+                 std::optional<syntax::UnaryOperator> unary = std::nullopt,
+                 std::optional<syntax::BinaryOperator> binary = std::nullopt);
     [[nodiscard]] hir::ExprPtr make_sequence(std::vector<hir::ExprPtr> effects,
                                              hir::ExprPtr value,
                                              source::Span span) const;
@@ -160,6 +166,13 @@ class StageAnalyzer {
                        std::shared_ptr<const hir::ResidualFunction>,
                        ResidualKeyHash>
         residual_cache_;
+    std::unordered_map<ResidualKey, std::shared_ptr<ResidualEntry>,
+                       ResidualKeyHash>
+        active_residuals_;
+    std::vector<std::shared_ptr<ResidualEntry>> residual_stack_;
+    std::vector<std::shared_ptr<const hir::ResidualFunction>>
+        residual_functions_;
+    std::size_t residual_reservations_{};
     TraceArguments active_parameter_traces_;
     std::size_t next_parameter_id_{};
     bool fuel_exhausted_{};

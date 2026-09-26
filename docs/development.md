@@ -153,13 +153,19 @@ code, but rejects any analyzed array construction.
 
 The residual-definition limit defaults to 4,096, independently of the Static
 specialization limit. `residual-specializations` counts successfully analyzed
-Runtime scalar versions; `residual-cache-hits` counts their reuse. A hit keeps
+Runtime scalar versions; `residual-cache-hits` counts their reuse, including
+active recursive backedges. A hit keeps
 argument work but skips body analysis and another version charge. A miss is
-charged after successful analysis; its fuel/depth/construction costs still
-apply. Exceeding the limit reports `E4012`. Zero allows pure Static and inline
+charged after successful analysis; recursive chains reserve slots before
+following recursive edges. Active reservations share the limit with completed
+versions. Fuel/depth/construction costs still apply. Exceeding the limit reports
+`E4012`. Zero allows pure Static and non-recursive inline
 Static-result calls. This quota is not a generated-byte or total-memory limit.
 All-Static-argument misses still consume the existing Static specialization
 budget even when the analyzed body produces a Runtime result.
+Runtime recursion does not repeatedly enter analysis for an active key, so
+`--max-recursion-depth` limits compiler analysis depth, not target stack depth.
+No runtime stack guard or termination guarantee is provided.
 
 Shared array/record quotas additionally default to 65,536 aggregate members and
 262,144 logical bytes. `explain-stage` appends `aggregate-constructions`,

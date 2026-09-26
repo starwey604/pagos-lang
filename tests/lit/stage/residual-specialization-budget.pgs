@@ -7,7 +7,7 @@ let b = scale(2, external_input());
 let c = scale(3, external_input());
 // OK: residual-specializations=2, residual-cache-hits=1
 // LIMIT: error[E4012]: residual specialization limit of 1 exceeded
-// LIMIT: cannot create a new version of `scale`; 1 residual specializations already created
+// LIMIT: cannot create a new version of `scale`; 1 residual versions reserved or completed
 // LIMIT: help: increase --max-residual-specializations
 // LIMIT-NOT: error[
 // ZERO: error[E4012]: residual specialization limit of 0 exceeded

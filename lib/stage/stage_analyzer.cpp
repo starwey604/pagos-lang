@@ -127,12 +127,49 @@ StageAnalyzer::substitute_trace(hir::RuntimeTrace trace,
     return trace;
 }
 
+void StageAnalyzer::note_runtime_work() {
+    for (const auto& entry : residual_stack_)
+        entry->runtime_seen = true;
+}
+
+bool StageAnalyzer::reserve_residual(ResidualEntry& entry, source::Span span) {
+    if (entry.reserved)
+        return true;
+    const auto used = stats_.residual_specializations + residual_reservations_;
+    if (used >= limits_.residual_specializations) {
+        if (!residual_budget_exhausted_) {
+            diagnostics_.report({
+                .severity = source::Severity::Error,
+                .code = "E4012",
+                .message = "residual specialization limit of " +
+                           std::to_string(limits_.residual_specializations) +
+                           " exceeded",
+                .primary = {.span = span,
+                            .message =
+                                "cannot create a new version of `" +
+                                entry.definition->name + "`; " +
+                                std::to_string(used) +
+                                " residual versions reserved or completed"},
+                .help =
+                    "increase --max-residual-specializations or reduce "
+                    "distinct Static arguments and Runtime parameter patterns",
+            });
+            residual_budget_exhausted_ = true;
+        }
+        return false;
+    }
+    entry.reserved = true;
+    ++residual_reservations_;
+    return true;
+}
+
 hir::ExprPtr StageAnalyzer::make_residual_call(
-    std::shared_ptr<const hir::ResidualFunction> callee,
-    const std::vector<hir::ExprPtr>& arguments, source::Span span) const {
+    const std::shared_ptr<const hir::ResidualFunction>& callee,
+    const std::vector<hir::ExprPtr>& arguments, source::Span span) {
+    note_runtime_work();
     auto call = std::make_shared<hir::Expr>();
     call->kind = hir::Expr::Kind::Call;
-    call->type = callee->body->type;
+    call->type = callee->result_type;
     call->stage = hir::Stage::Runtime;
     call->span = span;
     call->variable_name = callee->name;
@@ -144,9 +181,30 @@ hir::ExprPtr StageAnalyzer::make_residual_call(
         traces.emplace(*parameter->trace->parameter_id, *argument->trace);
         call->operands.push_back(argument);
     }
-    if (callee->body->trace)
+    if (!callee->body) {
+        // Active recursive edges have no summary yet. Substituting the same
+        // parameter IDs into themselves would produce a cyclic trace.
+        call->trace =
+            hir::RuntimeTrace{.origin_span = span,
+                              .origin_name = "recursive call " + callee->name,
+                              .path = {"recursive call " + callee->name}};
+        for (const auto& argument : call->operands) {
+            if (argument->trace) {
+                call->trace = argument->trace;
+                call->trace->path.push_back("recursive call " + callee->name);
+                break;
+            }
+        }
+    } else if (callee->body->trace) {
         call->trace = substitute_trace(*callee->body->trace, traces);
-    call->callee = std::move(callee);
+    } else {
+        // Known constants after recursive work do not prove termination.
+        call->trace =
+            hir::RuntimeTrace{.origin_span = span,
+                              .origin_name = "recursive call " + callee->name,
+                              .path = {"recursive call " + callee->name}};
+    }
+    call->callee = callee;
     return call;
 }
 
@@ -185,6 +243,10 @@ StageAnalyzer::analyze(const syntax::Module& module) {
     specialization_cache_.clear();
     active_specializations_.clear();
     residual_cache_.clear();
+    active_residuals_.clear();
+    residual_stack_.clear();
+    residual_functions_.clear();
+    residual_reservations_ = 0;
     active_parameter_traces_.clear();
     next_parameter_id_ = 0;
     fuel_exhausted_ = false;
@@ -233,6 +295,7 @@ StageAnalyzer::analyze(const syntax::Module& module) {
         result->result =
             make_sequence(std::move(effects), std::move(value), span);
     }
+    result->residual_functions = std::move(residual_functions_);
     return result;
 }
 
@@ -408,6 +471,7 @@ hir::ExprPtr StageAnalyzer::analyze_binding(const syntax::BindingStmt& binding,
     }
 
     if (binding.binding_kind == syntax::BindingKind::Runtime) {
+        note_runtime_work();
         auto runtime = std::make_shared<hir::Expr>();
         runtime->kind = hir::Expr::Kind::RuntimeBoundary;
         runtime->type = value->type;
@@ -1117,6 +1181,50 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
             return make_sequence(std::move(argument_work), cached->second,
                                  expression.span);
         }
+    }
+    if (residual_key) {
+        if (const auto cached = residual_cache_.find(*residual_key);
+            cached != residual_cache_.end()) {
+            ++stats_.residual_cache_hits;
+            return make_sequence(
+                std::move(argument_work),
+                make_residual_call(cached->second, arguments, expression.span),
+                expression.span);
+        }
+    }
+    // Only recurrence within the current call chain forces Runtime treatment.
+    // Pure Static recursion still evaluates (and diagnoses exact-key cycles).
+    const auto recursive_begin =
+        std::ranges::find_if(residual_stack_, [&](const auto& entry) {
+            if (entry->definition->name != function.name)
+                return false;
+            if (!key)
+                return true;
+            // A different all-Static key may still terminate during staging,
+            // even when reached from a Runtime version of the same function.
+            if (!residual_key || !entry->runtime_seen)
+                return false;
+            const auto active = active_residuals_.find(*residual_key);
+            return active != active_residuals_.end() && active->second == entry;
+        });
+    const bool recursive_expansion = recursive_begin != residual_stack_.end();
+    if (residual_key && recursive_expansion) {
+        for (auto iterator = recursive_begin; iterator != residual_stack_.end();
+             ++iterator) {
+            (*iterator)->definition->recursive = true;
+            if (!reserve_residual(**iterator, expression.span))
+                return nullptr;
+        }
+        if (const auto active = active_residuals_.find(*residual_key);
+            active != active_residuals_.end()) {
+            ++stats_.residual_cache_hits;
+            return make_sequence(std::move(argument_work),
+                                 make_residual_call(active->second->definition,
+                                                    arguments, expression.span),
+                                 expression.span);
+        }
+    }
+    if (key) {
         if (active_specializations_.contains(*key)) {
             diagnostics_.report({
                 .severity = source::Severity::Error,
@@ -1130,27 +1238,20 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
             });
             return nullptr;
         }
-    } else if (std::ranges::find(call_stack_, expression.callee) !=
-               call_stack_.end()) {
+    } else if (!residual_key &&
+               std::ranges::find(call_stack_, expression.callee) !=
+                   call_stack_.end()) {
         diagnostics_.report({
             .severity = source::Severity::Error,
             .code = "E4003",
-            .message = "Runtime-recursive call cannot be specialized",
+            .message = "Runtime recursion requires scalar arguments and result",
             .primary = {.span = expression.span,
-                        .message = "recursive arguments are not all Static"},
-            .help = "make recursive control and arguments Static",
+                        .message =
+                            "aggregate recursive calls are not supported"},
+            .help = "use scalar recursive parameters and result or keep "
+                    "recursion Static",
         });
         return nullptr;
-    }
-    if (residual_key) {
-        if (const auto cached = residual_cache_.find(*residual_key);
-            cached != residual_cache_.end()) {
-            ++stats_.residual_cache_hits;
-            return make_sequence(
-                std::move(argument_work),
-                make_residual_call(cached->second, arguments, expression.span),
-                expression.span);
-        }
     }
     if (key && stats_.specializations >= limits_.specializations) {
         diagnostics_.report({
@@ -1223,7 +1324,23 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
     stats_.maximum_recursion_depth =
         std::max(stats_.maximum_recursion_depth, call_stack_.size());
     const auto diagnostics_before = diagnostics_.size();
-    auto block_result = analyze_block(*function.body);
+    std::shared_ptr<ResidualEntry> entry;
+    bool can_analyze = true;
+    if (residual_key) {
+        entry = std::make_shared<ResidualEntry>();
+        entry->definition = std::make_shared<hir::ResidualFunction>();
+        entry->definition->name = function.name;
+        entry->definition->parameters = parameters;
+        entry->definition->result_type = types_.resolve(function.result);
+        entry->definition->recursive = recursive_expansion;
+        entry->runtime_seen = !parameters.empty();
+        active_residuals_.emplace(*residual_key, entry);
+        residual_stack_.push_back(entry);
+        if (recursive_expansion)
+            can_analyze = reserve_residual(*entry, expression.span);
+    }
+    auto block_result =
+        can_analyze ? analyze_block(*function.body) : BlockResult{};
     auto result =
         make_sequence(std::move(block_result.effects),
                       std::move(block_result.value), function.body->span);
@@ -1247,53 +1364,45 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
     }
     call_stack_.pop_back();
     scopes_.pop_back();
+    if (entry) {
+        residual_stack_.pop_back();
+        active_residuals_.erase(*residual_key);
+        if (entry->reserved) {
+            --residual_reservations_;
+            entry->reserved = false;
+        }
+    }
     for (const auto& parameter : parameters)
         active_parameter_traces_.erase(*parameter->trace->parameter_id);
     if (key) {
         active_specializations_.erase(*key);
         if (diagnostics_.size() == diagnostics_before &&
+            (!entry || !entry->definition->recursive) &&
             hir::is_cacheable_result(result)) {
             specialization_cache_.emplace(std::move(*key), result);
         }
     }
-    if (diagnostics_.size() != diagnostics_before)
+    if (diagnostics_.size() != diagnostics_before) {
+        // A completed nested definition may point back to this failed body.
+        // Never reuse such a partially built component in subsequent calls.
+        residual_cache_.clear();
         return nullptr;
+    }
     if (result && residual_key) {
-        if (result->stage == hir::Stage::Runtime) {
-            // Charge completed definitions, not calls. Miss analysis remains
-            // bounded by fuel/depth/construction quotas before this point.
-            if (stats_.residual_specializations >=
-                limits_.residual_specializations) {
-                if (!residual_budget_exhausted_) {
-                    diagnostics_.report({
-                        .severity = source::Severity::Error,
-                        .code = "E4012",
-                        .message =
-                            "residual specialization limit of " +
-                            std::to_string(limits_.residual_specializations) +
-                            " exceeded",
-                        .primary =
-                            {.span = expression.span,
-                             .message =
-                                 "cannot create a new version of `" +
-                                 function.name + "`; " +
-                                 std::to_string(
-                                     stats_.residual_specializations) +
-                                 " residual specializations already created"},
-                        .help = "increase --max-residual-specializations or "
-                                "reduce distinct Static arguments and Runtime "
-                                "parameter patterns",
-                    });
-                    residual_budget_exhausted_ = true;
-                }
+        if (result->stage == hir::Stage::Runtime ||
+            entry->definition->recursive) {
+            if (!reserve_residual(*entry, expression.span)) {
+                residual_cache_.clear();
                 return nullptr;
             }
-            auto definition = std::make_shared<hir::ResidualFunction>(
-                function.name, std::move(parameters), std::move(result));
+            --residual_reservations_;
+            entry->reserved = false;
+            auto definition = entry->definition;
+            definition->body = std::move(result);
             residual_cache_.emplace(std::move(*residual_key), definition);
+            residual_functions_.push_back(definition);
             ++stats_.residual_specializations;
-            result = make_residual_call(std::move(definition), arguments,
-                                        expression.span);
+            result = make_residual_call(definition, arguments, expression.span);
         } else {
             result = instantiate_inline(result, substitutions, traces);
         }
@@ -1365,7 +1474,8 @@ hir::ExprPtr StageAnalyzer::make_runtime(
     hir::Expr::Kind kind, sema::Type type, source::Span span,
     std::vector<hir::ExprPtr> operands, hir::RuntimeTrace trace,
     std::optional<syntax::UnaryOperator> unary,
-    std::optional<syntax::BinaryOperator> binary) const {
+    std::optional<syntax::BinaryOperator> binary) {
+    note_runtime_work();
     auto expression = std::make_shared<hir::Expr>();
     expression->kind = kind;
     expression->type = std::move(type);

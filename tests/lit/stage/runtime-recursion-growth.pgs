@@ -1,0 +1,8 @@
+// RUN: not %pagosc --max-residual-specializations=3 check %s 2>&1 | %FileCheck %s
+fn grow(k: u32, n: u32) -> u32 {
+    if n == 0 { k } else { grow(k + 1, n - 1) }
+}
+let result = grow(0, external_input());
+// CHECK: error[E4012]: residual specialization limit of 3 exceeded
+// CHECK: 3 residual versions reserved or completed
+// CHECK-NOT: error[E4005]

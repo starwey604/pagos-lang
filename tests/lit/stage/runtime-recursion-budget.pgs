@@ -1,0 +1,11 @@
+// RUN: not %pagosc --max-residual-specializations=1 check %s 2>&1 | %FileCheck %s --check-prefix=VERSIONS
+// RUN: not %pagosc --max-recursion-depth=1 check %s 2>&1 | %FileCheck %s --check-prefix=DEPTH
+// RUN: %pagosc --max-recursion-depth=2 --max-residual-specializations=2 check %s
+// RUN: %pagosc --max-specializations=0 check %s
+// RUN: not %pagosc --max-fuel=1 check %s 2>&1 | %FileCheck %s --check-prefix=FUEL
+fn a(n: u32) -> u32 { if n == 0 { 0 } else { b(n - 1) } }
+fn b(n: u32) -> u32 { if n == 0 { 1 } else { a(n - 1) } }
+let result = a(external_input());
+// VERSIONS: error[E4012]: residual specialization limit of 1 exceeded
+// DEPTH: error[E4005]: compile-time recursion depth limit of 1 exceeded
+// FUEL: error[E4004]: compile-time evaluation fuel exhausted

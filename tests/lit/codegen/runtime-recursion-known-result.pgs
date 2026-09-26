@@ -1,0 +1,11 @@
+// RUN: %pagosc explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 7 3
+// RUN: %run_optimized %s 7 3
+fn known(n: u32) -> u32 {
+    if n == 0 { 0 } else { known(n - 1) };
+    7
+}
+let result = known(external_input());
+// Recursive completion is conservative: no termination or value fixed point.
+// CHECK: result: Runtime
+// CHECK: residual-specializations=1, residual-cache-hits=1

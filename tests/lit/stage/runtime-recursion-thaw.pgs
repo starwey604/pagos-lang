@@ -1,0 +1,9 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+fn sum(n: u32) -> u32 { if n == 0 { 0 } else { n + sum(n - 1) } }
+let first = external_input();
+let warm = sum(first);
+let second = external_input();
+static let result = sum(second);
+// CHECK: error[E2001]: static binding `result` was thawed
+// CHECK: :5:14
+// CHECK: external_input -> second -> sum.n -> result

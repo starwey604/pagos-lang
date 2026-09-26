@@ -1,0 +1,11 @@
+// RUN: %pagosc --max-residual-specializations=2 explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 6 4
+// RUN: %run_optimized %s 6 4
+fn alternate(up: bool, n: u32) -> u32 {
+    if n == 0 { 0 } else {
+        if up { 1 + alternate(false, n - 1) }
+        else { 2 + alternate(true, n - 1) }
+    }
+}
+let result = alternate(true, external_input());
+// CHECK: residual-specializations=2, residual-cache-hits=1

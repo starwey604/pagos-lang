@@ -1,0 +1,7 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+fn loop(n: u32, values: [u32; 2]) -> u32 {
+    if n == 0 { values[0] } else { loop(n - 1, values) }
+}
+let result = loop(external_input(), [1, 2]);
+// CHECK: error[E4003]: Runtime recursion requires scalar arguments and result
+// CHECK: aggregate recursive calls are not supported

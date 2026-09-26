@@ -508,9 +508,10 @@ class Lowerer {
 
     std::expected<ValueId, std::string>
     lower_call(const hir::ExprPtr& expression) {
-        if (!expression->callee || !expression->callee->body)
+        const auto callee_definition = expression->callee.lock();
+        if (!callee_definition || !callee_definition->body)
             return std::unexpected("HIR call requires a residual definition");
-        const auto& definition = *expression->callee;
+        const auto& definition = *callee_definition;
         if (expression->operands.size() != definition.parameters.size())
             return std::unexpected("HIR call argument count mismatch");
         std::vector<ValueId> arguments;

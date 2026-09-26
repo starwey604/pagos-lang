@@ -1,0 +1,11 @@
+// RUN: %run_residual %s 17 1 4 3 0 9
+// RUN: %run_residual %s 99 1 4 8
+// RUN: %run_optimized %s 17 1 4 3 0 9
+// RUN: %run_optimized %s 99 1 4 8
+fn walk(n: u32, value: u32) -> u32 {
+    if n == 0 { return value; } else {
+        walk(if external_input() == 8 { return 99; } else { external_input() },
+             external_input()) + value + value
+    }
+}
+let result = walk(external_input(), external_input());

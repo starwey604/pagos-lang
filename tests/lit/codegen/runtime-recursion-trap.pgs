@@ -1,0 +1,7 @@
+// RUN: %run_residual %s trap 2 9
+// RUN: %run_optimized %s trap 2 9
+fn descend(n: u32, value: u32) -> u32 {
+    if n == 0 { value } else { descend(n - 1, value / (n - 1)) }
+}
+descend(external_input(), external_input());
+let result = external_input();

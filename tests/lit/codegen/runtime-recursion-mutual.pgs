@@ -1,0 +1,13 @@
+// RUN: %pagosc --max-recursion-depth=2 --max-residual-specializations=2 explain-stage %s | %FileCheck %s
+// RUN: %run_residual %s 1 12 9
+// RUN: %run_optimized %s 1 12 9
+fn even(n: usize) -> bool {
+    if n == 0usize { true } else { odd(n - 1usize) }
+}
+fn odd(n: usize) -> bool {
+    if n == 0usize { false } else { even(n - 1usize) }
+}
+let a = even(external_input() as usize);
+let b = odd(external_input() as usize);
+let result = a && b;
+// CHECK: residual-specializations=2, residual-cache-hits=2

@@ -109,8 +109,10 @@ and Static evaluation, and cross-session width consistency checks;
 the fourth slice emits scalar residual functions with typed parameters and
 direct calls, preserving argument evaluation and early-return boundaries.
 The fifth slice reuses equivalent scalar residual specializations within one
-analysis, with a separate version budget and hit statistics. Runtime recursion,
-aggregate call lowering, C ABI, object emission, memory, and MMIO remain open.
+analysis, with a separate version budget and hit statistics. The sixth slice
+supports scalar direct and mutual Runtime recursion through active signatures
+and bounded recursive specialization growth. Aggregate call lowering, C ABI,
+object emission, memory, and MMIO remain open.
 
 Add the minimum systems features needed for real firmware:
 

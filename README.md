@@ -158,8 +158,11 @@ real MIR/LLVM calls; Static arguments still specialize their bodies. See the
 Equivalent scalar specializations share one definition within an analysis;
 see the [reuse example](tests/lit/codegen/residual-reuse.pgs). The independent
 `--max-residual-specializations` limit bounds their count. Aggregate and
-Static-result calls retain the inline path. Runtime recursion is not implemented
-yet; these internal signatures are not C ABI.
+non-recursive Static-result calls retain the inline path. Scalar direct and
+mutual Runtime recursion now reuse active signatures; see the
+[recursive example](tests/lit/codegen/runtime-recursion-sum.pgs). Compilation
+budgets do not guarantee termination or bound the target stack. These internal
+signatures are not C ABI.
 
 ## Development
 

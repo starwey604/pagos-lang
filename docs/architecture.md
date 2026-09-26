@@ -191,8 +191,8 @@ The current evaluator supports bounded Static recursion and memoizes pure,
 fully Static results. `AnalysisLimits` controls fuel, recursion depth, and the
 number of Static specializations and, separately, completed scalar residual
 definitions. `AnalysisStats` exposes both counts and cache-hit counters, along
-with consumption and maximum depth. Runtime recursion and full host-memory
-accounting remain future work.
+with consumption and maximum analysis depth. Scalar Runtime recursion reuses
+active signatures. Full host-memory accounting remains future work.
 
 Array generators retain bound expressions in compact AST nodes through type
 checking, without per-element AST expansion. The semantic type table retains
@@ -376,15 +376,25 @@ constants after preserving their effects in the caller. Each call remains a
 distinct HIR computation identity. Lowering interns definition identities into
 module-local symbols, with a separate SSA/dominance cache and return scopes
 per function. Aggregate calls retain their inline path and projection precision.
-Scalar Static-result bodies are instantiated back into the caller with a
-DAG-preserving parameter substitution, not forced into Runtime calls.
+Non-recursive scalar Static-result bodies are instantiated back into the caller
+with a DAG-preserving parameter substitution, not forced into Runtime calls.
 
 Parameter traces carry symbolic IDs. Invocation substitutes current argument
 provenance, and diagnostics during analysis resolve active parameter chains.
-Completed Runtime definitions alone enter the residual cache; failed analyses
-do not publish partial entries. Hits skip body analysis but still analyze and
-evaluate the caller's arguments. Version budgets count completed definitions,
-not call sites, emitted bytes, or peak memory.
+Completed Runtime definitions enter the reusable cache; a separate active-key
+map exposes provisional typed signatures for direct and mutual recursion.
+Recursive edges reserve version slots and conservatively return Runtime, without
+requiring a completed body summary. Failed analyses clear the reusable residual
+cache because nested definitions may refer back to the failed body. Other
+independent diagnostics still run. Hits skip body analysis but still analyze and
+evaluate arguments. Version quotas include active recursive reservations and
+completed definitions, not call sites, emitted bytes, or peak memory.
+
+The HIR module owns residual definitions; call edges hold weak references so
+recursive components do not leak through shared ownership cycles. Definitions
+outlive the analyzer when their module does. MIR reserves each symbol before
+lowering its body, and LLVM predeclares all signatures. HIR printing lists
+recursive bodies separately and prints backreferences without expanding cycles.
 
 `mir::Function` has typed parameters and internal linkage; `ParameterOperation`
 and `CallOperation` represent parameter values and direct symbol calls.
@@ -394,9 +404,10 @@ LLVM declares all signatures before emitting bodies. Generated symbols use
 `pagos.<source-name>.<module-local-id>` and are internal; LLVM may inline them
 during optimization. `pagos_main` keeps the existing test entry ABI.
 
-Runtime recursion remains rejected; recursive signatures are a separate next
-slice, before object emission and explicit foreign declarations/calling
-conventions. Do not infer aggregate C ABI classification from storage layout
+Scalar Runtime recursion is supported, but aggregate recursive signatures,
+object emission and explicit foreign declarations/calling conventions remain
+separate work. Compilation budgets neither prove termination nor bound target
+stack usage. Do not infer aggregate C ABI classification from storage layout
 alone.
 
 Ordinary external calls are Runtime and conservatively effectful unless a
