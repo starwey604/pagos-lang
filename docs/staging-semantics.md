@@ -265,44 +265,59 @@ tables, or target-specific sections.
 Compile-time arithmetic must agree with target execution. The evaluator uses
 explicit target-width representations rather than native host C++ arithmetic.
 
-The first Milestone 3 integer slice supports `bool` and `u8/u16/u32/u64`.
+Milestone 3 supports `bool`, `u8/u16/u32/u64`, and `i8/i16/i32/i64`.
 Decimal literals default to `u32`, independently of surrounding annotations;
-an adjacent suffix selects another width (`255u8`, `18_446_744_073_709_551_615u64`).
-A literal that does not fit is a compile error. Unary `-` remains outside the
-core grammar until signed types are specified.
+an adjacent suffix selects width and signedness (`255u8`, `127i8`).
+A literal that does not fit is a compile error. Unary `-` requires a signed
+operand. Directly negated signed literals are checked with their sign, allowing
+`-128i8` and `-9223372036854775808i64`; a positive `128i8` remains invalid.
+Unsuffixed negative expressions remain invalid because the operand is `u32`.
 
-Unsigned addition, subtraction, and multiplication wrap modulo 2^width at both
-stages. Division or remainder by zero is an error during static evaluation and
+Integer addition, subtraction, multiplication, and signed negation wrap modulo
+2^width at both stages. Division or remainder by zero is an error during Static
+evaluation (`E4001`) and
 a defined runtime trap in residual code. Comparisons produce `bool`. The
 evaluator must implement these rules explicitly and must not inherit the host
 C++ integer model.
 
+Signed values use two's complement. Division truncates toward zero and
+remainder has the dividend's sign (or is zero). `MIN / -1` and `MIN % -1`
+report `E4011` during Static evaluation and trap at Runtime. Runtime code checks
+both this pair and zero divisors before executing `sdiv` or `srem`, even when
+the result is discarded. Negating `MIN`, unlike dividing it by -1, wraps to
+`MIN`. Signed comparisons use signed ordering; equality compares typed bits.
+
 Strict integer bitwise operators are `&`, `|`, `^`, and complement `~`.
-`<<` shifts left modulo 2^width; `>>` is logical (zero-filling), not arithmetic.
-Both operands have the same integer type and evaluate left-to-right. A Static
-shift count at least as large as the width reports `E4009` when analyzed, even
-if the left operand is Runtime. A Runtime count is checked before execution;
+`<<` shifts left modulo 2^width; `>>` sign-fills signed integers and zero-fills
+unsigned integers. Both operands have the same integer type and evaluate
+left-to-right. A Static
+shift count below zero or at least as large as the width reports `E4009` when
+analyzed, even if the left operand is Runtime. A Runtime count is checked before
+execution;
 invalid counts trap, including in discarded expressions. Counts are never
 implicitly masked. Explicit Runtime boundaries remain opaque to staging.
 The LLVM backend must not execute an out-of-range shift or add overflow/exact
 flags that contradict these rules. Static and residual evaluation agree at
 counts 0 and width minus one and on discarded high bits.
 
-Explicit `as` conversions truncate low bits when narrowing and zero-extend
-when widening. They do not change binding time, discard effects, or permit an
-out-of-range literal: `256u8` fails, whereas `256 as u8` is zero. Integer width
+Explicit `as` conversions retain low bits when narrowing; widening sign-extends
+signed sources and zero-extends unsigned sources. Equal-width conversions keep
+bits and change their interpretation. They do not change binding time,
+discard effects, or permit an out-of-range literal: `256u8` fails, whereas
+`256 as u8` is zero. Integer width
 and signedness belong to scalar, array, record, and specialization-key values.
 Aggregate construction quotas count width/8 logical bytes per integer slot,
 not the host representation's storage size or target record padding.
 
 The research entry wrapper still exports `u32 pagos_main()`: narrower integer
-results zero-extend, wider results truncate to `u32`, booleans become 0/1, and
+results extend according to source signedness, wider results truncate to `u32`,
+equal-width signed results preserve bits, booleans become 0/1, and
 aggregates return zero after evaluating their effects. `external_input()`,
 range bounds/indices, and array indices remain `u32`. This is a test ABI,
 not general C ABI support.
 
-Signed integers, floating point, implicit conversions, and `usize` are outside
-the core grammar. Before introduction, each must define overflow and target
+Floating point, implicit conversions, and `usize` are outside the core grammar.
+Before introduction, each must define overflow and target
 layout behavior; `usize` must follow the selected target data layout even when
 evaluated on the host.
 

@@ -1,0 +1,22 @@
+// RUN: %pagosc emit-llvm %s | %FileCheck %s
+// RUN: %run_residual %s 1 4294967289 1
+// RUN: %run_optimized %s 1 4294967289 1
+fn fold(a: i64, b: i64) -> i64 {
+    (a + b) ^ (a - b) ^ (a * b) ^ (a / b) ^ (a % b) ^
+    (~a) ^ (a & b) ^ (a | b) ^ (a << 1i64) ^ (a >> 1i64)
+}
+let a = external_input() as i32 as i64;
+let minimum = external_input() as i64 << 63i64;
+let maximum = minimum - 1i64;
+let result = fold(a, 3i64) == fold(-7i64, 3i64) &&
+             -a == 7i64 && a < 0i64 && a <= -7i64 &&
+             0i64 > a && -7i64 >= a && a / 3i64 == -2i64 &&
+             a % 3i64 == -1i64 && -minimum == minimum &&
+             minimum + minimum == 0i64 && maximum * 2i64 == -2i64 &&
+             minimum >> 63i64 == -1i64;
+// CHECK-DAG: sdiv i64
+// CHECK-DAG: srem i64
+// CHECK-DAG: ashr i64
+// CHECK-DAG: icmp slt i64
+// CHECK-DAG: sub i64 0,
+// CHECK-DAG: division.overflow

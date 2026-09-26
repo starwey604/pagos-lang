@@ -1,0 +1,12 @@
+// RUN: %run_residual %s 4294967295 1 1
+// RUN: %run_residual %s 4294967294 0 1
+// RUN: %run_residual %s 4294967264 0 0
+// RUN: %run_optimized %s 4294967295 1 1
+// RUN: %run_optimized %s 4294967294 0 1
+// RUN: %run_optimized %s 4294967264 0 0
+fn choose(flag: u32, end: u32) -> i8 {
+    let value = if flag != 0 { -7i8 } else { -25i8 };
+    for i in 0..end { return value / 3i8; }
+    -128i8
+}
+let result = (choose(external_input(), external_input()) >> 2i8) as i64;

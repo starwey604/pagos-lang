@@ -15,18 +15,27 @@ IntegerValue::parse_decimal(IntegerType type, std::string_view spelling) {
     }
     std::string digits(spelling);
     std::erase(digits, '_');
+    const bool negative = digits.starts_with('-');
+    if (negative) {
+        if (!type.is_signed) {
+            return std::unexpected(IntegerError::InvalidLiteral);
+        }
+        digits.erase(0, 1);
+    }
     std::uint64_t bits{};
     const auto parsed =
         std::from_chars(digits.data(), digits.data() + digits.size(), bits);
     const auto maximum =
-        type.is_signed
+        negative ? llvm::APInt::getSignedMinValue(type.width).getZExtValue()
+        : type.is_signed
             ? llvm::APInt::getSignedMaxValue(type.width).getZExtValue()
             : llvm::APInt::getMaxValue(type.width).getZExtValue();
     if (parsed.ec != std::errc{} ||
         parsed.ptr != digits.data() + digits.size() || bits > maximum) {
         return std::unexpected(IntegerError::InvalidLiteral);
     }
-    return IntegerValue(type, bits);
+    const auto value = IntegerValue(type, bits);
+    return negative ? value.negate() : value;
 }
 
 std::expected<IntegerValue, IntegerError>
@@ -59,6 +68,11 @@ std::string IntegerValue::decimal() const {
 IntegerValue IntegerValue::bit_not() const {
     return IntegerValue(type_,
                         (~llvm::APInt(type_.width, bits_)).getZExtValue());
+}
+
+IntegerValue IntegerValue::negate() const {
+    return IntegerValue(type_,
+                        (-llvm::APInt(type_.width, bits_)).getZExtValue());
 }
 
 std::expected<IntegerValue, IntegerError>

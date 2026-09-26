@@ -1,12 +1,13 @@
 # Core Grammar Sketch
 
-Status: normative syntax baseline, including the first Milestone 3 unsigned
-integer slice. Later milestones should not silently change accepted programs.
+Status: normative syntax baseline, including Milestone 3 fixed-width integers.
+Later milestones should not silently change accepted programs.
 
 ## Scope
 
-The compiler supports `bool`, `u8/u16/u32/u64`, fixed-length scalar arrays, immutable
-bindings, functions, calls, `if` expressions, explicit stage constraints, and
+The compiler supports `bool`, unsigned `u8/u16/u32/u64`, signed `i8/i16/i32/i64`,
+fixed-length scalar arrays, immutable bindings, functions, calls, `if`
+expressions, explicit stage constraints, and
 range-based `for` statements.
 Static ranges execute during analysis; Runtime ranges residualize as target
 control flow. A `return` inside an expression block or loop exits the nearest
@@ -15,7 +16,7 @@ enclosing function, including when the compiler inlines that function.
 Source files use UTF-8. Keywords and identifiers are case-sensitive. An
 identifier starts with an ASCII letter or `_` and continues with ASCII letters,
 digits, or `_`. Decimal integer literals may contain `_` separators and an
-optional `u8`, `u16`, `u32`, or `u64` suffix, for example `65_535u16`. `//`
+optional integer-type suffix, for example `65_535u16` or `127i8`. `//`
 starts a line comment. The source extension is `.pgs`.
 
 ## Grammar
@@ -33,7 +34,8 @@ function        = "fn" identifier "(" [ parameters ] ")"
                   "->" type block ;
 parameters      = parameter { "," parameter } ;
 parameter       = identifier ":" type ;
-integer-type    = "u8" | "u16" | "u32" | "u64" ;
+integer-type    = "u8" | "u16" | "u32" | "u64"
+                | "i8" | "i16" | "i32" | "i64" ;
 scalar-type     = "bool" | integer-type ;
 type            = scalar-type | identifier | "[" scalar-type ";" integer "]" ;
 
@@ -60,7 +62,7 @@ shift           = additive { ( "<<" | ">>" ) additive } ;
 additive        = multiplicative { ( "+" | "-" ) multiplicative } ;
 multiplicative  = cast { ( "*" | "/" | "%" ) cast } ;
 cast            = unary { "as" integer-type } ;
-unary           = ( "!" | "~" ) unary | call ;
+unary           = ( "!" | "~" | "-" ) unary | call ;
 call            = primary { "(" [ arguments ] ")" | "[" expression "]"
                           | "." identifier } ;
 arguments       = expression { "," expression } ;
@@ -99,16 +101,30 @@ this slice. Use `let byte: u8 = 255u8`, not `let byte: u8 = 255`. A suffixed
 literal must fit its type; `256u8` is an error, not a truncation. The suffix
 must be adjacent to the digits. Source array lengths remain unsuffixed literals.
 
-`value as u8` explicitly retains the low eight bits; widening, such as
-`byte as u64`, zero-extends. Same-type casts are allowed. Casts evaluate their
-operand exactly once, preserve its stage and effects, bind below unary operators
+Unary `-` requires a signed integer; `-1` and `-1u8` are errors, while `-1i8`
+is valid. A minus directly enclosing a positive signed literal (parentheses
+are transparent) is checked as one negative literal: `-128i8` and `-(128i8)`
+fit, but positive `128i8`, `-129i8`, and `-(128i8 as i16)` do not.
+A further minus is an ordinary wrapping operation; `--128i8` is still -128.
+Signed integers use two's complement. Addition, subtraction, multiplication,
+and negation wrap modulo 2^width. Signed division truncates toward zero;
+remainder is zero or has the dividend's sign. Both `MIN / -1` and `MIN % -1`
+report `E4011` when evaluated Static, and trap at Runtime, as zero divisors do.
+
+`value as u8` explicitly retains the low eight bits. Widening sign-extends a
+signed source and zero-extends an unsigned source, independently of the
+destination's signedness. Equal-width casts preserve bits, so `255u8 as i8`
+is -1, `-1i8 as u64` is 18446744073709551615, and `255u8 as i16` is 255.
+Same-type casts are allowed. Casts evaluate their operand exactly once,
+preserve its stage and effects, bind below unary operators
 and above multiplication, and associate left-to-right. Only integer-to-integer
 casts are supported; booleans, aggregates, and pointers cannot be cast.
 
-`~`, `&`, `|`, `^`, `<<`, and `>>` accept unsigned integers and preserve their
+`~`, `&`, `|`, `^`, `<<`, and `>>` accept integers and preserve their
 type. Binary operands, including shift counts, must have the same type.
-Bitwise binary operators are strict, not short-circuiting. Right shift fills
-with zeros; left shift discards high bits. Shift counts must be below the width:
+Bitwise binary operators are strict, not short-circuiting. Right shift is
+arithmetic for signed integers and logical for unsigned integers; left shift
+discards high bits. Shift counts must be non-negative and below the width:
 an analyzed Static count outside this range reports `E4009`, even with a Runtime
 left operand; a Runtime count is checked before shifting and traps if invalid.
 Unselected Static branches and skipped short-circuit operands are not evaluated.
@@ -123,7 +139,7 @@ Declarations are module-level and may be referenced before their declaration.
 Record and function names may not collide. Type names have a separate namespace
 from local bindings. Positional record construction is not supported.
 
-Fields are unsigned integers or `bool`. Nested records, array fields, arrays of records,
+Fields are integers or `bool`. Nested records, array fields, arrays of records,
 empty records, methods, mutation, structural equality, and generics are deferred.
 Two differently named records remain distinct even with identical fields.
 Function parameters/results, annotations, and continuing `if` arms must agree
@@ -177,9 +193,10 @@ The implicit entry returns zero when its final value is an array.
 `[for i in 0..256 { i * i }]` constructs a 256-element array in ascending
 index order. Both bounds must evaluate to Static `u32` values, and the end
 must exceed the start. Its type has length `end - start`; each body
-must produce an unsigned integer or `bool`. The immutable index is Static and
-scoped to each iteration. A body may call functions, bind locals, or return from the enclosing
-function. A definite return stops generation; Runtime returns remain residual.
+must produce an integer or `bool`. The immutable index is Static and
+scoped to each iteration. A body may call functions, bind locals, or return from
+the enclosing function. A definite return stops generation; Runtime returns
+remain residual.
 
 ```pagos
 fn square(i: u32) -> u32 { i * i }

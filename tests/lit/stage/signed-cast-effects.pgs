@@ -1,0 +1,6 @@
+// RUN: %run_residual %s 4294967295 1 2
+// RUN: %run_optimized %s 4294967295 1 2
+fn minus_one(n: u32) -> i8 { -1i8 }
+let first = -minus_one(external_input());
+let second = minus_one(external_input()) as i64;
+let result = (first as i64 + second - 1i64) as i16;

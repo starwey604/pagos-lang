@@ -2,5 +2,5 @@
 record Config { value: u32 }
 let a = [Config(value: 1)];
 let b = [for i in 0..2 { Config(value: i) }];
-// CHECK: array elements must be `bool` or an unsigned integer
-// CHECK: array generator body must produce `bool` or an unsigned integer
+// CHECK: array elements must be `bool` or an integer
+// CHECK: array generator body must produce `bool` or an integer

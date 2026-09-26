@@ -7,6 +7,31 @@
 
 namespace {
 
+TEST(Parser, SignedLiteralSignDoesNotEraseOuterNegation) {
+    using namespace pagos::syntax;
+    const auto source = pagos::source::SourceFile::from_text(
+        "signed.pgs", "fn f(a: [i16; 2]) -> i8 { --128i8 }");
+    pagos::source::DiagnosticEngine diagnostics(source);
+    Lexer lexer(source, diagnostics);
+    const auto tokens = lexer.tokenize();
+    Parser parser(tokens, diagnostics);
+    const auto module = parser.parse_module();
+    ASSERT_FALSE(diagnostics.has_error());
+    ASSERT_EQ(module->functions.size(), 1U);
+    const auto& function = *module->functions.front();
+    EXPECT_EQ(function.parameters[0].type,
+              Type::array(Type::integer(16, true), 2));
+    EXPECT_EQ(function.result, Type::integer(8, true));
+    ASSERT_EQ(function.body->tail->kind, Expr::Kind::Unary);
+    const auto& unary = static_cast<const UnaryExpr&>(*function.body->tail);
+    EXPECT_EQ(unary.operation, UnaryOperator::Negate);
+    ASSERT_EQ(unary.operand->kind, Expr::Kind::Integer);
+    const auto& literal = static_cast<const IntegerExpr&>(*unary.operand);
+    EXPECT_EQ(literal.spelling, "-128");
+    EXPECT_TRUE(literal.is_signed);
+    EXPECT_EQ(literal.width, 8U);
+}
+
 TEST(Parser, IntegerWidthsAndCastPrecedenceAreSyntaxFacts) {
     using namespace pagos::syntax;
     const auto source = pagos::source::SourceFile::from_text(

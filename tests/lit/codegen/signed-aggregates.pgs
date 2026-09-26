@@ -1,0 +1,13 @@
+// RUN: %pagosc emit-llvm %s | %FileCheck %s
+// RUN: %run_residual %s 1 2 65535
+// RUN: %run_optimized %s 1 2 65535
+record R { offset: i16, wide: i64, enabled: bool }
+fn lookup(table: [i64; 3], i: u32) -> i64 { table[i] }
+static let table = [for i in 0..3 { -9223372036854775808i64 + i as i64 }];
+let value = lookup(table, external_input());
+let config = R(wide: value, offset: external_input() as i16, enabled: true);
+let result = config.wide == -9223372036854775806i64 && config.offset < 0i16;
+// CHECK: @pagos.table = private unnamed_addr constant [3 x i64] [i64 -9223372036854775808,
+// CHECK-DAG: load i64
+// CHECK-DAG: insertvalue { i16, i64, i1 }
+// CHECK-DAG: icmp slt i16

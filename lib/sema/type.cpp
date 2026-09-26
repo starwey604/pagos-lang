@@ -14,7 +14,7 @@ Type::Type(const syntax::Type& annotation) {
         kind = TypeKind::Bool;
         break;
     case syntax::TypeKind::Integer:
-        *this = integer(annotation.integer_width);
+        *this = integer(annotation.integer_width, annotation.integer_signed);
         break;
     case syntax::TypeKind::Never:
         kind = TypeKind::Never;

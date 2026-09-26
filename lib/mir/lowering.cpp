@@ -221,7 +221,10 @@ class Lowerer {
             UnaryOperation{.operation = *expression->unary_operation ==
                                                 syntax::UnaryOperator::Not
                                             ? UnaryOperator::Not
-                                            : UnaryOperator::BitNot,
+                                        : *expression->unary_operation ==
+                                                syntax::UnaryOperator::BitNot
+                                            ? UnaryOperator::BitNot
+                                            : UnaryOperator::Negate,
                            .operand = *operand},
             expression->span);
     }

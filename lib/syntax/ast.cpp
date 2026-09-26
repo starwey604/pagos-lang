@@ -50,7 +50,8 @@ std::string type_name(const Type& type) {
     case TypeKind::Bool:
         return "bool";
     case TypeKind::Integer:
-        return "u" + std::to_string(type.integer_width);
+        return std::string(type.integer_signed ? "i" : "u") +
+               std::to_string(type.integer_width);
     case TypeKind::Error:
         return "<error>";
     }

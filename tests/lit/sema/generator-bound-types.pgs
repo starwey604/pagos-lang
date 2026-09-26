@@ -6,7 +6,7 @@ fn invalid_body() -> u32 {
     [for i in if true { return 1; } else { 0 }..2 { [1] }];
     0
 }
-// CHECK: error[E1008]: array generator body must produce `bool` or an unsigned integer
+// CHECK: error[E1008]: array generator body must produce `bool` or an integer
 // CHECK: error[E1008]: type mismatch in array generator start
 // CHECK: expected `u32`, found `bool`
 // CHECK: error[E1008]: type mismatch in array generator end

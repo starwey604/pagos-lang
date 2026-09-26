@@ -1,0 +1,3 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+static let result = -128i8 % -1i8;
+// CHECK: error[E4011]: signed remainder overflow

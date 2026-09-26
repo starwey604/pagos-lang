@@ -1,0 +1,7 @@
+// RUN: %run_residual %s trap 7
+// RUN: %run_optimized %s trap 7
+runtime let minimum = -128i8;
+runtime let divisor = -1i8;
+external_input();
+minimum / divisor;
+external_input();

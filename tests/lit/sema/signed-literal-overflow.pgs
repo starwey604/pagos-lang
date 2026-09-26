@@ -1,0 +1,15 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let a = 128i8;
+let b = -129i8;
+let c = 32768i16;
+let d = -32769i16;
+let e = 2147483648i32;
+let f = -2147483649i32;
+let g = 9223372036854775808i64;
+let h = -9223372036854775809i64;
+let i = -(128i8 as i16);
+// CHECK-COUNT-2: integer literal does not fit `i8`
+// CHECK-COUNT-2: integer literal does not fit `i16`
+// CHECK-COUNT-2: integer literal does not fit `i32`
+// CHECK-COUNT-2: integer literal does not fit `i64`
+// CHECK: integer literal does not fit `i8`

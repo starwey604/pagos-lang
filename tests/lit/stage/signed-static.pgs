@@ -1,0 +1,25 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s
+static let minimum = -9223372036854775808i64;
+static let double_negative = --128i8;
+static let parenthesized = -(128i8);
+static let wrap = 127i8 + 1i8;
+static let negated = -wrap;
+static let division = -7i16 / 3i16;
+static let remainder = -7i32 % 3i32;
+static let right = -128i8 >> 7i8;
+static let sign_extend = -1i8 as u64;
+static let zero_extend = 255u8 as i16;
+static let precedence = -1i8 as u16;
+static let skipped = if false { -128i8 / -1i8 } else { 7i8 };
+// CHECK: minimum: i64 [Static] = -9223372036854775808
+// CHECK: double_negative: i8 [Static] = -128
+// CHECK: parenthesized: i8 [Static] = -128
+// CHECK: wrap: i8 [Static] = -128
+// CHECK: negated: i8 [Static] = -128
+// CHECK: division: i16 [Static] = -2
+// CHECK: remainder: i32 [Static] = -1
+// CHECK: right: i8 [Static] = -1
+// CHECK: sign_extend: u64 [Static] = 18446744073709551615
+// CHECK: zero_extend: i16 [Static] = 255
+// CHECK: precedence: u16 [Static] = 65535
+// CHECK: skipped: i8 [Static] = 7

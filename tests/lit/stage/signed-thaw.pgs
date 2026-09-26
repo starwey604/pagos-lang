@@ -1,0 +1,5 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let input = external_input() as i8;
+static let negative = -input;
+// CHECK: error[E2001]: static binding `negative` was thawed
+// CHECK: dependency path: external_input -> input -> negative

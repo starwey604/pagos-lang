@@ -27,6 +27,10 @@ constexpr std::array keywords{
     std::pair<std::string_view, TokenKind>{"u8", TokenKind::KwU8},
     std::pair<std::string_view, TokenKind>{"u16", TokenKind::KwU16},
     std::pair<std::string_view, TokenKind>{"u64", TokenKind::KwU64},
+    std::pair<std::string_view, TokenKind>{"i8", TokenKind::KwI8},
+    std::pair<std::string_view, TokenKind>{"i16", TokenKind::KwI16},
+    std::pair<std::string_view, TokenKind>{"i32", TokenKind::KwI32},
+    std::pair<std::string_view, TokenKind>{"i64", TokenKind::KwI64},
     std::pair<std::string_view, TokenKind>{"as", TokenKind::KwAs},
 };
 

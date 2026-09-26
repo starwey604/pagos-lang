@@ -44,6 +44,8 @@ Evaluator::unary(syntax::UnaryOperator operation,
         return hir::Constant{!std::get<bool>(operand)};
     case syntax::UnaryOperator::BitNot:
         return hir::Constant{std::get<IntegerValue>(operand).bit_not()};
+    case syntax::UnaryOperator::Negate:
+        return hir::Constant{std::get<IntegerValue>(operand).negate()};
     }
     return std::unexpected(
         EvaluationError{.code = "E4002", .message = "unknown unary operation"});
@@ -70,14 +72,25 @@ Evaluator::binary(syntax::BinaryOperator operation, const hir::Constant& left,
             if (result.error() == IntegerError::InvalidShift) {
                 return std::unexpected(EvaluationError{
                     .code = "E4009",
-                    .message = "shift count must be less than " +
-                               std::to_string(lhs.type().width)});
+                    .message =
+                        std::string(lhs.type().is_signed
+                                        ? "shift count must be non-negative "
+                                          "and less than "
+                                        : "shift count must be less than ") +
+                        std::to_string(lhs.type().width)});
             }
             if (result.error() == IntegerError::DivideByZero) {
                 return std::unexpected(EvaluationError{
                     .code = "E4001",
                     .message = operation == Divide ? "division by zero"
                                                    : "remainder by zero"});
+            }
+            if (result.error() == IntegerError::SignedOverflow) {
+                return std::unexpected(EvaluationError{
+                    .code = "E4011",
+                    .message = operation == Divide
+                                   ? "signed division overflow"
+                                   : "signed remainder overflow"});
             }
             return std::unexpected(EvaluationError{
                 .code = "E4002", .message = "invalid integer operation"});

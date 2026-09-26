@@ -1,0 +1,3 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let result = (external_input() as i64) << -1i64;
+// CHECK: error[E4009]: shift count must be non-negative and less than 64

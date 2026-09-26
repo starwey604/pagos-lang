@@ -11,6 +11,80 @@ using pagos::IntegerError;
 using pagos::IntegerOperation;
 using pagos::IntegerValue;
 
+TEST(Integer, SignedLiteralBoundsAndNegationAreWidthDefined) {
+    for (unsigned width : {8U, 16U, 32U, 64U}) {
+        const auto magnitude = std::uint64_t{1} << (width - 1);
+        const auto minimum = IntegerValue::parse_decimal(
+            {width, true}, "-" + std::to_string(magnitude));
+        ASSERT_TRUE(minimum);
+        EXPECT_EQ(minimum->bits(), magnitude);
+        EXPECT_EQ(minimum->negate(), minimum);
+        EXPECT_TRUE(IntegerValue::parse_decimal({width, true},
+                                                std::to_string(magnitude - 1)));
+        EXPECT_EQ(IntegerValue::parse_decimal({width, true},
+                                              std::to_string(magnitude))
+                      .error(),
+                  IntegerError::InvalidLiteral);
+        EXPECT_EQ(IntegerValue::parse_decimal(
+                      {width, true}, "-" + std::to_string(magnitude + 1))
+                      .error(),
+                  IntegerError::InvalidLiteral);
+        const auto minus_one =
+            *IntegerValue::parse_decimal({width, true}, "-1");
+        EXPECT_EQ(minimum->apply(IntegerOperation::Divide, minus_one).error(),
+                  IntegerError::SignedOverflow);
+        EXPECT_EQ(
+            minimum->apply(IntegerOperation::Remainder, minus_one).error(),
+            IntegerError::SignedOverflow);
+        EXPECT_EQ(
+            minus_one.apply(IntegerOperation::ShiftRight, minus_one).error(),
+            IntegerError::InvalidShift);
+        EXPECT_EQ(minus_one.convert({64, false})->bits(), ~std::uint64_t{0});
+        EXPECT_EQ(minus_one.convert({8, true})->decimal(), "-1");
+    }
+    EXPECT_EQ(
+        IntegerValue::parse_decimal({64, true}, "-9_223_372_036_854_775_808")
+            ->decimal(),
+        "-9223372036854775808");
+    EXPECT_EQ(IntegerValue::parse_decimal({8, true}, "-0")->bits(), 0U);
+    for (const auto* spelling : {"-", "--1", "-128x"}) {
+        EXPECT_EQ(IntegerValue::parse_decimal({8, true}, spelling).error(),
+                  IntegerError::InvalidLiteral);
+    }
+}
+
+TEST(Integer, SignedArithmeticMatchesSmallIndependentReferenceValues) {
+    for (unsigned width : {8U, 16U, 32U, 64U}) {
+        const auto mask = ~std::uint64_t{0} >> (64 - width);
+        for (std::int64_t left : {-64, -7, -1, 0, 1, 3, 63}) {
+            const auto a = *IntegerValue::parse_decimal({width, true},
+                                                        std::to_string(left));
+            for (std::int64_t right : {-7, -1, 1, 3, 63}) {
+                const auto b = *IntegerValue::parse_decimal(
+                    {width, true}, std::to_string(right));
+                for (const auto& [operation, expected] :
+                     {std::pair{IntegerOperation::Add, left + right},
+                      {IntegerOperation::Subtract, left - right},
+                      {IntegerOperation::Multiply, left * right},
+                      {IntegerOperation::Divide, left / right},
+                      {IntegerOperation::Remainder, left % right}}) {
+                    const auto result = a.apply(operation, b);
+                    ASSERT_TRUE(result);
+                    EXPECT_EQ(result->bits(),
+                              static_cast<std::uint64_t>(expected) & mask);
+                }
+                EXPECT_EQ(a.compare(b), (left > right) - (left < right));
+            }
+            EXPECT_EQ(a.apply(IntegerOperation::ShiftRight,
+                              *IntegerValue::create({width, true}, 1))
+                          ->bits(),
+                      static_cast<std::uint64_t>(left >= 0 ? left / 2
+                                                           : (left - 1) / 2) &
+                          mask);
+        }
+    }
+}
+
 TEST(Integer, WidthsWrapWithoutHostOverflow) {
     for (unsigned width : {8U, 16U, 32U, 64U}) {
         const auto maximum =

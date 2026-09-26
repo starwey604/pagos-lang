@@ -50,6 +50,14 @@ std::string_view token_kind_name(TokenKind kind) noexcept {
         return "`u16`";
     case TokenKind::KwU64:
         return "`u64`";
+    case TokenKind::KwI8:
+        return "`i8`";
+    case TokenKind::KwI16:
+        return "`i16`";
+    case TokenKind::KwI32:
+        return "`i32`";
+    case TokenKind::KwI64:
+        return "`i64`";
     case TokenKind::KwAs:
         return "`as`";
     case TokenKind::LeftParen:

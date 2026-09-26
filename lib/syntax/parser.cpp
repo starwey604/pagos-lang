@@ -123,10 +123,12 @@ std::optional<Type> Parser::parse_type() {
         const auto element_span = current().span;
         if (!check(TokenKind::KwBool) && !check(TokenKind::KwU32) &&
             !check(TokenKind::KwU8) && !check(TokenKind::KwU16) &&
-            !check(TokenKind::KwU64)) {
-            diagnostics_.error(
-                "E1002", "array elements must be `bool` or an unsigned integer",
-                element_span);
+            !check(TokenKind::KwU64) && !check(TokenKind::KwI8) &&
+            !check(TokenKind::KwI16) && !check(TokenKind::KwI32) &&
+            !check(TokenKind::KwI64)) {
+            diagnostics_.error("E1002",
+                               "array elements must be `bool` or an integer",
+                               element_span);
             return std::nullopt;
         }
         const auto element = parse_type();
@@ -169,10 +171,17 @@ std::optional<Type> Parser::parse_type() {
         return Type::integer(16);
     if (match(TokenKind::KwU64))
         return Type::integer(64);
-    diagnostics_.error(
-        "E1002", "expected type", current().span,
-        "expected `bool`, an unsigned integer, a record name, or a "
-        "fixed-length scalar array");
+    if (match(TokenKind::KwI8))
+        return Type::integer(8, true);
+    if (match(TokenKind::KwI16))
+        return Type::integer(16, true);
+    if (match(TokenKind::KwI32))
+        return Type::integer(32, true);
+    if (match(TokenKind::KwI64))
+        return Type::integer(64, true);
+    diagnostics_.error("E1002", "expected type", current().span,
+                       "expected `bool`, an integer, a record name, or a "
+                       "fixed-length scalar array");
     return std::nullopt;
 }
 
@@ -574,10 +583,12 @@ std::unique_ptr<Expr> Parser::parse_cast() {
 }
 
 std::unique_ptr<Expr> Parser::parse_unary() {
-    if (match(TokenKind::Bang) || match(TokenKind::Tilde)) {
-        const auto operation = previous().kind == TokenKind::Bang
-                                   ? UnaryOperator::Not
-                                   : UnaryOperator::BitNot;
+    if (match(TokenKind::Bang) || match(TokenKind::Tilde) ||
+        match(TokenKind::Minus)) {
+        const auto operation =
+            previous().kind == TokenKind::Bang    ? UnaryOperator::Not
+            : previous().kind == TokenKind::Tilde ? UnaryOperator::BitNot
+                                                  : UnaryOperator::Negate;
         const auto start = previous().span;
         auto operand = parse_unary();
         if (!operand) {
@@ -585,6 +596,18 @@ std::unique_ptr<Expr> Parser::parse_unary() {
         }
         const auto span =
             source::Span{.begin = start.begin, .end = operand->span.end};
+        // Keep a signed literal's sign as source syntax so its minimum value
+        // need not first fit as a positive value. A second minus is an
+        // operator.
+        if (operation == UnaryOperator::Negate &&
+            operand->kind == Expr::Kind::Integer) {
+            auto& literal = static_cast<IntegerExpr&>(*operand);
+            if (literal.is_signed && !literal.spelling.starts_with('-')) {
+                literal.spelling.insert(0, "-");
+                literal.span = span;
+                return operand;
+            }
+        }
         return std::make_unique<UnaryExpr>(operation, std::move(operand), span);
     }
     return parse_call();
@@ -719,19 +742,21 @@ std::unique_ptr<Expr> Parser::parse_primary() {
             std::string(token.lexeme.substr(0, suffix_start)), token.span);
         if (suffix_start != std::string_view::npos) {
             const auto suffix = token.lexeme.substr(suffix_start);
-            if (suffix == "u8")
+            if (suffix == "u8" || suffix == "i8")
                 literal->width = 8;
-            else if (suffix == "u16")
+            else if (suffix == "u16" || suffix == "i16")
                 literal->width = 16;
-            else if (suffix == "u32")
+            else if (suffix == "u32" || suffix == "i32")
                 literal->width = 32;
-            else if (suffix == "u64")
+            else if (suffix == "u64" || suffix == "i64")
                 literal->width = 64;
             else {
                 diagnostics_.error("E1005", "invalid integer literal suffix",
-                                   token.span, "expected u8, u16, u32, or u64");
+                                   token.span,
+                                   "expected u8/u16/u32/u64 or i8/i16/i32/i64");
                 return nullptr;
             }
+            literal->is_signed = suffix.front() == 'i';
         }
         return literal;
     }

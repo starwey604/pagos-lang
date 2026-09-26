@@ -1,0 +1,8 @@
+// RUN: %run_residual %s 42 63
+// RUN: %run_residual %s trap 64
+// RUN: %run_residual %s trap 4294967295
+// RUN: %run_optimized %s 42 63
+// RUN: %run_optimized %s trap 64
+// RUN: %run_optimized %s trap 4294967295
+-1i64 << external_input() as i32 as i64;
+let result = 42;

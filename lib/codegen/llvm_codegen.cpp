@@ -1,6 +1,7 @@
 #include "pagos/codegen/llvm_codegen.h"
 #include "llvm_types.h"
 
+#include <llvm/ADT/APInt.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Function.h>
@@ -67,6 +68,7 @@ class Generator {
     std::expected<void, std::string>
     emit_function(const mir::Function& mir_function) {
         values_.clear();
+        signed_values_.clear();
         blocks_.clear();
         exits_.clear();
 
@@ -86,6 +88,10 @@ class Generator {
 
         for (const auto& block : mir_function.blocks) {
             for (const auto& instruction : block.instructions) {
+                if (instruction.type.kind == mir::Type::Integer &&
+                    instruction.type.integer_type.is_signed) {
+                    signed_values_.insert(instruction.result);
+                }
                 if (const auto* phi = std::get_if<mir::PhiOperation>(
                         &instruction.operation)) {
                     auto* llvm_phi = llvm::PHINode::Create(
@@ -235,6 +241,9 @@ class Generator {
         }
         if (const auto* unary =
                 std::get_if<mir::UnaryOperation>(&instruction.operation)) {
+            if (unary->operation == mir::UnaryOperator::Negate) {
+                return builder_.CreateNeg(values_.at(unary->operand), "negate");
+            }
             return builder_.CreateNot(values_.at(unary->operand), "not");
         }
         if (const auto* binary =
@@ -243,9 +252,9 @@ class Generator {
         }
         if (const auto* cast = std::get_if<mir::IntegerCastOperation>(
                 &instruction.operation)) {
-            return builder_.CreateZExtOrTrunc(values_.at(cast->operand),
-                                              llvm_type(instruction.type),
-                                              "integer.cast");
+            return builder_.CreateIntCast(
+                values_.at(cast->operand), llvm_type(instruction.type),
+                signed_values_.contains(cast->operand), "integer.cast");
         }
         if (const auto* cast =
                 std::get_if<mir::BoolToU32Operation>(&instruction.operation)) {
@@ -346,6 +355,7 @@ class Generator {
     llvm::Value* emit_binary(const mir::BinaryOperation& operation) {
         auto* left = values_.at(operation.left);
         auto* right = values_.at(operation.right);
+        const bool is_signed = signed_values_.contains(operation.left);
         using enum mir::BinaryOperator;
         switch (operation.operation) {
         case Add:
@@ -361,31 +371,35 @@ class Generator {
         case BitXor:
             return builder_.CreateXor(left, right, "bit.xor");
         case ShiftLeftChecked:
-            return emit_shift(left, right, false);
+            return emit_shift(left, right, false, is_signed);
         case ShiftRightChecked:
-            return emit_shift(left, right, true);
+            return emit_shift(left, right, true, is_signed);
         case DivideChecked:
-            return emit_division(left, right, false);
+            return emit_division(left, right, false, is_signed);
         case RemainderChecked:
-            return emit_division(left, right, true);
+            return emit_division(left, right, true, is_signed);
         case Equal:
             return builder_.CreateICmpEQ(left, right, "eq");
         case NotEqual:
             return builder_.CreateICmpNE(left, right, "ne");
         case Less:
-            return builder_.CreateICmpULT(left, right, "lt");
+            return is_signed ? builder_.CreateICmpSLT(left, right, "lt")
+                             : builder_.CreateICmpULT(left, right, "lt");
         case LessEqual:
-            return builder_.CreateICmpULE(left, right, "le");
+            return is_signed ? builder_.CreateICmpSLE(left, right, "le")
+                             : builder_.CreateICmpULE(left, right, "le");
         case Greater:
-            return builder_.CreateICmpUGT(left, right, "gt");
+            return is_signed ? builder_.CreateICmpSGT(left, right, "gt")
+                             : builder_.CreateICmpUGT(left, right, "gt");
         case GreaterEqual:
-            return builder_.CreateICmpUGE(left, right, "ge");
+            return is_signed ? builder_.CreateICmpSGE(left, right, "ge")
+                             : builder_.CreateICmpUGE(left, right, "ge");
         }
         return nullptr;
     }
 
     llvm::Value* emit_shift(llvm::Value* left, llvm::Value* right,
-                            bool shift_right) {
+                            bool shift_right, bool is_signed) {
         // A known valid count needs no guard. Never emit an out-of-range
         // LLVM shift on an executed path: it would produce poison.
         const auto* count = llvm::dyn_cast<llvm::ConstantInt>(right);
@@ -407,20 +421,35 @@ class Generator {
             builder_.CreateUnreachable();
             builder_.SetInsertPoint(continue_block);
         }
-        return shift_right ? builder_.CreateLShr(left, right, "lshr")
-                           : builder_.CreateShl(left, right, "shl");
+        return shift_right
+                   ? (is_signed ? builder_.CreateAShr(left, right, "ashr")
+                                : builder_.CreateLShr(left, right, "lshr"))
+                   : builder_.CreateShl(left, right, "shl");
     }
 
     llvm::Value* emit_division(llvm::Value* left, llvm::Value* right,
-                               bool remainder) {
+                               bool remainder, bool is_signed) {
         auto* function = builder_.GetInsertBlock()->getParent();
-        auto* trap_block =
-            llvm::BasicBlock::Create(context_, "div.zero", function);
+        auto* trap_block = llvm::BasicBlock::Create(
+            context_, is_signed ? "div.invalid" : "div.zero", function);
         auto* continue_block =
             llvm::BasicBlock::Create(context_, "div.cont", function);
         auto* zero = llvm::ConstantInt::get(right->getType(), 0);
         auto* is_zero = builder_.CreateICmpEQ(right, zero, "divisor.zero");
-        builder_.CreateCondBr(is_zero, trap_block, continue_block);
+        llvm::Value* invalid = is_zero;
+        if (is_signed) {
+            const auto width = left->getType()->getIntegerBitWidth();
+            auto* minimum = llvm::ConstantInt::get(
+                context_, llvm::APInt::getSignedMinValue(width));
+            auto* minus_one = llvm::ConstantInt::get(
+                context_, llvm::APInt::getAllOnes(width));
+            auto* overflow = builder_.CreateAnd(
+                builder_.CreateICmpEQ(left, minimum, "dividend.minimum"),
+                builder_.CreateICmpEQ(right, minus_one, "divisor.minus.one"),
+                "division.overflow");
+            invalid = builder_.CreateOr(invalid, overflow, "division.invalid");
+        }
+        builder_.CreateCondBr(invalid, trap_block, continue_block);
 
         builder_.SetInsertPoint(trap_block);
         auto* trap = llvm::Intrinsic::getOrInsertDeclaration(
@@ -429,6 +458,10 @@ class Generator {
         builder_.CreateUnreachable();
 
         builder_.SetInsertPoint(continue_block);
+        if (is_signed) {
+            return remainder ? builder_.CreateSRem(left, right, "rem")
+                             : builder_.CreateSDiv(left, right, "div");
+        }
         return remainder ? builder_.CreateURem(left, right, "rem")
                          : builder_.CreateUDiv(left, right, "div");
     }
@@ -452,6 +485,8 @@ class Generator {
     llvm::IRBuilder<> builder_;
     TargetConfig config_;
     std::unordered_map<mir::ValueId, llvm::Value*> values_;
+    // LLVM integer types erase signedness; retain each MIR definition's fact.
+    std::unordered_set<mir::ValueId> signed_values_;
     std::unordered_map<mir::BlockId, llvm::BasicBlock*> blocks_;
     std::unordered_map<mir::BlockId, llvm::BasicBlock*> exits_;
     std::unordered_map<llvm::Constant*, llvm::GlobalVariable*> tables_;

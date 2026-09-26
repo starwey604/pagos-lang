@@ -32,9 +32,11 @@ facts (`sema::Type`) and concrete residual descriptors (`mir::Type`). Semantic
 and MIR integers carry width/signedness, arrays carry a scalar element type
 and length, and record fields retain ordered types plus nominal identity.
 Deferred semantic lengths and error/unknown types cannot become valid MIR.
-Source syntax admits the M2 subset plus unsigned widths 8/16/32/64 and explicit
-integer conversions. Signed arithmetic and target-sized source types remain
-separate M3 slices; MIR rejects unsupported signed arithmetic and casts.
+Source syntax admits the M2 subset plus signed/unsigned widths 8/16/32/64 and
+explicit integer conversions. Target-sized source types remain a separate M3
+slice. LLVM integer types erase signedness, so code generation retains the
+verified MIR definition's signedness for comparisons, division, right shift,
+and extension. Checked signed division/remainder guard both zero and MIN/-1.
 
 `IntegerValue` stores up to 64 bits inline and delegates checked arithmetic
 to a private APInt adapter. Wider values are rejected explicitly. Scalar,

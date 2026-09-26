@@ -78,7 +78,7 @@ struct Type {
     }
 };
 inline const Type Type::U32 = Type::integer(32);
-enum class UnaryOperator { Not, BitNot };
+enum class UnaryOperator { Not, BitNot, Negate };
 enum class BinaryOperator {
     Add,
     Subtract,

@@ -1,0 +1,16 @@
+// RUN: %pagosc emit-llvm %s | %FileCheck %s
+// RUN: %run_residual %s 1 255
+// RUN: %run_optimized %s 1 255
+let signed = external_input() as i8;
+let unsigned = signed as u8;
+let extended = signed as u64;
+let zero_extended = unsigned as i64;
+let result = signed < 0i8 && unsigned > 127u8 &&
+             extended == 18446744073709551615u64 &&
+             zero_extended == 255i64 &&
+             (extended as i16) == -1i16 &&
+             (zero_extended as i8) == -1i8;
+// CHECK-DAG: sext i8 {{.*}} to i64
+// CHECK-DAG: zext i8 {{.*}} to i64
+// CHECK-DAG: icmp slt i8
+// CHECK-DAG: icmp ugt i8

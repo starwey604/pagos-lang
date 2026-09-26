@@ -101,7 +101,10 @@ LLVM linking are not claimed as verified.
 The first M3 slice implements `u8/u16/u32/u64`, typed decimal literals,
 explicit integer `as` conversions, and width-aware constants, arrays, records,
 construction budgets, MIR checks, and LLVM arithmetic. Existing `u32` programs
-retain their behavior. Signed integers and target-dependent `usize` are next;
+retain their behavior. The second slice adds `i8/i16/i32/i64`, negative literals,
+wrapping negation, signed comparisons/division/shifts, and signedness-aware
+conversions. MIN/-1 division and remainder have explicit checks at both stages.
+Target-dependent `usize` is next;
 general Runtime calls, C ABI, object emission, memory, and MMIO remain open.
 
 Add the minimum systems features needed for real firmware:

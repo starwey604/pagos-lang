@@ -291,9 +291,12 @@ std::expected<void, std::string> verify_function(const Function& function) {
                                           ? Type(Type::Bool)
                                           : *operand;
                 if ((unary->operation != UnaryOperator::Not &&
-                     unary->operation != UnaryOperator::BitNot) ||
-                    (unary->operation == UnaryOperator::BitNot &&
+                     unary->operation != UnaryOperator::BitNot &&
+                     unary->operation != UnaryOperator::Negate) ||
+                    (unary->operation != UnaryOperator::Not &&
                      operand->kind != Type::Integer) ||
+                    (unary->operation == UnaryOperator::Negate &&
+                     !operand->integer_type.is_signed) ||
                     *operand != expected || instruction.type != expected) {
                     return std::unexpected("invalid MIR unary operation");
                 }
@@ -334,8 +337,7 @@ std::expected<void, std::string> verify_function(const Function& function) {
                                             binary->operation == GreaterEqual;
                     const auto result_type =
                         comparison ? Type(Type::Bool) : *left;
-                    if (left->kind != Type::Integer ||
-                        left->integer_type.is_signed || *right != *left ||
+                    if (left->kind != Type::Integer || *right != *left ||
                         instruction.type != result_type) {
                         return std::unexpected(
                             "invalid MIR arithmetic operation");
@@ -353,10 +355,8 @@ std::expected<void, std::string> verify_function(const Function& function) {
                     !valid)
                     return valid;
                 if (operand->kind != Type::Integer ||
-                    instruction.type.kind != Type::Integer ||
-                    operand->integer_type.is_signed ||
-                    instruction.type.integer_type.is_signed) {
-                    return std::unexpected("invalid MIR unsigned integer cast");
+                    instruction.type.kind != Type::Integer) {
+                    return std::unexpected("invalid MIR integer cast");
                 }
                 continue;
             }
@@ -540,7 +540,9 @@ void print_instruction(const Instruction& instruction, std::ostream& output) {
         output << "external_input";
     } else if (const auto* unary =
                    std::get_if<UnaryOperation>(&instruction.operation)) {
-        output << (unary->operation == UnaryOperator::Not ? "not " : "bit.not ")
+        output << (unary->operation == UnaryOperator::Not      ? "not "
+                   : unary->operation == UnaryOperator::BitNot ? "bit.not "
+                                                               : "negate ")
                << value_name(unary->operand);
     } else if (const auto* binary =
                    std::get_if<BinaryOperation>(&instruction.operation)) {

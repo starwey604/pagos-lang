@@ -69,7 +69,7 @@ TEST(MirVerifier, IntegerConstantsMustMatchEveryPayloadWidth) {
     }
 }
 
-TEST(MirVerifier, IntegerCastsRequireUnsignedTypesAndDominatingValues) {
+TEST(MirVerifier, IntegerCastsRequireIntegerTypesAndDominatingValues) {
     using namespace pagos::mir;
     auto module = constant_module();
     auto& function = module.functions[0];
@@ -82,8 +82,9 @@ TEST(MirVerifier, IntegerCastsRequireUnsignedTypesAndDominatingValues) {
     block.terminator = Return{.value = 1};
     function.result_type = Type::integer(8);
     EXPECT_TRUE(verify(module));
-    for (const auto& type : {Type(Type::Bool), Type::integer(8, true),
-                             Type::array(Type::U32, 1)}) {
+    function.result_type = block.instructions[1].type = Type::integer(8, true);
+    EXPECT_TRUE(verify(module));
+    for (const auto& type : {Type(Type::Bool), Type::array(Type::U32, 1)}) {
         function.result_type = block.instructions[1].type = type;
         EXPECT_FALSE(verify(module));
     }
@@ -96,6 +97,34 @@ TEST(MirVerifier, IntegerCastsRequireUnsignedTypesAndDominatingValues) {
     block.instructions[0].type = Type::Bool;
     block.instructions[0].operation = ConstantOperation{.value = true};
     EXPECT_FALSE(verify(module));
+}
+
+TEST(MirVerifier, NegationRequiresMatchingSignedIntegerTypes) {
+    using namespace pagos::mir;
+    for (unsigned width : {8U, 16U, 32U, 64U}) {
+        auto module = constant_module();
+        auto& function = module.functions[0];
+        auto& block = function.blocks[0];
+        function.result_type = block.instructions[0].type =
+            Type::integer(width, true);
+        block.instructions[0].operation = ConstantOperation{
+            .value = *pagos::IntegerValue::create({width, true}, 1)};
+        block.instructions.push_back(
+            {.result = 1,
+             .type = function.result_type,
+             .operation = UnaryOperation{.operation = UnaryOperator::Negate,
+                                         .operand = 0},
+             .span = {}});
+        block.terminator = Return{.value = 1};
+        EXPECT_TRUE(verify(module));
+        function.result_type = block.instructions[1].type =
+            Type::integer(width);
+        EXPECT_FALSE(verify(module));
+        block.instructions[0].type = Type::integer(width);
+        block.instructions[0].operation = ConstantOperation{
+            .value = *pagos::IntegerValue::create({width, false}, 1)};
+        EXPECT_FALSE(verify(module));
+    }
 }
 
 pagos::mir::Module record_module() {

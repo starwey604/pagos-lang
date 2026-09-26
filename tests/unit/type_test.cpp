@@ -13,6 +13,11 @@ TEST(Type, SemanticAnnotationsAreDistinctAndComposable) {
     for (unsigned width : {8U, 16U, 32U, 64U}) {
         for (bool is_signed : {false, true}) {
             auto scalar = Type::integer(width, is_signed);
+            const auto annotation =
+                pagos::syntax::Type::integer(width, is_signed);
+            EXPECT_EQ(Type(annotation), scalar);
+            EXPECT_EQ(Type(pagos::syntax::Type::array(annotation, 7)),
+                      Type::array(scalar, 7));
             auto array = Type::array(scalar, 7);
             EXPECT_EQ(array.element_type(), scalar);
             EXPECT_EQ(array.length, 7U);

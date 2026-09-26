@@ -907,10 +907,13 @@ StageAnalyzer::analyze_binary(const syntax::BinaryExpr& expression) {
         right->stage == hir::Stage::Static &&
         std::get<IntegerValue>(*right->constant).bits() >=
             left->type.integer_type.width) {
-        diagnostics_.error("E4009",
-                           "shift count must be less than " +
-                               std::to_string(left->type.integer_type.width),
-                           expression.right->span);
+        diagnostics_.error(
+            "E4009",
+            std::string(left->type.integer_type.is_signed
+                            ? "shift count must be non-negative and less than "
+                            : "shift count must be less than ") +
+                std::to_string(left->type.integer_type.width),
+            expression.right->span);
         return nullptr;
     }
     if (left->stage == hir::Stage::Static &&

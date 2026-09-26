@@ -100,7 +100,10 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
     case Expr::Kind::Unary:
         output << (expression->unary_operation == syntax::UnaryOperator::Not
                        ? "not("
-                       : "bit.not(");
+                   : expression->unary_operation ==
+                           syntax::UnaryOperator::BitNot
+                       ? "bit.not("
+                       : "negate(");
         print_expression(expression->operands.at(0), output);
         output << ')';
         break;

@@ -1,0 +1,15 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let a = -1;
+let b = -1u8;
+let c = -true;
+let d = 1i8 + 1u8;
+let e = 1i8 << 1;
+let f: i8 = 1;
+let g = [1i8, 1u8];
+for i in 0i32..2i32 { i; }
+// CHECK-COUNT-3: unary `-` requires a signed integer
+// CHECK: expected `i8`, found `u8`
+// CHECK: expected `i8`, found `u32`
+// CHECK: expected `i8`, found `u32`
+// CHECK: expected `i8`, found `u8`
+// CHECK-COUNT-2: expected `u32`, found `i32`

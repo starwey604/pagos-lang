@@ -161,7 +161,7 @@ build/debug/pagosc emit-llvm tests/lit/stage/array-lookup.pgs
 ```
 
 The lookup example embeds one read-only table and retains a checked Runtime
-index. Arrays support nonempty one-dimensional unsigned-integer/`bool` values;
+index. Arrays support nonempty one-dimensional integer/`bool` values;
 Static-index reads preserve individual element stages through aliases and
 direct calls. Inspect `tests/lit/stage/array-projection.pgs` for a Static
 result that still retains an unrelated Runtime input read. Nested arrays and

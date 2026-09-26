@@ -57,6 +57,7 @@ class IntegerValue {
     [[nodiscard]] std::uint64_t bits() const noexcept { return bits_; }
     [[nodiscard]] std::string decimal() const;
     [[nodiscard]] IntegerValue bit_not() const;
+    [[nodiscard]] IntegerValue negate() const;
     [[nodiscard]] std::expected<IntegerValue, IntegerError>
     apply(IntegerOperation operation, const IntegerValue& right) const;
     [[nodiscard]] std::expected<int, IntegerError>

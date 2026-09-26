@@ -63,10 +63,9 @@ void TypeChecker::collect_records(const syntax::Module& module) {
             }
             if (sema::Type(field.type).kind != sema::TypeKind::Integer &&
                 sema::Type(field.type) != sema::TypeKind::Bool) {
-                diagnostics_.error(
-                    "E1008",
-                    "record fields must be `bool` or an unsigned integer",
-                    field.name_span);
+                diagnostics_.error("E1008",
+                                   "record fields must be `bool` or an integer",
+                                   field.name_span);
             }
         }
     }
@@ -232,7 +231,8 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
         break;
     case syntax::Expr::Kind::Integer: {
         const auto& integer = static_cast<syntax::IntegerExpr&>(expression);
-        const auto literal_type = Type::integer(integer.width);
+        const auto literal_type =
+            Type::integer(integer.width, integer.is_signed);
         if (!IntegerValue::parse_decimal(literal_type.integer_type,
                                          integer.spelling)) {
             diagnostics_.error("E1005",
@@ -257,6 +257,17 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
         const auto operand_type = check_expression(*unary.operand);
         if (operand_type == sema::TypeKind::Never) {
             type = sema::TypeKind::Never;
+            break;
+        }
+        if (unary.operation == syntax::UnaryOperator::Negate) {
+            if (operand_type.kind == TypeKind::Integer &&
+                operand_type.integer_type.is_signed) {
+                type = operand_type;
+            } else if (operand_type.kind != TypeKind::Error) {
+                diagnostics_.error(
+                    "E1008", "unary `-` requires a signed integer", unary.span,
+                    "use a signed literal suffix or an explicit integer cast");
+            }
             break;
         }
         const auto expected = unary.operation == syntax::UnaryOperator::Not
@@ -321,8 +332,7 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
             if (actual != sema::TypeKind::Bool &&
                 actual.kind != sema::TypeKind::Integer) {
                 diagnostics_.error(
-                    "E1008",
-                    "array elements must be `bool` or an unsigned integer",
+                    "E1008", "array elements must be `bool` or an integer",
                     element->span);
                 continue;
             }
@@ -396,7 +406,7 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
         } else if (element != sema::TypeKind::Error) {
             diagnostics_.error("E1008",
                                "array generator body must produce `bool` or an "
-                               "unsigned integer",
+                               "integer",
                                generator.body->span);
         }
         break;

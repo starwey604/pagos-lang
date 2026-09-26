@@ -1,0 +1,8 @@
+// RUN: %run_residual %s 4294967295 7
+// RUN: %run_residual %s 4294967168 0
+// RUN: %run_residual %s trap 8
+// RUN: %run_residual %s trap 255
+// RUN: %run_optimized %s 4294967295 7
+// RUN: %run_optimized %s trap 8
+// RUN: %run_optimized %s trap 255
+let result = -128i8 >> external_input() as i8;

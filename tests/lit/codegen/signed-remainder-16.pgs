@@ -1,0 +1,10 @@
+// RUN: %run_residual %s 42 1 1
+// RUN: %run_residual %s trap 1 4294967295
+// RUN: %run_residual %s trap 1 0
+// RUN: %run_optimized %s 42 1 1
+// RUN: %run_optimized %s trap 1 4294967295
+// RUN: %run_optimized %s trap 1 0
+let a = external_input() as i16 << 15i16;
+let b = external_input() as i32 as i16;
+a % b;
+let result = 42;

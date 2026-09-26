@@ -1,0 +1,22 @@
+// RUN: %pagosc emit-llvm %s | %FileCheck %s
+// RUN: %run_residual %s 1 4294967289 1
+// RUN: %run_optimized %s 1 4294967289 1
+fn fold(a: i32, b: i32) -> i32 {
+    (a + b) ^ (a - b) ^ (a * b) ^ (a / b) ^ (a % b) ^
+    (~a) ^ (a & b) ^ (a | b) ^ (a << 1i32) ^ (a >> 1i32)
+}
+let a = external_input() as i32 as i32;
+let minimum = external_input() as i32 << 31i32;
+let maximum = minimum - 1i32;
+let result = fold(a, 3i32) == fold(-7i32, 3i32) &&
+             -a == 7i32 && a < 0i32 && a <= -7i32 &&
+             0i32 > a && -7i32 >= a && a / 3i32 == -2i32 &&
+             a % 3i32 == -1i32 && -minimum == minimum &&
+             minimum + minimum == 0i32 && maximum * 2i32 == -2i32 &&
+             minimum >> 31i32 == -1i32;
+// CHECK-DAG: sdiv i32
+// CHECK-DAG: srem i32
+// CHECK-DAG: ashr i32
+// CHECK-DAG: icmp slt i32
+// CHECK-DAG: sub i32 0,
+// CHECK-DAG: division.overflow

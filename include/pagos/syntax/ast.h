@@ -26,6 +26,7 @@ enum class TypeKind {
 struct Type {
     TypeKind kind{TypeKind::Error};
     unsigned integer_width{32};
+    bool integer_signed{};
     // Zero denotes a deferred array length in the semantic type table only.
     // Source array types and all residual array values must have positive size.
     std::uint32_t length{};
@@ -35,9 +36,10 @@ struct Type {
     Type(TypeKind kind, std::uint32_t length = 0)
         : kind(kind), length(length) {}
     bool operator==(const Type&) const = default;
-    [[nodiscard]] static Type integer(unsigned width) {
+    [[nodiscard]] static Type integer(unsigned width, bool is_signed = false) {
         Type type{TypeKind::Integer};
         type.integer_width = width;
+        type.integer_signed = is_signed;
         return type;
     }
     [[nodiscard]] bool is_record() const noexcept {
@@ -52,19 +54,21 @@ struct Type {
         return kind == TypeKind::ArrayBool || kind == TypeKind::ArrayInteger;
     }
     [[nodiscard]] Type element_type() const noexcept {
-        return kind == TypeKind::ArrayBool ? Type(TypeKind::Bool)
-                                           : integer(integer_width);
+        return kind == TypeKind::ArrayBool
+                   ? Type(TypeKind::Bool)
+                   : integer(integer_width, integer_signed);
     }
     [[nodiscard]] static Type array(const Type& element, std::uint32_t length) {
         Type type{element == TypeKind::Bool ? TypeKind::ArrayBool
                                             : TypeKind::ArrayInteger,
                   length};
         type.integer_width = element.integer_width;
+        type.integer_signed = element.integer_signed;
         return type;
     }
 };
 enum class BindingKind { Inferred, Static, Runtime };
-enum class UnaryOperator { Not, BitNot };
+enum class UnaryOperator { Not, BitNot, Negate };
 enum class BinaryOperator {
     Add,
     Subtract,
@@ -117,6 +121,7 @@ struct IntegerExpr final : Expr {
         : Expr(Kind::Integer, span), spelling(std::move(spelling)) {}
     std::string spelling;
     unsigned width{32}; // Explicit literal suffix, not an inferred type.
+    bool is_signed{};
 };
 
 struct CastExpr final : Expr {
