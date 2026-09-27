@@ -56,7 +56,18 @@ class Generator {
                 return std::unexpected(
                     "explicit global sections require an ELF target");
             auto* type = llvm_type(global.type);
-            auto* value = emit_integer_storage(global.type, global.initializer);
+            const auto bytes =
+                module_->getDataLayout().getTypeAllocSize(type).getFixedValue();
+            if (!GlobalStorage::fits_target_size(bytes,
+                                                 mir_module.pointer_bits))
+                return std::unexpected(
+                    "global storage exceeds target object size limit");
+            auto* value =
+                global.type.is_record()
+                    ? emit_record_constant(
+                          global.type,
+                          std::get<RecordConstant>(global.initializer))
+                    : emit_integer_storage(global.type, global.initializer);
             auto* storage = new llvm::GlobalVariable(
                 *module_, type, !global.writable,
                 llvm::GlobalValue::InternalLinkage, value, global.name);
@@ -269,7 +280,34 @@ class Generator {
             llvm::cast<llvm::ArrayType>(llvm_type(type)), elements);
     }
 
+    llvm::Constant* emit_record_constant(const mir::Type& type,
+                                         const RecordConstant& record) {
+        std::vector<llvm::Constant*> fields;
+        for (const auto& field : record.fields) {
+            std::visit(
+                [&](auto value) {
+                    if constexpr (std::is_same_v<decltype(value), bool>)
+                        fields.push_back(builder_.getInt1(value));
+                    else
+                        fields.push_back(llvm::ConstantInt::get(
+                            llvm::IntegerType::get(context_,
+                                                   value.type().width),
+                            value.bits()));
+                },
+                field);
+        }
+        return llvm::ConstantStruct::get(
+            llvm::cast<llvm::StructType>(llvm_type(type)), fields);
+    }
+
     llvm::Value* emit_instruction(const mir::Instruction& instruction) {
+        if (const auto* field = std::get_if<mir::GlobalFieldAddressOperation>(
+                &instruction.operation)) {
+            auto* storage = module_->getNamedGlobal(field->name);
+            return builder_.CreateStructGEP(storage->getValueType(), storage,
+                                            field->field_index,
+                                            "global.field.address");
+        }
         if (const auto* element =
                 std::get_if<mir::GlobalElementAddressOperation>(
                     &instruction.operation)) {
@@ -319,25 +357,7 @@ class Generator {
             }
             if (const auto* record =
                     std::get_if<RecordConstant>(&constant->value)) {
-                std::vector<llvm::Constant*> fields;
-                for (const auto& field : record->fields) {
-                    std::visit(
-                        [&](auto value) {
-                            if constexpr (std::is_same_v<decltype(value),
-                                                         bool>) {
-                                fields.push_back(builder_.getInt1(value));
-                            } else {
-                                fields.push_back(llvm::ConstantInt::get(
-                                    llvm::IntegerType::get(context_,
-                                                           value.type().width),
-                                    value.bits()));
-                            }
-                        },
-                        field);
-                }
-                return llvm::ConstantStruct::get(
-                    llvm::cast<llvm::StructType>(llvm_type(instruction.type)),
-                    fields);
+                return emit_record_constant(instruction.type, *record);
             }
             std::vector<llvm::Constant*> elements;
             elements.reserve(instruction.type.length);

@@ -4,7 +4,7 @@ import json
 import subprocess
 
 
-def verify_storage(path, expected):
+def verify_storage(path, expected, sizes=None):
     metadata = json.loads(subprocess.check_output(
         ["llvm-readobj", "--elf-output-style=JSON", "--sections", "--symbols", str(path)],
         text=True, timeout=20))[0]
@@ -20,6 +20,8 @@ def verify_storage(path, expected):
         assert symbol["Type"]["Name"] == "Object", (path, symbol)
         offset = symbol["Value"] - section["Address"]
         assert symbol["Size"] > 0 and 0 <= offset <= section["Size"] - symbol["Size"], (path, symbol)
+        if sizes and name in sizes:
+            assert symbol["Size"] == sizes[name], (path, symbol)
         assert symbol["Value"] % alignment == 0, (path, symbol)
         assert section["AddressAlignment"] >= alignment, (path, section)
         assert section["Address"] % alignment == 0, (path, section)

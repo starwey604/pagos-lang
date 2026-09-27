@@ -261,10 +261,11 @@ export fn counter_address() -> *mut u32 { &counter }
 ```
 
 `global const` and `global mut` declare module-private objects with program-long
-storage duration. An explicit integer or fixed-length integer-array type and
+storage duration. An explicit integer, fixed-length integer-array, or
+integer-field record type and
 initializer are mandatory; scalar zero initialization uses `= 0` with the
 appropriate suffix. All integer types, including target `usize`, are allowed;
-pointers, `bool`, records and nested aggregate storage are deferred.
+pointers, `bool` and nested aggregate storage are deferred.
 Declarations may be referenced before their textual
 definition. Names must not collide with functions, records, globals or reserved
 intrinsics/entry symbols. Local bindings and parameters may shadow globals.
@@ -280,8 +281,8 @@ not a reinterpretation of existing top-level `let` statements.
 Reading a scalar global name loads its current value at Runtime, including a
 readonly object: `global const` is not a staging annotation. `&name` produces a pointer
 to the unshadowed global, `*const T` for readonly storage and `*mut T` for writable
-storage. Global array elements can also be addressed as described below;
-local bindings, parameters, temporaries, record fields and functions cannot.
+storage. Global array elements and integer record fields can also be addressed
+as described below; local bindings, parameters, temporaries and functions cannot.
 Scalar writes use `*&name = value;`
 or an alias pointer, not direct name assignment. Volatile accesses such as
 `volatile *&counter` follow the existing volatile rules.
@@ -347,6 +348,50 @@ explicitly. Local arrays retain their existing value semantics, but cannot be
 addressed. Local shadowing does not grant global storage to a local array.
 Section and alignment attributes apply to the complete object, not each element;
 `.bss.*` requires every initializer element to be zero.
+
+### Global integer-field records
+
+```pagos
+record DeviceState { status: u8, counter: u32, capacity: usize }
+global mut state: DeviceState section(".data.state") align(64) =
+    DeviceState(status: 0u8, counter: 0, capacity: 16usize);
+export fn advance() -> u32 {
+    *&state.counter = state.counter + 1;
+    state.counter
+}
+export fn counter_address() -> *mut u32 { &state.counter }
+```
+
+Stored records contain only integer fields, including `usize`. Fields follow
+declaration order, each naturally aligned according to the selected target's
+LLVM DataLayout; necessary inter-field and tail padding is included in object
+size. No reordering or packing is performed. Layout is deterministic for a target
+configuration, not identical across targets. An object's `align(...)` request
+does not change its type layout or field offsets. Padding bytes have no specified
+language value: do not use raw record bytes for serialization or equality.
+
+The initializer must be pure Static and match the nominal record type exactly;
+named arguments retain existing source-order evaluation and declaration-order
+field placement. `.bss.*` requires every field value to be zero. Existing
+aggregate construction budgets count logical field bytes, not padding or object
+alignment. LLVM emission additionally rejects a padded object exceeding
+`2^(pointer_bits - 1) - 1` bytes. These checks are not total-memory quotas.
+
+`name.field` creates a fresh Runtime scalar load, including `global const`.
+`&name.field` creates a symbolic Runtime integer pointer with the object's write
+permission. Writes use `*&name.field = value;` or an alias pointer; volatile
+accesses follow existing scalar rules. A captured field value is a snapshot,
+while a later field read observes intervening writes. Early return in a store's
+right-hand side skips the store. Local shadowing preserves ordinary value-record
+semantics and does not make a local record addressable.
+
+Bare global-record values and whole-record addresses are rejected (`E1015`).
+Whole-record copies, record-pointer types, local address-taking, nested/array
+fields, arrays of records and packed/bitfield layouts remain deferred. Existing
+value records with `bool` fields remain supported, but cannot be global storage.
+C may use integer field pointers through the existing ABI. Host/RV32 tests compare
+this integer-field subset with C layout; this does not enable record-by-value
+C parameters or returns, nor promise compatibility with other ABIs or packing.
 
 ### Data subsections and alignment
 
@@ -457,7 +502,10 @@ must retain evaluation of every initializer, including reads, traps, and returns
 Explicit Runtime record boundaries and Runtime branch/call-result selection
 keep all projections Runtime. Diagnostics identify the selected field's source.
 Records can cross into residual MIR/LLVM as value aggregates without exposing
-host addresses; no stable layout, packing, memory size, or C ABI is promised.
+host addresses. Value construction does not allocate addressable storage.
+The [global record subset](#global-integer-field-records) defines target storage
+layout for integer-only fields; general record pointers, packing and record C
+calling conventions remain deferred.
 Existing fuel/depth/specialization limits apply. Shared aggregate construction
 quotas charge every declared field before member allocation or initializer
 evaluation; array-only quotas still exclude records. See

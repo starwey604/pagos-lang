@@ -34,6 +34,8 @@ using Constant =
 [[nodiscard]] bool matches_integer_storage(const Constant& value,
                                            IntegerType element,
                                            std::uint32_t length);
+// Scalar, integer array, or integer-field record; bool payloads are not
+// storage.
 [[nodiscard]] bool is_zero_integer_storage(const Constant& value);
 void print_constant(const Constant& value, std::ostream& output);
 

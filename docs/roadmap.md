@@ -124,16 +124,19 @@ integer-width limits. Pagos-native UART/test-device firmware now runs in QEMU
 without C device helpers; fences, DMA, interrupts and real hardware remain open.
 The tenth slice adds private integer globals with pure Static initializers,
 symbolic global addresses and default ELF data sections. Pagos-owned startup
-state detects missing data copying or BSS clearing in QEMU. Aggregate storage,
-stable record layout and external globals remain open. The eleventh slice adds
+state detects missing data copying or BSS clearing in QEMU. The eleventh slice adds
 named ELF data subsections and minimum object alignment, with verified section
 flags, BSS-zero constraints and linked RV32 startup coverage. Arbitrary sections,
 retained/uninitialized memory and fixed-address placement remain open.
 The twelfth slice adds global fixed-length integer arrays, pure Static generated
 initializers, Runtime element reads and checked element addresses. Host and RV32
 C interoperation uses existing integer pointers; no aggregate calling convention
-is implied. Whole-array values/addresses, local address-taking, nested storage
-and record layout remain open.
+is implied. The thirteenth slice adds global integer-field records with
+declaration-order, target-aligned storage layout, pure Static initializers,
+Runtime field reads and integer field pointers. Host/RV32 C layout and alias
+checks cover padded sizes/offsets and startup data/BSS, without aggregate call
+lowering. Whole-aggregate values/addresses, local address-taking, nested storage,
+bool storage, external globals and aggregate C calling conventions remain open.
 
 Add the minimum systems features needed for real firmware:
 

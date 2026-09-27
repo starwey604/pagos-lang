@@ -1,0 +1,66 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR --implicit-check-not=alloca --implicit-check-not=extractvalue --implicit-check-not=unnamed_addr
+// RUN: %run_c_abi --no-traps %s %S/../Inputs/global_records.c
+// RUN: %run_c_abi --optimize --no-traps %s %S/../Inputs/global_records.c
+// RUN: %pagosc emit-obj %s -o %t.o
+// RUN: llvm-readobj --sections --symbols %t.o | %FileCheck %s --check-prefix=ELF
+record State { tag: u8, count: u32, wide: u64, size: usize, tail: i16 }
+fn initial() -> State {
+    State(size: ~0usize, tail: -7i16, wide: ~0u64, count: 12, tag: 3u8)
+}
+global mut state: State section(".data.state") align(64) = initial();
+global mut zero: State section(".bss.state") align(32) =
+    State(tag: 0u8, count: 0, wide: 0u64, size: 0usize, tail: 0i16);
+global const config: State section(".rodata.state") = initial();
+global const twin: State = initial();
+extern fn change(p: *mut u32) -> u32;
+export fn tag_address() -> *mut u8 { &state.tag }
+export fn count_address() -> *mut u32 { &state.count }
+export fn wide_address() -> *mut u64 { &state.wide }
+export fn size_address() -> *mut usize { &state.size }
+export fn tail_address() -> *mut i16 { &state.tail }
+export fn zero_address() -> *mut u8 { &zero.tag }
+export fn config_address() -> *const u8 { &config.tag }
+export fn twin_address() -> *const u8 { &twin.tag }
+export fn startup() -> u32 {
+    if volatile *&state.count == 12 && volatile *&zero.count == 0 { 1 } else { 0 }
+}
+export fn advance() -> u32 { *&state.count = state.count + 1; state.count }
+export fn snapshot() -> u32 {
+    let old = state.count;
+    change(&state.count);
+    old + old + state.count
+}
+export fn aliases() -> u32 {
+    let p = &state.count;
+    *p = 21;
+    volatile *&zero.count = state.count;
+    volatile *&zero.count
+}
+export fn early(mode: u32) -> u32 {
+    *&state.count = if mode == 0 { return 77; } else { 30 };
+    state.count
+}
+export fn shadow() -> u32 {
+    let state = State(tag: 1u8, count: 99, wide: 0u64, size: 0usize, tail: 0i16);
+    state.count
+}
+// HIR: global mut state: State section(".data.state") align(64) = State(3, 12,
+// HIR: global_field_address(state, 1)
+// MIR: global_field_address @pagos.global.state, 1
+// IR: @pagos.global.state = internal global { i8, i32, i64, i64, i16 } { i8 3, i32 12, i64 -1, i64 -1, i16 -7 }, section ".data.state", align 64
+// IR: @pagos.global.zero = internal global { i8, i32, i64, i64, i16 } zeroinitializer, section ".bss.state", align 32
+// IR: @pagos.global.config = internal constant { i8, i32, i64, i64, i16 }
+// IR: getelementptr inbounds
+// IR: load volatile i32
+// ELF: Name: .data.state
+// ELF: Size: 32
+// ELF: AddressAlignment: 64
+// ELF: Name: .bss.state
+// ELF: Type: SHT_NOBITS
+// ELF: Size: 32
+// ELF: AddressAlignment: 32
+// ELF: Name: pagos.global.state
+// ELF: Size: 32
+// ELF: Binding: Local

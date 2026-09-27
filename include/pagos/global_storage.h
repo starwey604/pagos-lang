@@ -15,12 +15,18 @@ struct GlobalStorage {
     std::uint32_t alignment{};
 
     // Keep every byte offset representable as a signed target pointer offset.
+    [[nodiscard]] static bool fits_target_size(std::uint64_t bytes,
+                                               unsigned pointer_bits) {
+        return (pointer_bits == 32 || pointer_bits == 64) &&
+               bytes <= ((std::uint64_t{1} << (pointer_bits - 1)) - 1);
+    }
+
     [[nodiscard]] static bool fits_target(unsigned element_bits,
                                           std::uint32_t count,
                                           unsigned pointer_bits) {
-        return (pointer_bits == 32 || pointer_bits == 64) &&
-               static_cast<std::uint64_t>(count) * (element_bits / 8) <=
-                   ((std::uint64_t{1} << (pointer_bits - 1)) - 1);
+        return fits_target_size(static_cast<std::uint64_t>(count) *
+                                    (element_bits / 8),
+                                pointer_bits);
     }
 
     [[nodiscard]] static bool valid_alignment(std::uint32_t value) {

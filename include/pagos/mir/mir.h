@@ -149,6 +149,10 @@ struct GlobalElementAddressOperation {
     std::string name;
     ValueId index; // Checked u32 index into a named integer array object.
 };
+struct GlobalFieldAddressOperation {
+    std::string name;
+    std::uint32_t field_index; // Declaration-order field in a global record.
+};
 
 struct ParameterOperation {
     std::uint32_t index;
@@ -225,7 +229,8 @@ using Operation =
                  PhiOperation, ArrayOperation, IndexOperation, RecordOperation,
                  FieldOperation, ParameterOperation, CallOperation,
                  PointerCastOperation, LoadOperation, StoreOperation,
-                 GlobalAddressOperation, GlobalElementAddressOperation>;
+                 GlobalAddressOperation, GlobalElementAddressOperation,
+                 GlobalFieldAddressOperation>;
 
 struct Instruction {
     ValueId result;

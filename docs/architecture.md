@@ -462,10 +462,12 @@ Global declarations are separate from legacy top-level executable statements.
 The semantic side table resolves name expressions to source declarations,
 respecting local shadowing; staging does not search caller scopes for globals.
 All initializers are evaluated before entry/export analysis and must be pure
-Static integers. Existing fuel and specialization budgets still apply.
+Static values of the declared storage type. Existing fuel and specialization
+budgets still apply.
 Declaration storage and LLVM allocations are not a new total-memory quota.
 
-HIR/MIR modules own typed global definitions and integer/scalar-array initializers.
+HIR/MIR modules own typed global definitions and integer, integer-array or
+integer-field record initializers.
 `GlobalAddress`/`GlobalAddressOperation` name an object without inventing a
 numeric address. They remain Runtime, including integer conversions, while a
 global-name value use creates a fresh load. MIR rejects missing symbols,
@@ -483,6 +485,19 @@ a stack copy. Integer constant emission and bounds guards are shared with the
 existing value-array path. See LLVM's
 [GEP explanation](https://llvm.org/docs/GetElementPtr.html): address calculation
 itself does not load memory or provide a bounds check.
+
+Global record fields use a separate `GlobalFieldAddress` operation carrying the
+symbol and declaration-order field index. Sema resolves the unshadowed storage
+base; staging does not evaluate a whole-record value to access one field. MIR
+checks nominal initializer identity, field types/counts, pointer permissions and
+field index, and requires consistent record schemas across globals and functions.
+Lowering registers record schemas before lowering globals. LLVM shares record
+constant emission with value records and uses an unpacked struct plus struct GEP,
+followed by a scalar load/store. `TargetLayout::layout_of` exposes allocation
+size, ABI alignment and field offsets for compiler tests; global `align` metadata
+does not alter those offsets. Padded object size is checked against the target
+signed-offset limit before LLVM global creation. No aggregate calling-convention
+classification or bool memory representation is inferred from this path.
 
 LLVM creates internal global variables before function bodies, using target ABI
 alignment and default section selection unless explicitly requested otherwise.

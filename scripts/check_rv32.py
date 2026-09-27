@@ -43,6 +43,7 @@ def main():
             target = ["--target=riscv32-unknown-elf", "--features=+m,+a,+c"]
             for name, harness in (("c-abi", "c_abi.c"), ("pointers", "pointers.c"),
                                   ("global-arrays", "global_arrays.c"),
+                                  ("global-records", "global_records.c"),
                                   ("mmio", None)):
                 source = str(PLATFORM / "mmio.pgs" if harness is None else
                              ROOT / f"tests/lit/codegen/{name}.pgs")
@@ -72,6 +73,13 @@ def main():
                             "squares": (".rodata.squares", 32, False, False),
                             "words": (".data.words", 4, True, False),
                         })
+                if name == "global-records":
+                    for key in (name, name + "-opt"):
+                        verify_storage(objects[key], {
+                            "state": (".data.state", 64, True, False),
+                            "zero": (".bss.state", 32, True, True),
+                            "config": (".rodata.state", 8, False, False),
+                        }, sizes={"state": 24, "zero": 24, "config": 24})
         for compiler in ("clang", "riscv64-elf-gcc"):
             cases = [
                 ("success", None, 0),
@@ -88,6 +96,9 @@ def main():
             if args.pagosc:
                 cases += [(name, "WITH_PAGOS_MMIO", 1, fault)
                           for name in ("mmio", "mmio-opt")
+                          for fault in ("SKIP_DATA_COPY", "SKIP_BSS_CLEAR")]
+                cases += [(name, "WITH_PAGOS_C_ABI", 1, fault)
+                          for name in ("global-records", "global-records-opt")
                           for fault in ("SKIP_DATA_COPY", "SKIP_BSS_CLEAR")]
             for case, define, expected, fault in cases:
                 elf = str(Path(directory) / f"{compiler}-{case}-{fault or expected}.elf")
@@ -108,11 +119,19 @@ def main():
                 elif case in objects:
                     command += ["-DPAGOS_FREESTANDING", objects[case],
                                 harnesses[case]]
+                    if fault:
+                        command += [f"-D{fault}"]
                 command += [str(PLATFORM / "start.S")]
                 if define != "WITH_PAGOS_MMIO":
                     command += [str(PLATFORM / "smoke.c")]
                 command += [str(runtime), "-o", elf]
                 subprocess.run(command, check=True)
+                if case in ("global-records", "global-records-opt"):
+                    verify_storage(elf, {
+                        "state": (".data", 64, True, False),
+                        "zero": (".bss", 32, True, True),
+                        "config": (".rodata", 8, False, False),
+                    }, sizes={"state": 24, "zero": 24, "config": 24})
                 if define == "WITH_PAGOS_MMIO":
                     verify_storage(elf, {
                         "boot_seed": (".data", 64, True, False),
@@ -137,7 +156,7 @@ def main():
                     if expected is None or result.returncode != expected or result.stdout != output:
                         raise RuntimeError(f"{compiler}/{case}: {result}")
                 print(f"PASS {compiler}/{case}" +
-                      (f"/{fault or f'exit-{expected}'}" if define == "WITH_PAGOS_MMIO" else ""), flush=True)
+                      (f"/{fault or f'exit-{expected}'}" if fault or define == "WITH_PAGOS_MMIO" else ""), flush=True)
 
 
 if __name__ == "__main__":

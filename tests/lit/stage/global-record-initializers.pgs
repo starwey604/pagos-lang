@@ -1,0 +1,21 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+record R { value: u32 }
+global mut source: R = R(value: 0);
+global const read: R = R(value: source.value);
+record P { address: usize }
+global const address: P = P(address: &source.value as usize);
+global const input: R = R(value: external_input());
+fn hidden() -> R { *&source.value = 7; R(value: 0) }
+global const effect: R = hidden();
+global mut bad_bss: R section(".bss.bad") = R(value: 1);
+// CHECK: error[E2010]: global initializer must be pure Static
+// CHECK: global field address source.value
+// CHECK: global record read value
+// CHECK: global initializer read
+// CHECK: error[E2010]: global initializer must be pure Static
+// CHECK: global initializer address
+// CHECK: error[E2010]: global initializer must be pure Static
+// CHECK: global initializer input
+// CHECK: error[E2010]: global initializer must be pure Static
+// CHECK: global initializer effect
+// CHECK: error[E2011]: BSS storage requires a zero initializer

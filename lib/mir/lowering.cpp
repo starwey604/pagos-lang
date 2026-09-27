@@ -25,13 +25,6 @@ class Lowerer {
     }
 
     std::expected<Module, std::string> run(const hir::Module& hir_module) {
-        for (const auto& global : hir_module.globals)
-            context_.output.globals.push_back(
-                {.name = "pagos.global." + global.name,
-                 .type = type_of(global.type),
-                 .writable = global.writable,
-                 .initializer = global.initializer,
-                 .storage = global.storage});
         for (const auto& record : hir_module.records) {
             Type type{Type::Record};
             type.record_name = record.name;
@@ -40,6 +33,13 @@ class Lowerer {
             }
             context_.records.emplace(record.name, std::move(type));
         }
+        for (const auto& global : hir_module.globals)
+            context_.output.globals.push_back(
+                {.name = "pagos.global." + global.name,
+                 .type = type_of(global.type),
+                 .writable = global.writable,
+                 .initializer = global.initializer,
+                 .storage = global.storage});
         ValueId result{};
         if (hir_module.result) {
             auto lowered = lower_expression(hir_module.result);
@@ -159,6 +159,13 @@ class Lowerer {
         std::expected<ValueId, std::string> result =
             std::unexpected("unknown HIR expression");
         switch (expression->kind) {
+        case hir::Expr::Kind::GlobalFieldAddress:
+            result = emit(type_of(expression->type),
+                          GlobalFieldAddressOperation{
+                              "pagos.global." + *expression->variable_name,
+                              expression->field_index},
+                          expression->span);
+            break;
         case hir::Expr::Kind::GlobalElementAddress: {
             auto index = lower_expression(expression->operands.at(0));
             if (!index || !live_)

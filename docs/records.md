@@ -2,6 +2,10 @@
 
 This Milestone 2 slice generalizes per-element array staging to named scalar
 fields. It does not establish a systems-level layout or foreign ABI.
+Milestone 3 separately adds
+[integer-field global storage](grammar.md#global-integer-field-records), with
+target-defined layout and scalar field pointers; the value-staging rules below
+remain unchanged.
 
 ## Declare, construct, and project
 
@@ -63,8 +67,10 @@ invalid declarations/types/fields, and opaque Runtime boundaries.
 ## Deliberate limits
 
 Records must be nonempty, with integer/`bool` fields. Nested records, array
-fields, arrays of records, methods, mutation, equality, generics, packing, and
-stable C ABI are not supported. An aggregate-valued implicit entry returns zero.
+fields, arrays of records, methods, value mutation, equality, generics, packing,
+and aggregate C calling conventions are not supported. Integer-only global
+record fields can be mutated through pointers; local records remain immutable
+values. An aggregate-valued implicit entry returns zero.
 Fuel, recursion depth, and specialization limits apply normally. Shared
 `--max-aggregate-members` / `--max-aggregate-bytes` quotas reserve every declared
 field before initializer evaluation, including constructors that later return

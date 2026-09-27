@@ -12,6 +12,9 @@ def main():
     optimize = arguments[0] == "--optimize"
     if optimize:
         arguments = arguments[1:]
+    no_traps = arguments[0] == "--no-traps"
+    if no_traps:
+        arguments = arguments[1:]
     source, *extra = arguments
     harness = Path(extra[0]) if extra else Path(__file__).with_name("c_abi.c")
     with tempfile.TemporaryDirectory(prefix="pagos-c-abi-") as directory:
@@ -32,6 +35,8 @@ def main():
                        check=True, timeout=20)
         subprocess.run([str(program)], check=True, timeout=5)
         trap_cases = extra[1:] or (["trap", "store-trap", "discard-trap"] if extra else ["trap"])
+        if no_traps:
+            trap_cases = []
         for case in trap_cases:
             trapped = subprocess.run([str(program), case], timeout=5)
             assert trapped.returncode == -signal.SIGILL, trapped

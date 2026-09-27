@@ -25,6 +25,30 @@ std::string value_name(ValueId value) { return "%" + std::to_string(value); }
 using Functions = std::unordered_map<std::string, const Function*>;
 using Globals = std::unordered_map<std::string, const Module::Global*>;
 
+bool valid_global_initializer(const Module::Global& global) {
+    if (global.type.is_record()) {
+        const auto* record = std::get_if<RecordConstant>(&global.initializer);
+        if (!record || record->name != global.type.record_name ||
+            record->fields.size() != global.type.fields.size())
+            return false;
+        for (std::size_t index = 0; index < record->fields.size(); ++index) {
+            const auto& type = global.type.fields[index];
+            const auto* value =
+                std::get_if<IntegerValue>(&record->fields[index]);
+            if (type.kind != Type::Integer || !value ||
+                value->type() != type.integer_type)
+                return false;
+        }
+        return true;
+    }
+    return (global.type.kind == Type::Integer ||
+            (global.type.is_array() &&
+             global.type.element_kind == Type::Integer)) &&
+           matches_integer_storage(global.initializer, global.type.integer_type,
+                                   global.type.is_array() ? global.type.length
+                                                          : 0);
+}
+
 std::expected<void, std::string> verify_function(const Function& function,
                                                  const Functions& functions,
                                                  const Globals& globals,
@@ -237,6 +261,20 @@ std::expected<void, std::string> verify_function(const Function& function,
                                                       global->second->writable,
                                                       pointer_bits))
                     return std::unexpected("invalid MIR global address");
+                continue;
+            }
+            if (const auto* address = std::get_if<GlobalFieldAddressOperation>(
+                    &instruction.operation)) {
+                const auto global = globals.find(address->name);
+                if (global == globals.end() ||
+                    !global->second->type.is_record() ||
+                    address->field_index >=
+                        global->second->type.fields.size() ||
+                    instruction.type !=
+                        Type::pointer(
+                            global->second->type.fields[address->field_index],
+                            global->second->writable, pointer_bits))
+                    return std::unexpected("invalid MIR global field address");
                 continue;
             }
             if (const auto* address =
@@ -692,6 +730,11 @@ void print_instruction(const Instruction& instruction, std::ostream& output) {
     if (const auto* address =
             std::get_if<GlobalAddressOperation>(&instruction.operation)) {
         output << "global_address @" << address->name;
+    } else if (const auto* field_address =
+                   std::get_if<GlobalFieldAddressOperation>(
+                       &instruction.operation)) {
+        output << "global_field_address @" << field_address->name << ", "
+               << field_address->field_index;
     } else if (const auto* element = std::get_if<GlobalElementAddressOperation>(
                    &instruction.operation)) {
         output << "global_element_address @" << element->name << ", "
@@ -862,18 +905,14 @@ std::expected<void, std::string> verify(const Module& module) {
             !globals.emplace(global.name, &global).second)
             return std::unexpected("duplicate or reserved MIR global name");
         if ((module.pointer_bits != 32 && module.pointer_bits != 64) ||
-            (global.type.kind != Type::Integer &&
-             !(global.type.is_array() &&
-               global.type.element_kind == Type::Integer)) ||
             !global.type.valid() ||
             !global.type.matches_pointer_width(module.pointer_bits) ||
-            !GlobalStorage::fits_target(
-                global.type.integer_type.width,
-                global.type.is_array() ? global.type.length : 1,
-                module.pointer_bits) ||
-            !matches_integer_storage(
-                global.initializer, global.type.integer_type,
-                global.type.is_array() ? global.type.length : 0))
+            (!global.type.is_record() &&
+             !GlobalStorage::fits_target(
+                 global.type.integer_type.width,
+                 global.type.is_array() ? global.type.length : 1,
+                 module.pointer_bits)) ||
+            !valid_global_initializer(global))
             return std::unexpected("invalid MIR global initializer or type");
         if (!global.storage.valid(global.writable) ||
             (global.storage.requires_zero() &&
@@ -896,6 +935,9 @@ std::expected<void, std::string> verify(const Module& module) {
         const auto [entry, inserted] = records.emplace(type.record_name, type);
         return inserted || entry->second == type;
     };
+    for (const auto& global : module.globals)
+        if (!consistent(global.type))
+            return std::unexpected("inconsistent MIR record definition");
     for (const auto& function : module.functions) {
         for (const auto& parameter : function.parameters) {
             if (!parameter.valid() ||

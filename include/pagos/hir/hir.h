@@ -49,6 +49,7 @@ struct Expr {
         VolatileStore,
         GlobalAddress,
         GlobalElementAddress,
+        GlobalFieldAddress,
         Binary,
         If,
         Sequence, // Ordered evaluations followed by the result value.

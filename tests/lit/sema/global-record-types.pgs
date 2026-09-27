@@ -1,0 +1,8 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+record Flags { ready: bool }
+record A { value: u32 }
+record B { value: u32 }
+global const flags: Flags = Flags(ready: true);
+global const mismatch: A = B(value: 1);
+// CHECK: error[E1013]: global storage requires an integer, integer array, or integer-field record type
+// CHECK: error[E1008]: type mismatch in global initializer

@@ -87,6 +87,12 @@ bool matches_integer_storage(const Constant& value, IntegerType element,
 bool is_zero_integer_storage(const Constant& value) {
     if (const auto* integer = std::get_if<IntegerValue>(&value))
         return integer->bits() == 0;
+    if (const auto* record = std::get_if<RecordConstant>(&value))
+        return !record->fields.empty() &&
+               std::ranges::all_of(record->fields, [](const auto& field) {
+                   const auto* integer = std::get_if<IntegerValue>(&field);
+                   return integer && integer->bits() == 0;
+               });
     const auto* array = std::get_if<std::vector<IntegerValue>>(&value);
     return array && std::ranges::all_of(*array, [](const auto& integer) {
                return integer.bits() == 0;

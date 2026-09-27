@@ -617,10 +617,199 @@ TEST(GlobalArrays,
 }
 
 TEST(GlobalArrays, ObjectSizesRespectSignedTargetOffsets) {
+    EXPECT_TRUE(GlobalStorage::fits_target_size(2147483647ULL, 32));
+    EXPECT_FALSE(GlobalStorage::fits_target_size(2147483648ULL, 32));
+    EXPECT_TRUE(GlobalStorage::fits_target_size(9223372036854775807ULL, 64));
+    EXPECT_FALSE(GlobalStorage::fits_target_size(9223372036854775808ULL, 64));
+    EXPECT_FALSE(GlobalStorage::fits_target_size(1, 0));
+    EXPECT_FALSE(GlobalStorage::fits_target_size(1, 128));
     EXPECT_TRUE(GlobalStorage::fits_target(8, 2147483647U, 32));
     EXPECT_FALSE(GlobalStorage::fits_target(8, 2147483648U, 32));
     EXPECT_FALSE(GlobalStorage::fits_target(64, 268435456U, 32));
     EXPECT_TRUE(GlobalStorage::fits_target(64, 268435456U, 64));
     EXPECT_FALSE(GlobalStorage::fits_target(8, 1, 0));
+}
+TEST(GlobalRecords, TargetLayoutAndFieldAddressesSurviveSessionReset) {
+    PointerInput input(
+        "record State { tag: u8, count: u32, wide: u64, size: usize, tail: i16 "
+        "} "
+        "global mut state: State align(64) = "
+        "State(tail: -7i16, size: ~0usize, wide: ~0u64, count: 12, tag: 3u8); "
+        "let p = &state.size; let result = state.count;");
+    for (const auto* triple :
+         {"riscv32-unknown-elf", "x86_64-unknown-linux-gnu",
+          "riscv32-unknown-elf"}) {
+        const auto target = codegen::TargetLayout::create({.triple = triple});
+        ASSERT_TRUE(target);
+        const auto bits = target->pointer_bits();
+        sema::TypeChecker checker(input.diagnostics, bits);
+        ASSERT_TRUE(checker.check(*input.syntax));
+        stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
+        for (int session = 0; session < 2; ++session) {
+            const auto hir = analyzer.analyze(*input.syntax);
+            ASSERT_FALSE(input.diagnostics.has_error());
+            ASSERT_EQ(hir->globals.size(), 1U);
+            const auto& constant =
+                std::get<RecordConstant>(hir->globals[0].initializer);
+            EXPECT_EQ(std::get<IntegerValue>(constant.fields[3]).type(),
+                      (IntegerType{bits, false, true}));
+            EXPECT_EQ(hir->bindings[0].stage, hir::Stage::Runtime);
+            EXPECT_FALSE(hir->bindings[0].value->constant);
+            const auto module = mir::lower(*hir);
+            ASSERT_TRUE(module) << module.error();
+            const auto layout = target->layout_of(module->globals[0].type);
+            ASSERT_TRUE(layout);
+            EXPECT_EQ(layout->size_bytes, bits == 32 ? 24U : 32U);
+            EXPECT_EQ(layout->alignment_bytes, 8U);
+            EXPECT_EQ(layout->field_offsets,
+                      (std::vector<std::uint64_t>{0, 4, 8, 16,
+                                                  bits == 32 ? 20U : 24U}));
+            const auto ir =
+                codegen::LLVMCodegen::emit_for_target(*module, *target);
+            ASSERT_TRUE(ir) << ir.error();
+            EXPECT_NE(ir->find("align 64"), std::string::npos);
+            EXPECT_EQ(ir->find("alloca"), std::string::npos);
+            EXPECT_EQ(ir->find("extractvalue"), std::string::npos);
+        }
+    }
+}
+
+TEST(GlobalRecords, VerifierRejectsMalformedInitializersAndNominalSchemas) {
+    PointerInput input("record R { tag: u8, size: usize } "
+                       "global mut state: R = R(tag: 0u8, size: 0usize); "
+                       "global mut twin: R = R(tag: 0u8, size: 0usize);");
+    sema::TypeChecker checker(input.diagnostics, 64);
+    ASSERT_TRUE(checker.check(*input.syntax));
+    stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
+    const auto hir = analyzer.analyze(*input.syntax);
+    const auto good = mir::lower(*hir);
+    ASSERT_TRUE(good);
+    for (int case_id = 0; case_id < 11; ++case_id) {
+        auto bad = *good;
+        auto& global = bad.globals[0];
+        auto& value = std::get<RecordConstant>(global.initializer);
+        switch (case_id) {
+        case 0:
+            value.name = "Other";
+            break;
+        case 1:
+            value.fields.pop_back();
+            break;
+        case 2:
+            value.fields[0] = true;
+            break;
+        case 3:
+            value.fields[0] = IntegerValue::create({16}, 0).value();
+            break;
+        case 4:
+            value.fields[1] = IntegerValue::create({64}, 0).value();
+            break;
+        case 5:
+            global.type.fields[0] = mir::Type::Bool;
+            value.fields[0] = false;
+            break;
+        case 6:
+            global.storage.section = ".bss.state";
+            value.fields[0] = IntegerValue::create({8}, 1).value();
+            break;
+        case 7:
+            global.type.fields[1] = mir::Type::integer(32, false, true);
+            value.fields[1] =
+                IntegerValue::create({32, false, true}, 0).value();
+            break;
+        case 8:
+            // Both initializers are individually valid, but one nominal type
+            // must not acquire a second schema through a global definition.
+            global.type.fields[0] = mir::Type::integer(16);
+            value.fields[0] = IntegerValue::create({16}, 0).value();
+            break;
+        case 9:
+            global.initializer = false;
+            break;
+        case 10:
+            global.type.fields.clear();
+            value.fields.clear();
+            break;
+        }
+        EXPECT_FALSE(mir::verify(bad)) << case_id;
+        EXPECT_FALSE(codegen::LLVMCodegen::emit(bad)) << case_id;
+    }
+}
+
+TEST(GlobalRecords, VerifierChecksFieldAddressSymbolIndexTypeAndPermission) {
+    PointerInput input(
+        "record R { field: u32 } global const data: R = R(field: 1); "
+        "global const scalar: u32 = 0; "
+        "export fn address() -> *const u32 { &data.field }");
+    sema::TypeChecker checker(input.diagnostics, 64);
+    ASSERT_TRUE(checker.check(*input.syntax));
+    stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
+    const auto hir = analyzer.analyze(*input.syntax);
+    const auto good = mir::lower(*hir);
+    ASSERT_TRUE(good);
+    for (int case_id = 0; case_id < 6; ++case_id) {
+        auto bad = *good;
+        auto& instructions = bad.functions[0].blocks[0].instructions;
+        auto address =
+            std::ranges::find_if(instructions, [](const auto& instruction) {
+                return std::holds_alternative<mir::GlobalFieldAddressOperation>(
+                    instruction.operation);
+            });
+        ASSERT_NE(address, instructions.end());
+        auto& operation =
+            std::get<mir::GlobalFieldAddressOperation>(address->operation);
+        switch (case_id) {
+        case 0:
+            operation.name = "missing";
+            break;
+        case 1:
+            operation.name = "pagos.global.scalar";
+            break;
+        case 2:
+            operation.field_index = 1;
+            break;
+        case 3:
+            address->type.pointer_mutable = true;
+            break;
+        case 4:
+            address->type.integer_type.width = 16;
+            break;
+        case 5:
+            address->type.integer_type.is_signed = true;
+            break;
+        }
+        bad.functions[0].result_type = address->type;
+        const auto result = mir::verify(bad);
+        ASSERT_FALSE(result) << case_id;
+        EXPECT_EQ(result.error(), "invalid MIR global field address");
+        EXPECT_FALSE(codegen::LLVMCodegen::emit(bad));
+    }
+}
+
+TEST(GlobalRecords, ConstructionBudgetCountsLogicalFieldsNotStoragePadding) {
+    for (unsigned bits : {32U, 64U}) {
+        PointerInput input(
+            "record R { tag: u8, size: usize } "
+            "global const unused: R = R(tag: 0u8, size: 0usize);");
+        sema::TypeChecker checker(input.diagnostics, bits);
+        ASSERT_TRUE(checker.check(*input.syntax));
+        stage::AnalysisLimits limits;
+        limits.aggregate_bytes = 5;
+        stage::StageAnalyzer analyzer(input.diagnostics, checker.types(),
+                                      limits);
+        const auto hir = analyzer.analyze(*input.syntax);
+        EXPECT_EQ(input.diagnostics.has_error(), bits == 64);
+        if (bits == 32) {
+            ASSERT_EQ(hir->globals.size(), 1U);
+            EXPECT_FALSE(hir->emit_entry);
+            const auto module = mir::lower(*hir);
+            ASSERT_TRUE(module);
+            const auto target = codegen::TargetLayout::create(
+                {.triple = "riscv32-unknown-elf"});
+            ASSERT_TRUE(target);
+            EXPECT_EQ(target->layout_of(module->globals[0].type)->size_bytes,
+                      8U);
+        }
+    }
 }
 } // namespace

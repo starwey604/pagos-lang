@@ -104,7 +104,9 @@ The globals use named data subsections with explicit alignment. Shared
 flags, storage kind and symbol alignment before execution; no new tools are
 required beyond LLVM `llvm-readobj`.
 Boot data/BSS now contain arrays; volatile checks inspect both first and last
-elements, plus a generated readonly table. The total with `--pagosc` is 38 cases.
+elements, plus a generated readonly table. Global record tests also compare C
+field offsets and padded object sizes, and repeat data/BSS fault injection with
+volatile record-field reads. The total with `--pagosc` is 50 cases.
 `scripts/ci.py --rv32` includes all of them.
 The matching target libgcc is linked explicitly; do not substitute host compiler-rt.
 
@@ -216,6 +218,15 @@ Separate fixtures check index evaluation order and suppression of store-value
 evaluation after an out-of-range address. See
 [global array rules](grammar.md#global-integer-arrays); this is not array-by-value
 C ABI support or local array address-taking.
+
+`tests/lit/codegen/global-records.pgs` and its C harness exercise mixed-width
+integer record storage, field pointers, snapshots, foreign mutation, early
+returns and local shadowing. ELF symbol sizes and `TargetLayout` unit tests
+include tail padding; C `offsetof` checks actual field addresses on the host and
+RV32, both before and after optimization. Existing `llvm-readobj`, Clang/GCC and
+QEMU suffice; no new dependency is needed. See
+[global record rules](grammar.md#global-integer-field-records). This does not
+enable record-pointer types or record-by-value C calls.
 
 Bound compile-time work with options placed anywhere before or after the
 command:

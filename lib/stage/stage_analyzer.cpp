@@ -853,6 +853,13 @@ StageAnalyzer::analyze_record(const syntax::RecordExpr& expression) {
 }
 
 hir::ExprPtr StageAnalyzer::analyze_field(const syntax::FieldExpr& expression) {
+    if (types_.global_references.contains(&expression)) {
+        auto address = global_field_address(expression);
+        auto trace = *address->trace;
+        trace.path.push_back("global record read " + expression.name);
+        return make_runtime(hir::Expr::Kind::Load, type_of(expression),
+                            expression.span, {address}, std::move(trace));
+    }
     auto record = analyze_expression(*expression.record);
     if (!record || !record->falls_through) {
         return record;
@@ -1247,8 +1254,33 @@ StageAnalyzer::global_element_address(const syntax::IndexExpr& expression) {
     return address;
 }
 
+hir::ExprPtr
+StageAnalyzer::global_field_address(const syntax::FieldExpr& expression) {
+    const auto& global = *types_.global_references.at(&expression);
+    const auto& fields =
+        records_.at(types_.resolve(global.type).record_name)->fields;
+    const auto found =
+        std::ranges::find(fields, expression.name, &syntax::Parameter::name);
+    const auto origin =
+        "global field address " + global.name + "." + expression.name;
+    auto address = std::make_shared<hir::Expr>(
+        *make_runtime(hir::Expr::Kind::GlobalFieldAddress,
+                      sema::Type::pointer(type_of(expression), global.writable,
+                                          types_.pointer_bits),
+                      expression.span, {},
+                      {.origin_span = expression.span,
+                       .origin_name = origin,
+                       .path = {origin}}));
+    address->variable_name = global.name;
+    address->field_index = static_cast<std::uint32_t>(found - fields.begin());
+    return address;
+}
+
 hir::ExprPtr StageAnalyzer::analyze_unary(const syntax::UnaryExpr& expression) {
     if (expression.operation == syntax::UnaryOperator::AddressOf) {
+        if (expression.operand->kind == syntax::Expr::Kind::Field)
+            return global_field_address(
+                static_cast<const syntax::FieldExpr&>(*expression.operand));
         if (expression.operand->kind == syntax::Expr::Kind::Index)
             return global_element_address(
                 static_cast<const syntax::IndexExpr&>(*expression.operand));

@@ -51,11 +51,20 @@ bool TypeChecker::check(syntax::Module& module) {
                                    global.name + "`",
                                global.name_span);
         const auto type = types_.resolve(global.type);
+        const auto record = records_.find(type.record_name);
+        const bool integer_record =
+            type.is_record() && record != records_.end() &&
+            std::ranges::all_of(record->second->fields, [&](const auto& field) {
+                return types_.resolve(field.type).kind == TypeKind::Integer;
+            });
         if (type.kind != TypeKind::Integer &&
-            !(type.is_array() && type.element_type().kind == TypeKind::Integer))
+            !(type.is_array() &&
+              type.element_type().kind == TypeKind::Integer) &&
+            !integer_record)
             diagnostics_.error(
                 "E1013",
-                "global storage requires an integer or integer array type",
+                "global storage requires an integer, integer array, or "
+                "integer-field record type",
                 global.name_span);
         if (type.is_array() &&
             (types_.pointer_bits == 32 || types_.pointer_bits == 64) &&
@@ -319,7 +328,7 @@ void TypeChecker::check_statement(syntax::Stmt& statement,
 }
 
 sema::Type TypeChecker::check_expression(syntax::Expr& expression,
-                                         bool global_array_base) {
+                                         TypeKind global_storage_base) {
     sema::Type type = sema::TypeKind::Error;
     switch (expression.kind) {
     case syntax::Expr::Kind::Record:
@@ -363,11 +372,17 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression,
                 global != globals_.end()) {
                 types_.global_references.emplace(&expression, global->second);
                 type = types_.resolve(global->second->type);
-                if (type.is_array() && !global_array_base)
+                if (type.is_array() && global_storage_base != TypeKind::Array)
                     diagnostics_.error(
                         "E1015", "global arrays require element indexing",
                         expression.span,
                         "use name[index] or &name[index]; whole-array values "
+                        "and addresses are not supported");
+                if (type.is_record() && global_storage_base != TypeKind::Record)
+                    diagnostics_.error(
+                        "E1015", "global records require field selection",
+                        expression.span,
+                        "use name.field or &name.field; whole-record values "
                         "and addresses are not supported");
                 break;
             }
@@ -382,11 +397,15 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression,
             const auto global =
                 types_.global_references.find(unary.operand.get());
             if (global == types_.global_references.end())
-                diagnostics_.error("E1013",
-                                   "address-taking requires an unshadowed "
-                                   "global name or array element",
-                                   unary.span);
-            else {
+                diagnostics_.error(
+                    "E1013",
+                    "address-taking requires an unshadowed "
+                    "global name, array element, or record field",
+                    unary.span);
+            else if (!operand_type.is_array() && !operand_type.is_record()) {
+                // Bare aggregate storage already reports E1015 above; do not
+                // turn an unsupported whole-object address into a bogus
+                // unresolved-usize diagnostic from Type::pointer.
                 type =
                     operand_type == TypeKind::Never
                         ? Type(TypeKind::Never)
@@ -591,7 +610,7 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression,
     }
     case syntax::Expr::Kind::Index: {
         auto& index = static_cast<syntax::IndexExpr&>(expression);
-        const auto array_type = check_expression(*index.array, true);
+        const auto array_type = check_expression(*index.array, TypeKind::Array);
         const auto index_type = check_expression(*index.index);
         if (array_type.is_array()) {
             const auto global =
@@ -666,7 +685,7 @@ sema::Type TypeChecker::check_record(syntax::RecordExpr& expression) {
 }
 
 sema::Type TypeChecker::check_field(syntax::FieldExpr& expression) {
-    auto type = check_expression(*expression.record);
+    auto type = check_expression(*expression.record, TypeKind::Record);
     if (type == sema::TypeKind::Never || type == sema::TypeKind::Error) {
         return type;
     }
@@ -689,6 +708,10 @@ sema::Type TypeChecker::check_field(syntax::FieldExpr& expression) {
                            expression.name_span);
         return sema::TypeKind::Error;
     }
+    if (const auto global =
+            types_.global_references.find(expression.record.get());
+        global != types_.global_references.end())
+        types_.global_references.emplace(&expression, global->second);
     return types_.resolve(field->type);
 }
 

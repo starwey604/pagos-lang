@@ -202,6 +202,12 @@ Fixed-length integer globals now support generated Static initializers,
 Runtime element reads and checked `&name[index]` addresses. The
 [array example](tests/lit/codegen/global-arrays.pgs) shares a Pagos-owned buffer
 with C on the host and RV32, without whole-array copies or array-pointer types.
+Global integer-field records now have declaration-order, target-aligned storage
+and Runtime field reads/addresses. The
+[record storage example](tests/lit/codegen/global-records.pgs) checks persistent
+state and C field-pointer access on the host and RV32; see the
+[layout rules](docs/grammar.md#global-integer-field-records). Whole-record pointers,
+copies, bool/nested storage and record-by-value C calls remain deferred.
 
 ## Development
 
