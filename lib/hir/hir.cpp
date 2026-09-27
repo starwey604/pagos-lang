@@ -125,9 +125,18 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
         break;
     case Expr::Kind::Load:
     case Expr::Kind::Store:
-        output << (expression->kind == Expr::Kind::Load ? "load(" : "store(");
+    case Expr::Kind::VolatileLoad:
+    case Expr::Kind::VolatileStore:
+        if (expression->kind == Expr::Kind::VolatileLoad ||
+            expression->kind == Expr::Kind::VolatileStore)
+            output << "volatile_";
+        output << (expression->kind == Expr::Kind::Load ||
+                           expression->kind == Expr::Kind::VolatileLoad
+                       ? "load("
+                       : "store(");
         print_expression(expression->operands.at(0), output);
-        if (expression->kind == Expr::Kind::Store) {
+        if (expression->kind == Expr::Kind::Store ||
+            expression->kind == Expr::Kind::VolatileStore) {
             output << ", ";
             print_expression(expression->operands.at(1), output);
         }

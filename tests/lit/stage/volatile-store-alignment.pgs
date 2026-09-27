@@ -1,0 +1,3 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+volatile *(4097usize as *mut u16) = 1u16;
+// CHECK: error[E4014]: volatile access requires natural alignment

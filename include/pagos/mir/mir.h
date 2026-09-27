@@ -193,11 +193,13 @@ struct PointerCastOperation {
 };
 struct LoadOperation {
     ValueId pointer;
+    bool is_volatile{};
 };
 // Stores have an instruction identity for scheduling, but no SSA value.
 struct StoreOperation {
     ValueId pointer;
     ValueId value;
+    bool is_volatile{};
 };
 
 struct PhiIncoming {

@@ -190,6 +190,12 @@ void TypeChecker::check_statement(syntax::Stmt& statement,
         saw_return = saw_return || pointer == TypeKind::Never ||
                      value == TypeKind::Never;
         if (pointer.is_pointer()) {
+            if (store.is_volatile &&
+                pointer.integer_type.width > pointer.pointer_bits)
+                diagnostics_.error(
+                    "E1012",
+                    "volatile access width exceeds target pointer width",
+                    store.span);
             if (!pointer.pointer_mutable)
                 diagnostics_.error("E1011", "store requires a `*mut` pointer",
                                    store.pointer->span);
@@ -314,7 +320,15 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
             type = sema::TypeKind::Never;
             break;
         }
-        if (unary.operation == syntax::UnaryOperator::Dereference) {
+        if (unary.operation == syntax::UnaryOperator::Dereference ||
+            unary.operation == syntax::UnaryOperator::VolatileDereference) {
+            if (operand_type.is_pointer() &&
+                unary.operation == syntax::UnaryOperator::VolatileDereference &&
+                operand_type.integer_type.width > operand_type.pointer_bits)
+                diagnostics_.error(
+                    "E1012",
+                    "volatile access width exceeds target pointer width",
+                    unary.span);
             if (operand_type.is_pointer())
                 type = operand_type.pointee_type();
             else if (operand_type != TypeKind::Error)

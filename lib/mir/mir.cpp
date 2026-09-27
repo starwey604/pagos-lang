@@ -413,6 +413,13 @@ std::expected<void, std::string> verify_function(const Function& function,
                 if (!pointer->is_pointer() ||
                     instruction.type != pointer->pointee_type())
                     return std::unexpected("invalid MIR pointer load");
+                if (load->is_volatile &&
+                    (pointer->integer_type.width > pointer->pointer_bits ||
+                     (pointer->integer_type.width != 8 &&
+                      pointer->integer_type.width != 16 &&
+                      pointer->integer_type.width != 32 &&
+                      pointer->integer_type.width != 64)))
+                    return std::unexpected("invalid MIR volatile access width");
                 continue;
             }
             if (const auto* store =
@@ -433,6 +440,13 @@ std::expected<void, std::string> verify_function(const Function& function,
                     *value != pointer->pointee_type() ||
                     instruction.type != Type::Void)
                     return std::unexpected("invalid MIR pointer store");
+                if (store->is_volatile &&
+                    (pointer->integer_type.width > pointer->pointer_bits ||
+                     (pointer->integer_type.width != 8 &&
+                      pointer->integer_type.width != 16 &&
+                      pointer->integer_type.width != 32 &&
+                      pointer->integer_type.width != 64)))
+                    return std::unexpected("invalid MIR volatile access width");
                 continue;
             }
             if (const auto* cast =
@@ -680,9 +694,13 @@ void print_instruction(const Instruction& instruction, std::ostream& output) {
         output << "pointer_cast " << value_name(pointer_cast->operand);
     } else if (const auto* load =
                    std::get_if<LoadOperation>(&instruction.operation)) {
+        if (load->is_volatile)
+            output << "volatile_";
         output << "load " << value_name(load->pointer);
     } else if (const auto* store =
                    std::get_if<StoreOperation>(&instruction.operation)) {
+        if (store->is_volatile)
+            output << "volatile_";
         output << "store " << value_name(store->pointer) << ", "
                << value_name(store->value);
     } else if (const auto* cast =

@@ -1,0 +1,5 @@
+// RUN: not %pagosc --target=riscv32-unknown-elf check %s 2>&1 | %FileCheck %s
+let p = 4096usize as *mut u64;
+let read = volatile *p;
+volatile *p = 1u64;
+// CHECK-COUNT-2: error[E1012]: volatile access width exceeds target pointer width

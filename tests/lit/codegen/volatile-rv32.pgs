@@ -1,0 +1,26 @@
+// RUN: %pagosc --target=riscv32-unknown-elf emit-llvm %s | llc -o - | %FileCheck %s
+// RUN: %pagosc --target=riscv32-unknown-elf emit-llvm %s | opt -S -passes='default<O2>' | llc -o - | %FileCheck %s
+export fn read_byte(p: *const u8) -> u32 { (volatile *p) as u32 }
+export fn read_half(p: *const u16) -> u32 { (volatile *p) as u32 }
+export fn read_word(p: *const u32) -> u32 { volatile *p }
+export fn write_byte(p: *mut u8) -> u32 { volatile *p = 17u8; 0 }
+export fn write_half(p: *mut u16) -> u32 { volatile *p = 17u16; 0 }
+export fn write_word(p: *mut u32) -> u32 { volatile *p = 17; 0 }
+// CHECK-LABEL: read_byte:
+// CHECK: lbu
+// CHECK-LABEL: read_half:
+// CHECK-NOT: lbu
+// CHECK: lhu
+// CHECK-LABEL: read_word:
+// CHECK-NOT: lbu
+// CHECK-NOT: lhu
+// CHECK: lw
+// CHECK-LABEL: write_byte:
+// CHECK: sb
+// CHECK-LABEL: write_half:
+// CHECK-NOT: sb
+// CHECK: sh
+// CHECK-LABEL: write_word:
+// CHECK-NOT: sb
+// CHECK-NOT: sh
+// CHECK: sw

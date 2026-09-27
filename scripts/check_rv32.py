@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run RV32 environment probes and, with --pagosc, the Pagos/C ABI bridge."""
+"""Run RV32 environment, Pagos/C ABI, and Pagos-native MMIO probes."""
 
 import argparse
 import json
@@ -21,7 +21,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--qemu-version", default="11.1.1")
     parser.add_argument("--pagosc", type=Path,
-                        help="also compile and execute Pagos/C ABI firmware")
+                        help="also execute Pagos/C ABI and native MMIO firmware")
     args = parser.parse_args()
     version = checked(["qemu-system-riscv32", "--version"]).splitlines()[0]
     if version != f"QEMU emulator version {args.qemu_version}":
@@ -39,11 +39,14 @@ def main():
         if args.pagosc:
             pagosc = str(args.pagosc.resolve())
             target = ["--target=riscv32-unknown-elf", "--features=+m,+a,+c"]
-            for name, harness in (("c-abi", "c_abi.c"), ("pointers", "pointers.c")):
-                source = str(ROOT / f"tests/lit/codegen/{name}.pgs")
+            for name, harness in (("c-abi", "c_abi.c"), ("pointers", "pointers.c"),
+                                  ("mmio", None)):
+                source = str(PLATFORM / "mmio.pgs" if harness is None else
+                             ROOT / f"tests/lit/codegen/{name}.pgs")
                 objects[name] = str(Path(directory) / f"{name}.o")
                 objects[name + "-opt"] = str(Path(directory) / f"{name}-opt.o")
-                harnesses[name] = harnesses[name + "-opt"] = str(ROOT / "tests/lit/Inputs" / harness)
+                if harness is not None:
+                    harnesses[name] = harnesses[name + "-opt"] = str(ROOT / "tests/lit/Inputs" / harness)
                 subprocess.run([pagosc, *target, "emit-obj", source, "-o",
                                 objects[name]], check=True)
                 ir = subprocess.check_output([pagosc, *target, "emit-llvm", source])
@@ -58,7 +61,10 @@ def main():
                 ("data-init", "SKIP_DATA_COPY", 1),
                 ("timeout", "FORCE_TIMEOUT", None),
             ]
-            cases += [(name, "WITH_PAGOS_C_ABI", 0) for name in objects]
+            cases += [(name, "WITH_PAGOS_C_ABI", 0) for name in harnesses]
+            if args.pagosc:
+                cases += [(name, "WITH_PAGOS_MMIO", status)
+                          for name in ("mmio", "mmio-opt") for status in (0, 1)]
             for case, define, expected in cases:
                 elf = str(Path(directory) / f"{compiler}-{case}.elf")
                 command = [compiler, *ISA, "-O2", "-ffreestanding", "-nostdlib",
@@ -69,11 +75,17 @@ def main():
                     command += ["--target=riscv32-unknown-elf", "-fuse-ld=lld"]
                 if define:
                     command += [f"-D{define}"]
-                if case in objects:
+                if define == "WITH_PAGOS_MMIO":
+                    command += [objects[case]]
+                    if expected == 1:
+                        command += ["-DFORCE_FAILURE"]
+                elif case in objects:
                     command += ["-DPAGOS_FREESTANDING", objects[case],
                                 harnesses[case]]
-                command += [str(PLATFORM / "start.S"), str(PLATFORM / "smoke.c"),
-                            str(runtime), "-o", elf]
+                command += [str(PLATFORM / "start.S")]
+                if define != "WITH_PAGOS_MMIO":
+                    command += [str(PLATFORM / "smoke.c")]
+                command += [str(runtime), "-o", elf]
                 subprocess.run(command, check=True)
                 qemu = ["qemu-system-riscv32", "-machine", "virt", "-cpu", CPU,
                         "-accel", "tcg", "-smp", "1", "-m", "16M", "-bios", "none",
@@ -87,9 +99,12 @@ def main():
                         raise
                 else:
                     output = "PAGOS RV32 PASS\n" if expected == 0 else "PAGOS RV32 FAIL\n"
+                    if define == "WITH_PAGOS_MMIO":
+                        output = output.replace("RV32", "MMIO")
                     if expected is None or result.returncode != expected or result.stdout != output:
                         raise RuntimeError(f"{compiler}/{case}: {result}")
-                print(f"PASS {compiler}/{case}", flush=True)
+                print(f"PASS {compiler}/{case}" +
+                      (f"/exit-{expected}" if define == "WITH_PAGOS_MMIO" else ""), flush=True)
 
 
 if __name__ == "__main__":

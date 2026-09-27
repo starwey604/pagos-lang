@@ -89,10 +89,13 @@ direct object output and Clang `-O2` optimized IR, each linked against Clang-
 and GCC-compiled C. They exercise exports/imports, recursion, signed values,
 ten-argument register/stack passing, and effect order. The pointer suite also
 executes Pagos RAM loads/stores, aliasing, recursive/loop updates, integer-address
-round trips, and unaligned access. Startup, MMIO and UART remain in C/assembly;
-this is not yet Pagos volatile/device support.
-`scripts/ci.py --rv32` includes both probes and these ABI cases. The matching
-target libgcc is linked explicitly; do not substitute host compiler-rt.
+round trips, and unaligned access. These ABI cases use C/assembly device support.
+Eight more cases run `platforms/qemu-rv32-virt/mmio.pgs` directly: Pagos polls
+UART, prints `PAGOS MMIO PASS` or `PAGOS MMIO FAIL`, then writes the test device.
+Both exit paths run with direct objects and optimized IR under both toolchains,
+without linking the C smoke harness. Startup/linker support remains shared.
+The total with `--pagosc` is 26 cases. `scripts/ci.py --rv32` includes all of them.
+The matching target libgcc is linked explicitly; do not substitute host compiler-rt.
 
 ### Host compiler commands
 
@@ -170,6 +173,14 @@ No `unsafe` keyword or borrowing annotations are required. Read the
 [memory rules](grammar.md#raw-pointers-and-memory-milestone-3) before passing
 addresses: null checks are not lifetime/bounds checks, and ordinary memory
 operations are neither volatile nor atomic.
+
+For the standalone Pagos device example, run
+`python3 scripts/check_rv32.py --pagosc build/debug/pagosc`. No physical board
+or new dependency is needed. Volatile tests also inspect optimized LLVM IR and
+RV32 instructions using the existing LLVM `opt`/`llc` tools. Consult the
+[volatile contract](grammar.md#volatile-access-and-mmio-milestone-3): accesses
+must have device-valid widths and natural alignment, and provide no CPU fence,
+cache setup or atomic synchronization.
 
 Bound compile-time work with options placed anywhere before or after the
 command:

@@ -92,7 +92,8 @@ class StageAnalyzer {
         bool reserved{};
     };
     void note_runtime_work();
-    bool check_pointer_access(const hir::ExprPtr& pointer, source::Span span);
+    bool check_pointer_access(const hir::ExprPtr& pointer, source::Span span,
+                              bool is_volatile = false);
     bool reserve_residual(ResidualEntry& entry, source::Span span);
     void initialize_boundaries(const syntax::Module& module);
     void analyze_exports(const syntax::Module& module);

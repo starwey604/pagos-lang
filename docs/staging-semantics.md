@@ -324,6 +324,14 @@ Runtime stores are ordered after their address/value computations and before
 later dependent reads or external calls. Pointer permission is not an effect
 summary: `*const` does not mean memory cannot change through another alias.
 
+Explicit `volatile *p` reads and `volatile *p = value;` writes use the same
+residual-work machinery but retain a distinct access mode through LLVM.
+Discarded reads and identical writes remain observable. A binding captures one
+read; accessing its name again does not poll a device again. Ordinary memory
+validity and volatile device validity are different obligations; consult the
+[volatile rules](grammar.md#volatile-access-and-mmio-milestone-3) for alignment,
+target-width limits and the absence of synchronization/barrier guarantees.
+
 `build.fs` and `build.env` calls record exact dependencies for incremental and
 content-addressed builds. Network access should be disabled by default. External
 commands belong to a declarative build action graph rather than unrestricted

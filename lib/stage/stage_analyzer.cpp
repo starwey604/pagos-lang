@@ -135,10 +135,18 @@ void StageAnalyzer::note_runtime_work() {
 }
 
 bool StageAnalyzer::check_pointer_access(const hir::ExprPtr& pointer,
-                                         source::Span span) {
+                                         source::Span span, bool is_volatile) {
     if (pointer->constant &&
         std::get<PointerConstant>(*pointer->constant).address.bits() == 0) {
         diagnostics_.error("E4013", "cannot dereference a null pointer", span);
+        return false;
+    }
+    if (is_volatile && pointer->constant &&
+        std::get<PointerConstant>(*pointer->constant).address.bits() %
+                (pointer->type.integer_type.width / 8) !=
+            0) {
+        diagnostics_.error("E4014",
+                           "volatile access requires natural alignment", span);
         return false;
     }
     return true;
@@ -444,13 +452,18 @@ StageAnalyzer::analyze_statement(const syntax::Stmt& statement,
             return {.value = value ? make_sequence({pointer}, value, store.span)
                                    : nullptr,
                     .returned = true};
-        if (!check_pointer_access(pointer, store.pointer->span))
+        if (!check_pointer_access(pointer, store.pointer->span,
+                                  store.is_volatile))
             return {};
-        auto effect = make_runtime(hir::Expr::Kind::Store, sema::TypeKind::Void,
-                                   store.span, {pointer, value},
-                                   {.origin_span = store.span,
-                                    .origin_name = "pointer store",
-                                    .path = {"pointer store"}});
+        const std::string origin =
+            store.is_volatile ? "volatile store" : "pointer store";
+        auto effect =
+            make_runtime(store.is_volatile ? hir::Expr::Kind::VolatileStore
+                                           : hir::Expr::Kind::Store,
+                         sema::TypeKind::Void, store.span, {pointer, value},
+                         {.origin_span = store.span,
+                          .origin_name = origin,
+                          .path = {origin}});
         return {.effects = {effect}};
     }
     case syntax::Stmt::Kind::Binding: {
@@ -1132,14 +1145,20 @@ hir::ExprPtr StageAnalyzer::analyze_unary(const syntax::UnaryExpr& expression) {
     if (!operand || !operand->falls_through) {
         return operand;
     }
-    if (expression.operation == syntax::UnaryOperator::Dereference) {
-        if (!check_pointer_access(operand, expression.span))
+    if (expression.operation == syntax::UnaryOperator::Dereference ||
+        expression.operation == syntax::UnaryOperator::VolatileDereference) {
+        const bool is_volatile =
+            expression.operation == syntax::UnaryOperator::VolatileDereference;
+        if (!check_pointer_access(operand, expression.span, is_volatile))
             return nullptr;
-        return make_runtime(hir::Expr::Kind::Load, type_of(expression),
-                            expression.span, {operand},
+        const std::string origin =
+            is_volatile ? "volatile load" : "pointer load";
+        return make_runtime(is_volatile ? hir::Expr::Kind::VolatileLoad
+                                        : hir::Expr::Kind::Load,
+                            type_of(expression), expression.span, {operand},
                             {.origin_span = expression.span,
-                             .origin_name = "pointer load",
-                             .path = {"pointer load"}});
+                             .origin_name = origin,
+                             .path = {origin}});
     }
     if (operand->stage == hir::Stage::Static) {
         const auto result = vm::Evaluator::unary(expression.operation,

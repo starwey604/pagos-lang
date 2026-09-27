@@ -372,17 +372,22 @@ std::unique_ptr<Stmt> Parser::parse_store(std::unique_ptr<Expr> destination) {
     if (!value || !end)
         return nullptr;
     if (destination->kind != Expr::Kind::Unary ||
-        static_cast<UnaryExpr&>(*destination).operation !=
-            UnaryOperator::Dereference) {
+        (static_cast<UnaryExpr&>(*destination).operation !=
+             UnaryOperator::Dereference &&
+         static_cast<UnaryExpr&>(*destination).operation !=
+             UnaryOperator::VolatileDereference)) {
         diagnostics_.error("E1002", "assignment requires a pointer dereference",
                            destination->span);
         return nullptr;
     }
     const auto span =
         source::Span{.begin = destination->span.begin, .end = end->span.end};
-    return std::make_unique<StoreStmt>(
+    auto store = std::make_unique<StoreStmt>(
         std::move(static_cast<UnaryExpr&>(*destination).operand),
         std::move(value), span);
+    store->is_volatile = static_cast<UnaryExpr&>(*destination).operation ==
+                         UnaryOperator::VolatileDereference;
+    return store;
 }
 
 std::unique_ptr<Stmt> Parser::parse_binding(BindingKind kind,
@@ -646,6 +651,18 @@ std::unique_ptr<Expr> Parser::parse_cast() {
 }
 
 std::unique_ptr<Expr> Parser::parse_unary() {
+    if (match(TokenKind::KwVolatile)) {
+        const auto start = previous().span;
+        if (!consume(TokenKind::Star, "expected `*` after `volatile`"))
+            return nullptr;
+        auto operand = parse_unary();
+        if (!operand)
+            return nullptr;
+        const auto span =
+            source::Span{.begin = start.begin, .end = operand->span.end};
+        return std::make_unique<UnaryExpr>(UnaryOperator::VolatileDereference,
+                                           std::move(operand), span);
+    }
     if (match(TokenKind::Bang) || match(TokenKind::Tilde) ||
         match(TokenKind::Minus) || match(TokenKind::Star)) {
         const auto operation =

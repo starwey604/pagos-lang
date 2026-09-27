@@ -189,18 +189,26 @@ class Lowerer {
             break;
         }
         case hir::Expr::Kind::Load:
-        case hir::Expr::Kind::Store: {
+        case hir::Expr::Kind::Store:
+        case hir::Expr::Kind::VolatileLoad:
+        case hir::Expr::Kind::VolatileStore: {
+            const bool is_volatile =
+                expression->kind == hir::Expr::Kind::VolatileLoad ||
+                expression->kind == hir::Expr::Kind::VolatileStore;
             const auto pointer = lower_expression(expression->operands.at(0));
             if (!pointer || !live_)
                 return pointer;
-            if (expression->kind == hir::Expr::Kind::Load) {
+            if (expression->kind == hir::Expr::Kind::Load ||
+                expression->kind == hir::Expr::Kind::VolatileLoad) {
                 result = emit(type_of(expression->type),
-                              LoadOperation{*pointer}, expression->span);
+                              LoadOperation{*pointer, is_volatile},
+                              expression->span);
             } else {
                 const auto value = lower_expression(expression->operands.at(1));
                 if (!value || !live_)
                     return value;
-                result = emit(Type::Void, StoreOperation{*pointer, *value},
+                result = emit(Type::Void,
+                              StoreOperation{*pointer, *value, is_volatile},
                               expression->span);
             }
             break;

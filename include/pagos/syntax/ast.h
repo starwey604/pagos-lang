@@ -89,7 +89,13 @@ struct Type {
     }
 };
 enum class BindingKind { Inferred, Static, Runtime };
-enum class UnaryOperator { Not, BitNot, Negate, Dereference };
+enum class UnaryOperator {
+    Not,
+    BitNot,
+    Negate,
+    Dereference,
+    VolatileDereference
+};
 enum class BinaryOperator {
     Add,
     Subtract,
@@ -304,6 +310,7 @@ struct StoreStmt final : Stmt {
           value(std::move(value)) {}
     std::unique_ptr<Expr> pointer;
     std::unique_ptr<Expr> value;
+    bool is_volatile{};
 };
 
 struct ForStmt final : Stmt {

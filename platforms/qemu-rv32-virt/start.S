@@ -39,6 +39,15 @@ _start:
     j 5b
 #endif
 6:
+#ifdef WITH_PAGOS_MMIO
+#ifdef FORCE_FAILURE
+    li a0, 1
+#else
+    li a0, 0
+#endif
+    call mmio_main
+#else
     call smoke_main
+#endif
 7:
     j 7b

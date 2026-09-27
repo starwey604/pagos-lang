@@ -1,6 +1,6 @@
 # Core Grammar Sketch
 
-Status: normative syntax baseline, including M3 integers, raw pointers and C ABI.
+Status: normative syntax baseline, including M3 integers, pointers, volatile and C ABI.
 Later milestones should not silently change accepted programs.
 
 ## Scope
@@ -67,7 +67,8 @@ shift           = additive { ( "<<" | ">>" ) additive } ;
 additive        = multiplicative { ( "+" | "-" ) multiplicative } ;
 multiplicative  = cast { ( "*" | "/" | "%" ) cast } ;
 cast            = unary { "as" ( integer-type | pointer-type ) } ;
-unary           = ( "!" | "~" | "-" | "*" ) unary | call ;
+unary           = ( "!" | "~" | "-" | "*" ) unary
+                | "volatile" "*" unary | call ;
 call            = primary { "(" [ arguments ] ")" | "[" expression "]"
                           | "." identifier } ;
 arguments       = expression { "," expression } ;
@@ -237,8 +238,55 @@ there is no complete memory-safety guarantee or warning coverage promise.
 No type-based non-aliasing rule is inferred from the pointee type. C callers
 must additionally obey C's own object/access rules. Local address-taking,
 allocation/free, pointer-containing aggregates, `defer`/RAII, atomics, address
-spaces and volatile/MMIO are deferred. Plain pointer accesses must not be used
+spaces are deferred. Plain pointer accesses must not be used
 as substitutes for volatile device access.
+
+## Volatile Access and MMIO (Milestone 3)
+
+```pagos
+// QEMU RV32 virt UART only; these are not portable device addresses.
+let status = 268435461usize as *const u8;
+let transmit = 268435456usize as *mut u8;
+let ready = (volatile *status & 32u8) != 0u8;
+if ready { volatile *transmit = 65u8; 0 } else { 0 };
+```
+
+`volatile *p` is a read expression; `volatile *p = value;` is a write statement.
+`volatile` qualifies this access, not the pointer type or an enclosing block.
+It neither adds write permission nor changes ownership. Store operands evaluate
+address first, value second, then access; early returns skip the access.
+Each executed read/write is observable, including discarded reads and repeated
+identical stores. Binding a read captures one snapshot; reusing that binding
+does not read again. Static branches may omit unexecuted accesses.
+
+Both operations are always Runtime. Constant addresses, Static-result helpers
+and reused specializations must not cause host access, result memoization or
+loss of effects. The compiler preserves volatile access counts and their order
+relative to other volatile accesses. It is not a general ordering barrier for
+unrelated ordinary memory. These guarantees follow
+[LLVM volatile semantics](https://llvm.org/docs/LangRef.html#volatile-memory-accesses).
+
+Emission is initially restricted to the same target configurations as the
+minimal C ABI: x86-64 Linux LP64 and generic RV32 ELF ILP32 (I/M/A/C).
+Integer access widths are 8/16/32 bits, plus 64 bits on x86-64; `usize` uses the
+target width. RV32 volatile `u64/i64` accesses are rejected with `E1012`, even
+though ordinary RAM supports those types. Natural alignment is required:
+address modulo access size must be zero. Known misalignment reports `E4014`;
+dynamic misalignment traps before access. The existing null checks also apply,
+so address zero remains unavailable even if a device could map it.
+
+LLVM emits naturally aligned integer volatile loads/stores. Supported accesses
+must not be split or merged by the compiler; this is not a guarantee about
+physical bus transactions or atomicity. Device access permissions, register
+width, mapping and side effects remain platform/caller obligations. Reads may
+change device state; do not assume `*const` implies a side-effect-free read.
+Read-modify-write expressions perform separate operations and may be invalid
+for read-clear or write-one-to-clear registers.
+
+No CPU/device fences, cache configuration, atomics, DMA synchronization,
+interrupt support or automatic device discovery are provided. QEMU validation
+is not a real-chip timing or memory-ordering guarantee. See the standalone
+[Pagos UART example](../platforms/qemu-rv32-virt/mmio.pgs).
 
 ## Minimal Records (Milestone 2)
 

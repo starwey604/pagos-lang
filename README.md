@@ -135,8 +135,8 @@ legacy array limits, and the distinction from host-memory limits.
 The [M3 preparation baseline](docs/m3-preparation.md) is complete: pinned
 compiler CI, Release measurements, separate semantic types, a private APInt
 adapter, target-layout queries, and QEMU RV32 C/assembly environment checks.
-Explicit-target LLVM IR and object emission are available; volatile/MMIO and
-the complete firmware slice remain M3 work. CI has been exercised locally in the
+Explicit-target LLVM IR, object emission and minimal volatile/MMIO are available;
+the complete firmware slice remains M3 work. CI has been exercised locally in the
 fixed container, not yet on GitHub Actions.
 
 M3 now includes `u8/u16/u32/u64` and `i8/i16/i32/i64`, typed literals
@@ -168,8 +168,8 @@ The minimal C ABI now provides `extern fn` imports and `export fn` definitions
 for `u32/i32` and integer pointers, with direct `emit-obj ... -o output.o` output.
 It is validated on x86-64 Linux LP64 and RV32 ELF ILP32 (I/M/A/C). The
 [bidirectional example](tests/lit/codegen/c-abi.pgs) runs with C on the host and
-as QEMU RV32 firmware; startup and MMIO still live in C/assembly. Other boundary
-types and targets remain unsupported. See the
+as QEMU RV32 firmware; this ABI harness uses C/assembly startup and MMIO.
+Other boundary types and targets remain unsupported. See the
 [build/run commands](docs/development.md#host-compiler-commands).
 
 Raw `*const T` / `*mut T` pointers now support integer memory loads/stores and
@@ -177,8 +177,16 @@ explicit target-`usize` address conversions. Memory access stays Runtime even
 at a Static address. The [RAM example](tests/lit/codegen/pointers.pgs) runs on
 the host and RV32 with C-owned storage. No borrow checker or `unsafe` keyword
 is introduced; callers own lifetime/range validity. Address-taking, allocation,
-RAII and volatile/MMIO remain future slices. See the
+and RAII remain future slices. See the
 [memory contract](docs/grammar.md#raw-pointers-and-memory-milestone-3).
+
+Explicit `volatile *p` / `volatile *p = value;` now preserve device accesses,
+with checked natural alignment and native-width restrictions. The
+[Pagos MMIO example](platforms/qemu-rv32-virt/mmio.pgs) polls UART, prints a
+success/failure message and exits QEMU through its test device without C device
+helpers. Startup remains assembly. Volatile is not an atomic operation, CPU
+fence or cache policy; see the
+[access rules](docs/grammar.md#volatile-access-and-mmio-milestone-3).
 
 ## Development
 

@@ -44,6 +44,8 @@ struct Expr {
         Cast,
         Load,
         Store,
+        VolatileLoad,
+        VolatileStore,
         Binary,
         If,
         Sequence, // Ordered evaluations followed by the result value.

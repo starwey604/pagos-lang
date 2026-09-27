@@ -1,0 +1,7 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+volatile *(4096usize as *const u32) = 1;
+volatile *(4096usize as *mut u32) = 1u8;
+let result = volatile *17;
+// CHECK: error[E1011]: store requires a `*mut` pointer
+// CHECK: error[E1008]: type mismatch in pointer store
+// CHECK: error[E1011]: dereference requires a pointer

@@ -118,8 +118,10 @@ Pagos/C firmware runs on QEMU with Clang and GCC C callers/callees; startup
 and MMIO remain in the C/assembly harness. The eighth slice adds non-owning
 integer pointers, C pointer signatures, ordinary RAM loads/stores and `usize`
 address conversions, without `unsafe` or mandatory borrowing. Aggregate call
-lowering, additional ABI types/targets, allocation and native Pagos MMIO
-remain open.
+lowering, additional ABI types/targets and allocation remain open. The ninth
+slice adds explicit volatile accesses, natural-alignment checks and native
+integer-width limits. Pagos-native UART/test-device firmware now runs in QEMU
+without C device helpers; fences, DMA, interrupts and real hardware remain open.
 
 Add the minimum systems features needed for real firmware:
 

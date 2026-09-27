@@ -192,4 +192,66 @@ TEST(Pointer, StaticEvaluatorNeverDereferencesEvenANumericAddress) {
     ASSERT_FALSE(result);
     EXPECT_EQ(result.error().code, "E4013");
 }
+
+TEST(Volatile, StaticResultsNeverSuppressRepeatedStores) {
+    PointerInput input(
+        "fn set(p: *mut u32) -> u32 { volatile *p = 7; 1 } "
+        "let p = 4096usize as *mut u32; "
+        "static let a = set(p); static let b = set(p); let result = a + b;");
+    sema::TypeChecker checker(input.diagnostics, 64);
+    ASSERT_TRUE(checker.check(*input.syntax));
+    stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
+    for (int session = 0; session < 2; ++session) {
+        const auto hir = analyzer.analyze(*input.syntax);
+        ASSERT_FALSE(input.diagnostics.has_error());
+        EXPECT_EQ(analyzer.stats().cache_hits, 0U);
+        const auto module = mir::lower(*hir);
+        ASSERT_TRUE(module) << module.error();
+        unsigned stores = 0;
+        for (const auto& function : module->functions)
+            for (const auto& block : function.blocks)
+                for (const auto& instruction : block.instructions)
+                    if (const auto* store = std::get_if<mir::StoreOperation>(
+                            &instruction.operation))
+                        stores += store->is_volatile ? 1U : 0U;
+        EXPECT_EQ(stores, 2U);
+    }
+}
+
+TEST(Volatile, MirRejectsWideLoadAndStoreOnNarrowTarget) {
+    PointerInput input("export fn sample(p: *mut u64) -> u32 { "
+                       "volatile *p = 1u64; volatile *p; 0 }");
+    sema::TypeChecker checker(input.diagnostics, 64);
+    ASSERT_TRUE(checker.check(*input.syntax));
+    stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
+    const auto hir = analyzer.analyze(*input.syntax);
+    const auto good = mir::lower(*hir);
+    ASSERT_TRUE(good) << good.error();
+    for (bool load_case : {false, true}) {
+        auto bad = *good;
+        bad.pointer_bits = 32;
+        auto& function = bad.functions.front();
+        function.parameters[0].pointer_bits = 32;
+        for (auto& block : function.blocks) {
+            for (auto& instruction : block.instructions) {
+                if (instruction.type.is_pointer())
+                    instruction.type.pointer_bits = 32;
+                if (auto* store = std::get_if<mir::StoreOperation>(
+                        &instruction.operation))
+                    store->is_volatile = !load_case;
+            }
+        }
+        const auto result = mir::verify(bad);
+        ASSERT_FALSE(result);
+        EXPECT_EQ(result.error(), "invalid MIR volatile access width");
+    }
+}
+
+TEST(Volatile, StaticEvaluatorRejectsVolatileDereference) {
+    const auto result = vm::Evaluator::unary(
+        syntax::UnaryOperator::VolatileDereference,
+        PointerConstant{IntegerValue::create({64, false, true}, 4096).value()});
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, "E4013");
+}
 } // namespace

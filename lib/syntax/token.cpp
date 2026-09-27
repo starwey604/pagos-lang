@@ -70,6 +70,8 @@ std::string_view token_kind_name(TokenKind kind) noexcept {
         return "`const`";
     case TokenKind::KwMut:
         return "`mut`";
+    case TokenKind::KwVolatile:
+        return "`volatile`";
     case TokenKind::LeftParen:
         return "`(`";
     case TokenKind::RightParen:

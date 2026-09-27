@@ -70,6 +70,21 @@ class Generator {
         for (const auto& function : mir_module.functions) {
             if (function.declaration)
                 continue;
+            if (!c_abi_supported_) {
+                for (const auto& block : function.blocks) {
+                    for (const auto& instruction : block.instructions) {
+                        const auto* load = std::get_if<mir::LoadOperation>(
+                            &instruction.operation);
+                        const auto* store = std::get_if<mir::StoreOperation>(
+                            &instruction.operation);
+                        if ((load && load->is_volatile) ||
+                            (store && store->is_volatile))
+                            return std::unexpected(
+                                "volatile memory access is unsupported for "
+                                "this target configuration");
+                    }
+                }
+            }
             if (auto emitted = emit_function(function); !emitted) {
                 return std::unexpected(emitted.error());
             }
@@ -335,17 +350,27 @@ class Generator {
         if (const auto* load =
                 std::get_if<mir::LoadOperation>(&instruction.operation)) {
             auto* pointer = values_.at(load->pointer);
-            guard_pointer(pointer);
-            return builder_.CreateAlignedLoad(llvm_type(instruction.type),
-                                              pointer, llvm::Align(1),
-                                              "pointer.load");
+            const auto alignment =
+                load->is_volatile ? instruction.type.integer_type.width / 8 : 1;
+            guard_pointer(pointer, alignment);
+            auto* result = builder_.CreateAlignedLoad(
+                llvm_type(instruction.type), pointer, llvm::Align(alignment),
+                "pointer.load");
+            result->setVolatile(load->is_volatile);
+            return result;
         }
         if (const auto* store =
                 std::get_if<mir::StoreOperation>(&instruction.operation)) {
             auto* pointer = values_.at(store->pointer);
-            guard_pointer(pointer);
-            return builder_.CreateAlignedStore(values_.at(store->value),
-                                               pointer, llvm::Align(1));
+            auto* value = values_.at(store->value);
+            const auto alignment =
+                store->is_volatile ? value->getType()->getIntegerBitWidth() / 8
+                                   : 1;
+            guard_pointer(pointer, alignment);
+            auto* result = builder_.CreateAlignedStore(value, pointer,
+                                                       llvm::Align(alignment));
+            result->setVolatile(store->is_volatile);
+            return result;
         }
         if (const auto* cast = std::get_if<mir::IntegerCastOperation>(
                 &instruction.operation)) {
@@ -394,16 +419,26 @@ class Generator {
         return nullptr;
     }
 
-    void guard_pointer(llvm::Value* pointer) {
+    void guard_pointer(llvm::Value* pointer, unsigned alignment) {
         auto* function = builder_.GetInsertBlock()->getParent();
         auto* trap_block =
-            llvm::BasicBlock::Create(context_, "pointer.null", function);
+            llvm::BasicBlock::Create(context_, "pointer.invalid", function);
         auto* valid_block =
             llvm::BasicBlock::Create(context_, "pointer.valid", function);
         auto* null = llvm::ConstantPointerNull::get(
             llvm::cast<llvm::PointerType>(pointer->getType()));
-        builder_.CreateCondBr(builder_.CreateICmpEQ(pointer, null), trap_block,
-                              valid_block);
+        auto* invalid = builder_.CreateICmpEQ(pointer, null);
+        if (alignment > 1) {
+            auto* integer = builder_.getIntNTy(
+                module_->getDataLayout().getPointerSizeInBits());
+            auto* address = builder_.CreatePtrToInt(pointer, integer);
+            auto* masked = builder_.CreateAnd(
+                address, llvm::ConstantInt::get(integer, alignment - 1));
+            invalid = builder_.CreateOr(
+                invalid, builder_.CreateICmpNE(
+                             masked, llvm::ConstantInt::get(integer, 0)));
+        }
+        builder_.CreateCondBr(invalid, trap_block, valid_block);
         builder_.SetInsertPoint(trap_block);
         auto* trap = llvm::Intrinsic::getOrInsertDeclaration(
             module_.get(), llvm::Intrinsic::trap);

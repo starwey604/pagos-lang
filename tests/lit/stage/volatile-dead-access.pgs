@@ -1,0 +1,8 @@
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --implicit-check-not='load volatile' --implicit-check-not='store volatile'
+fn skip() -> u32 {
+    volatile *(1usize as *mut u32) = if true { return 7; } else { 0 };
+    0
+}
+let unused = if false { volatile *(0usize as *const u32) } else { 0 };
+let result = skip();
+// CHECK: ret i32 7

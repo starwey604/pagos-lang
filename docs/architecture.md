@@ -414,7 +414,7 @@ separate, explicit compile-time capability exists. A Static address never
 licenses evaluating, removing, merging, or caching a volatile/MMIO read or
 write. Future target addresses must be target-width values or symbolic
 relocations, never dereferenceable host pointers. Ordinary raw memory now uses
-the contract below; volatile/MMIO and additional address spaces remain future
+the contract below; additional address spaces remain future
 work. No host execution of target code is introduced.
 
 The current `hir::has_residual_work` and `hir::is_cacheable_result` predicates
@@ -445,6 +445,16 @@ No `noalias`, TBAA, `readonly`, `nonnull` or dereferenceability promises are
 inferred from source pointer permission. Lifetime, range and initialized-byte
 validity remain caller obligations; no borrow checker or `unsafe` gate exists.
 See the [source contract](grammar.md#raw-pointers-and-memory-milestone-3).
+
+Explicit volatile dereferences/stores retain their access mode through syntax,
+HIR `VolatileLoad`/`VolatileStore` and MIR load/store flags. They share permission,
+sequencing and residual-work rules with ordinary accesses, never Static result
+caching. MIR additionally rejects non-native volatile integer widths. Codegen
+checks the current x86-64/RV32 target whitelist, emits null/alignment guards and
+LLVM integer volatile loads/stores with natural alignment rather than `align 1`.
+No atomics, CPU fences or cache attributes are implied. The standalone QEMU
+example uses Pagos for UART and test-device MMIO, retaining assembly startup;
+it is not evidence of a complete device-memory model on physical hardware.
 
 ### ABI sequence
 

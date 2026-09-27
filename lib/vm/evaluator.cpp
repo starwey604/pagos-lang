@@ -47,6 +47,7 @@ Evaluator::unary(syntax::UnaryOperator operation,
     case syntax::UnaryOperator::Negate:
         return hir::Constant{std::get<IntegerValue>(operand).negate()};
     case syntax::UnaryOperator::Dereference:
+    case syntax::UnaryOperator::VolatileDereference:
         return std::unexpected(EvaluationError{
             .code = "E4013",
             .message = "target memory cannot be read by the Static evaluator"});

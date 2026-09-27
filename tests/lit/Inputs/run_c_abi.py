@@ -31,7 +31,8 @@ def main():
                         str(harness), "-o", str(program)],
                        check=True, timeout=20)
         subprocess.run([str(program)], check=True, timeout=5)
-        for case in (["trap", "store-trap", "discard-trap"] if extra else ["trap"]):
+        trap_cases = extra[1:] or (["trap", "store-trap", "discard-trap"] if extra else ["trap"])
+        for case in trap_cases:
             trapped = subprocess.run([str(program), case], timeout=5)
             assert trapped.returncode == -signal.SIGILL, trapped
 

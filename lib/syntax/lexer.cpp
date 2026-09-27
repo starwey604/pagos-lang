@@ -37,6 +37,7 @@ constexpr std::array keywords{
     std::pair<std::string_view, TokenKind>{"as", TokenKind::KwAs},
     std::pair<std::string_view, TokenKind>{"const", TokenKind::KwConst},
     std::pair<std::string_view, TokenKind>{"mut", TokenKind::KwMut},
+    std::pair<std::string_view, TokenKind>{"volatile", TokenKind::KwVolatile},
 };
 
 bool is_identifier_start(char character) {

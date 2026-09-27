@@ -1,0 +1,33 @@
+// QEMU virt only: UART 0x10000000, LSR +5, SiFive test device 0x100000.
+// All device accesses are Pagos; startup/linker support remains assembly.
+fn put(byte: u8) -> u32 {
+    let status = 268435461usize as *const u8;
+    let output = 268435456usize as *mut u8;
+    runtime let attempts = 100000;
+    for i in 0..attempts {
+        if (volatile *status & 32u8) != 0u8 {
+            volatile *output = byte;
+            return 1;
+        } else { 0 };
+    }
+    0
+}
+
+export fn mmio_main(mode: u32) -> u32 {
+    let finish = 1048576usize as *mut u32;
+    let text = if mode == 0 {
+        [80u8, 65u8, 71u8, 79u8, 83u8, 32u8, 77u8, 77u8,
+         73u8, 79u8, 32u8, 80u8, 65u8, 83u8, 83u8, 10u8]
+    } else {
+        [80u8, 65u8, 71u8, 79u8, 83u8, 32u8, 77u8, 77u8,
+         73u8, 79u8, 32u8, 70u8, 65u8, 73u8, 76u8, 10u8]
+    };
+    for i in 0..16 {
+        if put(text[i]) == 0 {
+            volatile *finish = 78643;
+            return 1;
+        } else { 0 };
+    }
+    volatile *finish = if mode == 0 { 21845 } else { 78643 };
+    0
+}

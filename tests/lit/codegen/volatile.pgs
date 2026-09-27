@@ -1,0 +1,71 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR
+// RUN: %pagosc emit-llvm %s | opt -S -passes='default<O2>' | %FileCheck %s --check-prefix=OPT
+// RUN: %run_c_abi %s %S/../Inputs/volatile.c null-read null-store misaligned-read misaligned-store discard-null
+// RUN: %run_c_abi --optimize %s %S/../Inputs/volatile.c null-read null-store misaligned-read misaligned-store discard-null
+extern fn address(p: *mut u32) -> *mut u32;
+extern fn value(p: *mut u32) -> u32;
+fn read(p: *const u32) -> u32 { volatile *p }
+fn set(p: *mut u32) -> u32 { volatile *p = 9; 7 }
+export fn sequence(p: *mut u32) -> u32 {
+    volatile *p = 1;
+    volatile *p = 2;
+    let a = volatile *p;
+    volatile *p = 3;
+    a + a + (volatile *p)
+}
+export fn discarded(p: *const u32) -> u32 {
+    read(p);
+    read(p);
+    7
+}
+export fn inline_effect(p: *mut u32) -> u32 {
+    static let a = set(p);
+    static let b = set(p);
+    a + b
+}
+export fn loop(p: *mut u32, count: u32) -> u32 {
+    for i in 0..count { volatile *p = (volatile *p) + i; }
+    volatile *p
+}
+export fn ordered(p: *mut u32) -> u32 {
+    volatile *address(p) = value(p);
+    volatile *p
+}
+export fn early(p: *mut u32, flag: u32) -> u32 {
+    volatile *p = if flag == 0 { return 77; } else { 44 };
+    volatile *p
+}
+export fn load(p: *const u32) -> u32 { volatile *p }
+export fn store(p: *mut u32) -> u32 { volatile *p = 1; 0 }
+export fn widths(p: *mut u8, q: *mut i16, r: *mut u64) -> u32 {
+    volatile *p = 255u8;
+    volatile *q = -1234i16;
+    volatile *r = 18446744073709551615u64;
+    if (volatile *p) == 255u8 && (volatile *q) == -1234i16 &&
+        (volatile *r) == ~0u64 { 1 } else { 0 }
+}
+// HIR: volatile_store(
+// HIR: volatile_load(
+// MIR: void = volatile_store
+// MIR: u32 = volatile_load
+// IR: store volatile i32 1, ptr %0, align 4
+// IR: load volatile i32, ptr %0, align 4
+// IR: store volatile i8 -1, ptr %0, align 1
+// IR: store volatile i16 -1234, ptr %1, align 2
+// IR: store volatile i64 -1, ptr %2, align 8
+// OPT-LABEL: define i32 @sequence(
+// OPT: store volatile i32 1,
+// OPT: store volatile i32 2,
+// OPT: load volatile i32,
+// OPT: store volatile i32 3,
+// OPT: load volatile i32,
+// OPT-NOT: load volatile
+// OPT: ret i32
+// OPT-LABEL: define {{.*}}i32 @discarded(
+// OPT-COUNT-2: load volatile i32,
+// OPT: ret i32 7
+// OPT-LABEL: define {{.*}}i32 @inline_effect(
+// OPT-COUNT-2: store volatile i32 9,
+// OPT: ret i32 14
