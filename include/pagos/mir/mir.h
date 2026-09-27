@@ -141,6 +141,9 @@ struct ConstantOperation {
 };
 
 struct ExternalInputOperation {};
+struct GlobalAddressOperation {
+    std::string name;
+};
 
 struct ParameterOperation {
     std::uint32_t index;
@@ -216,7 +219,8 @@ using Operation =
                  BinaryOperation, BoolToU32Operation, IntegerCastOperation,
                  PhiOperation, ArrayOperation, IndexOperation, RecordOperation,
                  FieldOperation, ParameterOperation, CallOperation,
-                 PointerCastOperation, LoadOperation, StoreOperation>;
+                 PointerCastOperation, LoadOperation, StoreOperation,
+                 GlobalAddressOperation>;
 
 struct Instruction {
     ValueId result;
@@ -261,8 +265,15 @@ struct Function {
 };
 
 struct Module {
+    struct Global {
+        std::string name;
+        Type type;
+        bool writable{};
+        IntegerValue initializer;
+    };
     std::vector<Function> functions;
     unsigned pointer_bits{}; // Zero only for target-independent hand-built MIR.
+    std::vector<Global> globals;
 };
 
 [[nodiscard]] std::string type_name(const Type& type);

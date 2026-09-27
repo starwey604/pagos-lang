@@ -46,6 +46,7 @@ struct Expr {
         Store,
         VolatileLoad,
         VolatileStore,
+        GlobalAddress,
         Binary,
         If,
         Sequence, // Ordered evaluations followed by the result value.
@@ -104,6 +105,13 @@ struct FunctionSummary {
 };
 
 struct Module {
+    struct Global {
+        std::string name;
+        sema::Type type;
+        bool writable{};
+        IntegerValue initializer;
+    };
+    std::vector<Global> globals;
     struct RecordType {
         std::string name;
         std::vector<std::string> names;

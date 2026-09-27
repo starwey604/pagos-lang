@@ -122,6 +122,10 @@ lowering, additional ABI types/targets and allocation remain open. The ninth
 slice adds explicit volatile accesses, natural-alignment checks and native
 integer-width limits. Pagos-native UART/test-device firmware now runs in QEMU
 without C device helpers; fences, DMA, interrupts and real hardware remain open.
+The tenth slice adds private integer globals with pure Static initializers,
+symbolic global addresses and default ELF data sections. Pagos-owned startup
+state detects missing data copying or BSS clearing in QEMU. Aggregate storage,
+stable record layout, external globals and custom sections remain open.
 
 Add the minimum systems features needed for real firmware:
 

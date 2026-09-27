@@ -51,6 +51,16 @@ class Generator {
         }
         // Declare the complete signature table first: body order must not
         // determine whether nested/forward calls can resolve their callee.
+        for (const auto& global : mir_module.globals) {
+            auto* type = llvm_type(global.type);
+            auto* value =
+                llvm::ConstantInt::get(type, global.initializer.bits());
+            auto* storage = new llvm::GlobalVariable(
+                *module_, type, !global.writable,
+                llvm::GlobalValue::InternalLinkage, value, global.name);
+            storage->setAlignment(
+                module_->getDataLayout().getABITypeAlign(type));
+        }
         for (const auto& function : mir_module.functions) {
             if (function.c_abi && !c_abi_supported_)
                 return std::unexpected("minimal C ABI is unsupported for this "
@@ -240,6 +250,9 @@ class Generator {
     }
 
     llvm::Value* emit_instruction(const mir::Instruction& instruction) {
+        if (const auto* address = std::get_if<mir::GlobalAddressOperation>(
+                &instruction.operation))
+            return module_->getNamedGlobal(address->name);
         if (const auto* parameter =
                 std::get_if<mir::ParameterOperation>(&instruction.operation))
             return builder_.GetInsertBlock()->getParent()->getArg(

@@ -332,6 +332,13 @@ validity and volatile device validity are different obligations; consult the
 [volatile rules](grammar.md#volatile-access-and-mmio-milestone-3) for alignment,
 target-width limits and the absence of synchronization/barrier guarantees.
 
+Global storage initialization is a separate Static-only boundary: its value
+must be a pure integer and may not retain Runtime work, even behind a Static
+helper result. Storage qualifiers `global const`/`global mut` are independent
+of binding time. A global-name read is Runtime, and global addresses remain
+symbolic Runtime values until relocation/linking. No global read is memoized
+as its initializer, and taking an address never exposes compiler-host storage.
+
 `build.fs` and `build.env` calls record exact dependencies for incremental and
 content-addressed builds. Network access should be disabled by default. External
 commands belong to a declarative build action graph rather than unrestricted

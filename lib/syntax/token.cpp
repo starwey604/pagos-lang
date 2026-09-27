@@ -72,6 +72,8 @@ std::string_view token_kind_name(TokenKind kind) noexcept {
         return "`mut`";
     case TokenKind::KwVolatile:
         return "`volatile`";
+    case TokenKind::KwGlobal:
+        return "`global`";
     case TokenKind::LeftParen:
         return "`(`";
     case TokenKind::RightParen:

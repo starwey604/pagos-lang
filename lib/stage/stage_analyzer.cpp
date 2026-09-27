@@ -152,6 +152,20 @@ bool StageAnalyzer::check_pointer_access(const hir::ExprPtr& pointer,
     return true;
 }
 
+hir::ExprPtr StageAnalyzer::global_address(const syntax::Module::Global& global,
+                                           source::Span span) {
+    auto address = std::make_shared<hir::Expr>(
+        *make_runtime(hir::Expr::Kind::GlobalAddress,
+                      sema::Type::pointer(types_.resolve(global.type),
+                                          global.writable, types_.pointer_bits),
+                      span, {},
+                      {.origin_span = span,
+                       .origin_name = "global address " + global.name,
+                       .path = {"global address " + global.name}}));
+    address->variable_name = global.name;
+    return address;
+}
+
 void StageAnalyzer::initialize_boundaries(const syntax::Module& module) {
     for (const auto& function : module.functions) {
         if (function->linkage == syntax::Function::Linkage::Internal)
@@ -390,8 +404,42 @@ StageAnalyzer::analyze(const syntax::Module& module) {
     }
 
     initialize_boundaries(module);
+    for (const auto& global : module.globals) {
+        const auto initializer = analyze_expression(*global.initializer);
+        if (!initializer)
+            continue;
+        if (!hir::is_cacheable_result(initializer)) {
+            const auto find_trace = [](this auto&& self,
+                                       const hir::ExprPtr& value)
+                -> std::optional<hir::RuntimeTrace> {
+                if (value->trace)
+                    return value->trace;
+                for (const auto& operand : value->operands)
+                    if (auto trace = self(operand))
+                        return trace;
+                return std::nullopt;
+            };
+            const auto trace = find_trace(initializer);
+            auto path = trace ? trace->path : std::vector<std::string>{};
+            path.push_back("global initializer " + global.name);
+            diagnostics_.report(
+                {.code = "E2010",
+                 .message = "global initializer must be pure Static",
+                 .primary = {.span = global.initializer->span},
+                 .help = "no Runtime reads, addresses, calls or effects are "
+                         "permitted",
+                 .dependency_path = std::move(path)});
+            continue;
+        }
+        result->globals.push_back(
+            {.name = global.name,
+             .type = types_.resolve(global.type),
+             .writable = global.writable,
+             .initializer = std::get<IntegerValue>(*initializer->constant)});
+    }
     result->emit_entry =
-        !module.statements.empty() || boundary_functions_.empty();
+        !module.statements.empty() ||
+        (boundary_functions_.empty() && module.globals.empty());
     scopes_.emplace_back();
     std::vector<hir::ExprPtr> effects;
     for (const auto& statement : module.statements) {
@@ -671,6 +719,16 @@ hir::ExprPtr StageAnalyzer::analyze_expression(const syntax::Expr& expression) {
     }
     case syntax::Expr::Kind::Name: {
         const auto& name = static_cast<const syntax::NameExpr&>(expression);
+        if (const auto global = types_.global_references.find(&expression);
+            global != types_.global_references.end()) {
+            const auto origin = "global read " + name.name;
+            return make_runtime(
+                hir::Expr::Kind::Load, type_of(expression), expression.span,
+                {global_address(*global->second, expression.span)},
+                {.origin_span = expression.span,
+                 .origin_name = origin,
+                 .path = {origin}});
+        }
         return lookup(name.name);
     }
     case syntax::Expr::Kind::Cast: {
@@ -1141,6 +1199,10 @@ hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
 }
 
 hir::ExprPtr StageAnalyzer::analyze_unary(const syntax::UnaryExpr& expression) {
+    if (expression.operation == syntax::UnaryOperator::AddressOf)
+        return global_address(
+            *types_.global_references.at(expression.operand.get()),
+            expression.span);
     auto operand = analyze_expression(*expression.operand);
     if (!operand || !operand->falls_through) {
         return operand;

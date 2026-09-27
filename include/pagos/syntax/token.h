@@ -38,6 +38,7 @@ enum class TokenKind {
     KwConst,
     KwMut,
     KwVolatile,
+    KwGlobal,
     LeftParen,
     RightParen,
     LeftBrace,

@@ -176,7 +176,7 @@ Raw `*const T` / `*mut T` pointers now support integer memory loads/stores and
 explicit target-`usize` address conversions. Memory access stays Runtime even
 at a Static address. The [RAM example](tests/lit/codegen/pointers.pgs) runs on
 the host and RV32 with C-owned storage. No borrow checker or `unsafe` keyword
-is introduced; callers own lifetime/range validity. Address-taking, allocation,
+is introduced; callers own lifetime/range validity. Local address-taking, allocation,
 and RAII remain future slices. See the
 [memory contract](docs/grammar.md#raw-pointers-and-memory-milestone-3).
 
@@ -187,6 +187,13 @@ success/failure message and exits QEMU through its test device without C device
 helpers. Startup remains assembly. Volatile is not an atomic operation, CPU
 fence or cache policy; see the
 [access rules](docs/grammar.md#volatile-access-and-mmio-milestone-3).
+
+`global const` / `global mut` now declare module-private integer storage with
+pure Static initializers. `&name` yields a relocatable target address; reading
+storage remains Runtime. The [global example](tests/lit/codegen/globals.pgs)
+tests C access and independent modules. The QEMU UART example also owns its boot
+state and detects skipped `.data` copying or `.bss` clearing. See the
+[storage rules](docs/grammar.md#global-integer-storage-milestone-3).
 
 ## Development
 

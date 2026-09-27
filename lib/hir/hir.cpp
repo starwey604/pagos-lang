@@ -70,6 +70,9 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
         return;
     }
     switch (expression->kind) {
+    case Expr::Kind::GlobalAddress:
+        output << "global_address(" << *expression->variable_name << ')';
+        break;
     case Expr::Kind::Constant: {
         print_constant(expression->constant.value(), output);
         break;
@@ -244,6 +247,10 @@ ExprPtr with_trace_step(const ExprPtr& expression, std::string step) {
 }
 
 void print(const Module& module, std::ostream& output) {
+    for (const auto& global : module.globals)
+        output << "global " << (global.writable ? "mut " : "const ")
+               << global.name << ": " << sema::type_name(global.type) << " = "
+               << global.initializer.decimal() << '\n';
     for (const auto& function : module.residual_functions) {
         if (function->c_abi) {
             output << (function->declaration ? "extern C fn " : "export C fn ")

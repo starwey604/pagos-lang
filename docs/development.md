@@ -94,7 +94,10 @@ Eight more cases run `platforms/qemu-rv32-virt/mmio.pgs` directly: Pagos polls
 UART, prints `PAGOS MMIO PASS` or `PAGOS MMIO FAIL`, then writes the test device.
 Both exit paths run with direct objects and optimized IR under both toolchains,
 without linking the C smoke harness. Startup/linker support remains shared.
-The total with `--pagosc` is 26 cases. `scripts/ci.py --rv32` includes all of them.
+Eight further startup-fault cases omit data copying or BSS clearing for the
+Pagos-owned globals, under both emission paths and both toolchains. Volatile
+boot-state reads prevent constant folding from hiding incorrect initialization.
+The total with `--pagosc` is 34 cases. `scripts/ci.py --rv32` includes all of them.
 The matching target libgcc is linked explicitly; do not substitute host compiler-rt.
 
 ### Host compiler commands
@@ -181,6 +184,14 @@ RV32 instructions using the existing LLVM `opt`/`llc` tools. Consult the
 [volatile contract](grammar.md#volatile-access-and-mmio-milestone-3): accesses
 must have device-valid widths and natural alignment, and provide no CPU fence,
 cache setup or atomic synchronization.
+
+`tests/lit/codegen/globals.pgs` and `tests/lit/Inputs/globals.c` exercise storage
+owned by Pagos rather than C. The companion test runner inspects ELF sections,
+symbols and relocations with LLVM `llvm-readobj`, then links two independently
+compiled Pagos modules to check private-object identity and C pointer access.
+No new dependency is required. Initializers must be pure Static; global reads
+and `&name` are Runtime. See the
+[global storage contract](grammar.md#global-integer-storage-milestone-3).
 
 Bound compile-time work with options placed anywhere before or after the
 command:

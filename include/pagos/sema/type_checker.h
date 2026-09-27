@@ -15,6 +15,8 @@ struct TypeTable {
     // Zero permits target-independent library tests, but never resolves usize.
     unsigned pointer_bits{};
     std::unordered_map<const syntax::Expr*, sema::Type> expressions;
+    std::unordered_map<const syntax::Expr*, const syntax::Module::Global*>
+        global_references;
 
     [[nodiscard]] Type resolve(const syntax::Type& annotation) const {
         return Type(annotation, pointer_bits);
@@ -56,6 +58,7 @@ class TypeChecker {
 
     source::DiagnosticEngine& diagnostics_;
     std::unordered_map<std::string, syntax::Function*> functions_;
+    std::unordered_map<std::string, const syntax::Module::Global*> globals_;
     std::unordered_map<std::string, const syntax::Module::Record*> records_;
     std::vector<Scope> scopes_;
     TypeTable types_;

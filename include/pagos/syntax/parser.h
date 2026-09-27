@@ -28,6 +28,7 @@ class Parser {
 
     std::unique_ptr<Function> parse_function();
     std::optional<Module::Record> parse_record();
+    std::optional<Module::Global> parse_global();
     std::unique_ptr<Block> parse_block();
     std::unique_ptr<Stmt> parse_statement();
     std::unique_ptr<Stmt> parse_store(std::unique_ptr<Expr> destination);

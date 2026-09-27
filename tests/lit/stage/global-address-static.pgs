@@ -1,0 +1,6 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+global const data: u32 = 7;
+static let result = &data as usize;
+// CHECK: error[E2001]:
+// CHECK: global address data
+// CHECK: result

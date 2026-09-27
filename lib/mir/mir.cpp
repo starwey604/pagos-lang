@@ -23,9 +23,12 @@ std::string block_name(BlockId block) { return "bb" + std::to_string(block); }
 std::string value_name(ValueId value) { return "%" + std::to_string(value); }
 
 using Functions = std::unordered_map<std::string, const Function*>;
+using Globals = std::unordered_map<std::string, const Module::Global*>;
 
 std::expected<void, std::string> verify_function(const Function& function,
-                                                 const Functions& functions) {
+                                                 const Functions& functions,
+                                                 const Globals& globals,
+                                                 unsigned pointer_bits) {
     if (!function.result_type.valid()) {
         return std::unexpected("invalid MIR result type");
     }
@@ -224,6 +227,16 @@ std::expected<void, std::string> verify_function(const Function& function,
                     instruction.type != function.parameters[parameter->index])
                     return std::unexpected(
                         "invalid MIR parameter index or type");
+                continue;
+            }
+            if (const auto* address = std::get_if<GlobalAddressOperation>(
+                    &instruction.operation)) {
+                const auto global = globals.find(address->name);
+                if (global == globals.end() ||
+                    instruction.type != Type::pointer(global->second->type,
+                                                      global->second->writable,
+                                                      pointer_bits))
+                    return std::unexpected("invalid MIR global address");
                 continue;
             }
             if (const auto* call =
@@ -657,8 +670,11 @@ std::expected<void, std::string> verify_function(const Function& function,
 void print_instruction(const Instruction& instruction, std::ostream& output) {
     output << "  " << value_name(instruction.result) << ": "
            << type_name(instruction.type) << " = ";
-    if (const auto* constant =
-            std::get_if<ConstantOperation>(&instruction.operation)) {
+    if (const auto* address =
+            std::get_if<GlobalAddressOperation>(&instruction.operation)) {
+        output << "global_address @" << address->name;
+    } else if (const auto* constant =
+                   std::get_if<ConstantOperation>(&instruction.operation)) {
         output << "const ";
         print_constant(constant->value, output);
     } else if (const auto* parameter =
@@ -812,12 +828,25 @@ std::expected<void, std::string> verify(const Module& module) {
     if (module.pointer_bits != 0 && module.pointer_bits != 32 &&
         module.pointer_bits != 64)
         return std::unexpected("invalid MIR target pointer width");
-    if (module.functions.empty()) {
+    if (module.functions.empty() && module.globals.empty()) {
         return std::unexpected("MIR module has no functions");
     }
     Functions functions;
+    Globals globals;
+    for (const auto& global : module.globals) {
+        if (global.name.empty() || global.name == "pagos_external_input" ||
+            global.name == "pagos_main" ||
+            !globals.emplace(global.name, &global).second)
+            return std::unexpected("duplicate or reserved MIR global name");
+        if ((module.pointer_bits != 32 && module.pointer_bits != 64) ||
+            global.type.kind != Type::Integer || !global.type.valid() ||
+            !global.type.matches_pointer_width(module.pointer_bits) ||
+            global.initializer.type() != global.type.integer_type)
+            return std::unexpected("invalid MIR global initializer or type");
+    }
     for (const auto& function : module.functions) {
-        if (function.name.empty() || function.name == "pagos_external_input")
+        if (function.name.empty() || function.name == "pagos_external_input" ||
+            globals.contains(function.name))
             return std::unexpected("empty or reserved MIR function name");
         if (!functions.emplace(function.name, &function).second)
             return std::unexpected("duplicate MIR function `" + function.name +
@@ -870,7 +899,9 @@ std::expected<void, std::string> verify(const Module& module) {
                 }
             }
         }
-        if (auto valid = verify_function(function, functions); !valid) {
+        if (auto valid = verify_function(function, functions, globals,
+                                         module.pointer_bits);
+            !valid) {
             return valid;
         }
     }
@@ -880,6 +911,10 @@ std::expected<void, std::string> verify(const Module& module) {
 void print(const Module& module, std::ostream& output) {
     if (module.pointer_bits != 0)
         output << "target pointer_bits = " << module.pointer_bits << '\n';
+    for (const auto& global : module.globals)
+        output << "global " << (global.writable ? "mut @" : "const @")
+               << global.name << ": " << type_name(global.type) << " = "
+               << global.initializer.decimal() << '\n';
     for (const auto& function : module.functions) {
         output << (function.declaration ? "extern C func @"
                    : function.c_abi     ? "export C func @"

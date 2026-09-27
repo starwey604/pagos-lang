@@ -94,7 +94,8 @@ enum class UnaryOperator {
     BitNot,
     Negate,
     Dereference,
-    VolatileDereference
+    VolatileDereference,
+    AddressOf
 };
 enum class BinaryOperator {
     Add,
@@ -350,6 +351,14 @@ struct Function {
 };
 
 struct Module {
+    struct Global {
+        std::string name;
+        source::Span name_span;
+        Type type;
+        bool writable{};
+        std::unique_ptr<Expr> initializer;
+    };
+    std::vector<Global> globals;
     struct Record {
         std::string name;
         source::Span name_span;

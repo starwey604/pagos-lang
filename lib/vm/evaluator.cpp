@@ -51,6 +51,10 @@ Evaluator::unary(syntax::UnaryOperator operation,
         return std::unexpected(EvaluationError{
             .code = "E4013",
             .message = "target memory cannot be read by the Static evaluator"});
+    case syntax::UnaryOperator::AddressOf:
+        return std::unexpected(EvaluationError{
+            .code = "E4002",
+            .message = "global addresses require target relocation"});
     }
     return std::unexpected(
         EvaluationError{.code = "E4002", .message = "unknown unary operation"});

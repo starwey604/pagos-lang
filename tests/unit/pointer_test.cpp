@@ -254,4 +254,98 @@ TEST(Volatile, StaticEvaluatorRejectsVolatileDereference) {
     ASSERT_FALSE(result);
     EXPECT_EQ(result.error().code, "E4013");
 }
+
+TEST(GlobalStorage, TargetInitializersAndSymbolicAddressesSurviveSessionReset) {
+    PointerInput input(
+        "global mut size: usize = ~0usize; let p = &size; let result = size;");
+    for (unsigned bits : {32U, 64U, 32U}) {
+        sema::TypeChecker checker(input.diagnostics, bits);
+        ASSERT_TRUE(checker.check(*input.syntax));
+        stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
+        for (int iteration = 0; iteration < 2; ++iteration) {
+            const auto hir = analyzer.analyze(*input.syntax);
+            ASSERT_FALSE(input.diagnostics.has_error());
+            ASSERT_EQ(hir->globals.size(), 1U);
+            EXPECT_EQ(hir->globals[0].initializer.type(),
+                      (IntegerType{bits, false, true}));
+            auto address = hir->bindings[0].value;
+            while (address->kind == hir::Expr::Kind::Reference)
+                address = address->operands.front();
+            EXPECT_EQ(address->kind, hir::Expr::Kind::GlobalAddress);
+            EXPECT_FALSE(hir->bindings[0].value->constant);
+            EXPECT_EQ(hir->result->stage, hir::Stage::Runtime);
+            const auto module = mir::lower(*hir);
+            ASSERT_TRUE(module) << module.error();
+            EXPECT_EQ(module->globals.size(), 1U);
+            EXPECT_EQ(module->pointer_bits, bits);
+        }
+    }
+}
+
+TEST(GlobalStorage, VerifierRejectsMalformedStorageAndReferences) {
+    PointerInput input("global const data: u32 = 17; export fn address() -> "
+                       "*const u32 { &data }");
+    sema::TypeChecker checker(input.diagnostics, 64);
+    ASSERT_TRUE(checker.check(*input.syntax));
+    stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
+    const auto hir = analyzer.analyze(*input.syntax);
+    const auto good = mir::lower(*hir);
+    ASSERT_TRUE(good) << good.error();
+    for (int case_id = 0; case_id < 7; ++case_id) {
+        auto bad = *good;
+        auto& instruction = bad.functions[0].blocks[0].instructions[0];
+        switch (case_id) {
+        case 0:
+            bad.globals.push_back(bad.globals.front());
+            break;
+        case 1:
+            bad.globals[0].initializer =
+                IntegerValue::create({16, false, false}, 17).value();
+            break;
+        case 2:
+            bad.globals[0].type = mir::Type::Bool;
+            break;
+        case 3:
+            std::get<mir::GlobalAddressOperation>(instruction.operation).name =
+                "missing";
+            break;
+        case 4:
+            instruction.type.pointer_mutable = true;
+            bad.functions[0].result_type.pointer_mutable = true;
+            break;
+        case 5:
+            bad.globals[0].name = bad.functions[0].name;
+            break;
+        case 6:
+            bad.pointer_bits = 0;
+            break;
+        }
+        EXPECT_FALSE(mir::verify(bad)) << case_id;
+    }
+}
+
+TEST(GlobalStorage, GlobalOnlyModuleHasNoSyntheticEntry) {
+    PointerInput input("global mut word: u32 = 0;");
+    sema::TypeChecker checker(input.diagnostics, 64);
+    ASSERT_TRUE(checker.check(*input.syntax));
+    stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
+    const auto hir = analyzer.analyze(*input.syntax);
+    EXPECT_FALSE(hir->emit_entry);
+    const auto module = mir::lower(*hir);
+    ASSERT_TRUE(module) << module.error();
+    EXPECT_TRUE(module->functions.empty());
+    EXPECT_EQ(module->globals.size(), 1U);
+}
+
+TEST(GlobalStorage, InitializersRejectRuntimeWorkEvenWithAStaticResult) {
+    PointerInput input(
+        "fn init() -> u32 { *&data = 7; 1 } global mut data: u32 = init();");
+    sema::TypeChecker checker(input.diagnostics, 64);
+    ASSERT_TRUE(checker.check(*input.syntax));
+    stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
+    const auto hir = analyzer.analyze(*input.syntax);
+    EXPECT_TRUE(hir->globals.empty());
+    ASSERT_TRUE(input.diagnostics.has_error());
+    EXPECT_EQ(input.diagnostics.diagnostics().back().code, "E2010");
+}
 } // namespace

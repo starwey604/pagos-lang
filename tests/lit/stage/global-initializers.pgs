@@ -1,0 +1,18 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+global const data: u32 = 7;
+global mut read: u32 = data;
+global mut address: usize = &data as usize;
+global mut input: u32 = external_input();
+fn effects() -> u32 { *&read = 3; 4 }
+global mut hidden: u32 = effects();
+// CHECK: error[E2010]: global initializer must be pure Static
+// CHECK: global read data
+// CHECK: global initializer read
+// CHECK: error[E2010]: global initializer must be pure Static
+// CHECK: global address data
+// CHECK: global initializer address
+// CHECK: error[E2010]: global initializer must be pure Static
+// CHECK: external_input
+// CHECK: error[E2010]: global initializer must be pure Static
+// CHECK: pointer store
+// CHECK: global initializer hidden

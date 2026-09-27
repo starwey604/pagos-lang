@@ -24,10 +24,39 @@ bool compatible(const sema::Type& expected, const sema::Type& actual) {
 
 bool TypeChecker::check(syntax::Module& module) {
     types_.expressions.clear();
+    types_.global_references.clear();
+    globals_.clear();
     functions_.clear();
     records_.clear();
     collect_records(module);
     collect_functions(module);
+    for (const auto& global : module.globals) {
+        if (types_.pointer_bits != 32 && types_.pointer_bits != 64)
+            diagnostics_.error("E1013",
+                               "global storage requires a target pointer width",
+                               global.name_span);
+        if (!globals_.emplace(global.name, &global).second ||
+            functions_.contains(global.name) ||
+            records_.contains(global.name) || global.name == "external_input" ||
+            global.name == "pagos_main" ||
+            global.name == "pagos_external_input")
+            diagnostics_.error("E1004",
+                               "duplicate or reserved global name `" +
+                                   global.name + "`",
+                               global.name_span);
+        const auto type = types_.resolve(global.type);
+        if (type.kind != TypeKind::Integer)
+            diagnostics_.error("E1013",
+                               "global storage requires an integer type",
+                               global.name_span);
+        validate_type(type, global.name_span);
+    }
+    for (auto& global : module.globals) {
+        const auto actual = check_expression(*global.initializer);
+        if (!compatible(types_.resolve(global.type), actual))
+            type_mismatch(global.initializer->span, types_.resolve(global.type),
+                          actual, "global initializer");
+    }
     for (auto& function : module.functions) {
         if (function->linkage != syntax::Function::Linkage::Internal) {
             const auto boundary_type = [&](const syntax::Type& type,
@@ -310,12 +339,38 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
         break;
     case syntax::Expr::Kind::Name: {
         const auto& name = static_cast<syntax::NameExpr&>(expression);
+        bool local = false;
+        for (const auto& scope : scopes_)
+            local = local || scope.contains(name.name);
+        if (!local) {
+            if (const auto global = globals_.find(name.name);
+                global != globals_.end()) {
+                types_.global_references.emplace(&expression, global->second);
+                type = types_.resolve(global->second->type);
+                break;
+            }
+        }
         type = lookup(name.name, name.span);
         break;
     }
     case syntax::Expr::Kind::Unary: {
         auto& unary = static_cast<syntax::UnaryExpr&>(expression);
         const auto operand_type = check_expression(*unary.operand);
+        if (unary.operation == syntax::UnaryOperator::AddressOf) {
+            const auto global =
+                types_.global_references.find(unary.operand.get());
+            if (global == types_.global_references.end())
+                diagnostics_.error(
+                    "E1013",
+                    "address-taking requires an unshadowed global name",
+                    unary.span);
+            else {
+                type = Type::pointer(operand_type, global->second->writable,
+                                     types_.pointer_bits);
+                validate_type(type, unary.span);
+            }
+            break;
+        }
         if (operand_type == sema::TypeKind::Never) {
             type = sema::TypeKind::Never;
             break;

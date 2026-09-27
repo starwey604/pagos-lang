@@ -25,6 +25,12 @@ class Lowerer {
     }
 
     std::expected<Module, std::string> run(const hir::Module& hir_module) {
+        for (const auto& global : hir_module.globals)
+            context_.output.globals.push_back(
+                {.name = "pagos.global." + global.name,
+                 .type = type_of(global.type),
+                 .writable = global.writable,
+                 .initializer = global.initializer});
         for (const auto& record : hir_module.records) {
             Type type{Type::Record};
             type.record_name = record.name;
@@ -152,6 +158,12 @@ class Lowerer {
         std::expected<ValueId, std::string> result =
             std::unexpected("unknown HIR expression");
         switch (expression->kind) {
+        case hir::Expr::Kind::GlobalAddress:
+            result = emit(type_of(expression->type),
+                          GlobalAddressOperation{"pagos.global." +
+                                                 *expression->variable_name},
+                          expression->span);
+            break;
         case hir::Expr::Kind::Constant:
             if (!expression->constant) {
                 return std::unexpected("HIR constant has no value");

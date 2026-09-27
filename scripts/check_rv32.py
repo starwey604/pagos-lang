@@ -65,8 +65,13 @@ def main():
             if args.pagosc:
                 cases += [(name, "WITH_PAGOS_MMIO", status)
                           for name in ("mmio", "mmio-opt") for status in (0, 1)]
-            for case, define, expected in cases:
-                elf = str(Path(directory) / f"{compiler}-{case}.elf")
+            cases = [(case, define, expected, None) for case, define, expected in cases]
+            if args.pagosc:
+                cases += [(name, "WITH_PAGOS_MMIO", 1, fault)
+                          for name in ("mmio", "mmio-opt")
+                          for fault in ("SKIP_DATA_COPY", "SKIP_BSS_CLEAR")]
+            for case, define, expected, fault in cases:
+                elf = str(Path(directory) / f"{compiler}-{case}-{fault or expected}.elf")
                 command = [compiler, *ISA, "-O2", "-ffreestanding", "-nostdlib",
                            "-fno-stack-protector", "-fno-pic", "-mcmodel=medany",
                            "-msmall-data-limit=0", "-Wl,--no-relax",
@@ -77,7 +82,9 @@ def main():
                     command += [f"-D{define}"]
                 if define == "WITH_PAGOS_MMIO":
                     command += [objects[case]]
-                    if expected == 1:
+                    if fault:
+                        command += [f"-D{fault}"]
+                    elif expected == 1:
                         command += ["-DFORCE_FAILURE"]
                 elif case in objects:
                     command += ["-DPAGOS_FREESTANDING", objects[case],
@@ -104,7 +111,7 @@ def main():
                     if expected is None or result.returncode != expected or result.stdout != output:
                         raise RuntimeError(f"{compiler}/{case}: {result}")
                 print(f"PASS {compiler}/{case}" +
-                      (f"/exit-{expected}" if define == "WITH_PAGOS_MMIO" else ""), flush=True)
+                      (f"/{fault or f'exit-{expected}'}" if define == "WITH_PAGOS_MMIO" else ""), flush=True)
 
 
 if __name__ == "__main__":

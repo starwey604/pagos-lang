@@ -25,7 +25,9 @@ The grammar uses EBNF: `{ x }` repeats `x`, `[ x ]` makes `x` optional, and
 `( x | y )` selects an alternative.
 
 ```ebnf
-source          = { record | function | statement } EOF ;
+source          = { global | record | function | statement } EOF ;
+global          = "global" ( "const" | "mut" ) identifier ":" integer-type
+                  "=" expression ";" ;
 record          = "record" identifier "{" record-fields [ "," ] "}" ;
 record-fields   = identifier ":" scalar-type
                   { "," identifier ":" scalar-type } ;
@@ -67,7 +69,7 @@ shift           = additive { ( "<<" | ">>" ) additive } ;
 additive        = multiplicative { ( "+" | "-" ) multiplicative } ;
 multiplicative  = cast { ( "*" | "/" | "%" ) cast } ;
 cast            = unary { "as" ( integer-type | pointer-type ) } ;
-unary           = ( "!" | "~" | "-" | "*" ) unary
+unary           = ( "!" | "~" | "-" | "*" | "&" ) unary
                 | "volatile" "*" unary | call ;
 call            = primary { "(" [ arguments ] ")" | "[" expression "]"
                           | "." identifier } ;
@@ -179,8 +181,9 @@ matching C prototypes and target options; no headers or linker checks for
 cross-language type mismatches are generated. Unwinding across the boundary,
 C++ exceptions, and `longjmp` through Pagos frames are outside this contract.
 
-A module with any `extern`/`export` and no top-level statements emits only its
-boundary symbols and reachable helpers, not synthetic `pagos_main`. Top-level
+A module with any `extern`/`export` or global storage declaration and no top-level
+statements emits its storage, boundary symbols and reachable helpers, not
+synthetic `pagos_main`. Top-level
 statements otherwise retain the explicit test entry, not an automatically run
 module initializer. Separate object files can import each other's exports.
 
@@ -240,6 +243,59 @@ must additionally obey C's own object/access rules. Local address-taking,
 allocation/free, pointer-containing aggregates, `defer`/RAII, atomics, address
 spaces are deferred. Plain pointer accesses must not be used
 as substitutes for volatile device access.
+
+## Global Integer Storage (Milestone 3)
+
+```pagos
+global const limit: u32 = 100;
+global mut counter: u32 = 0;
+
+export fn advance() -> u32 {
+    *&counter = counter + 1;
+    counter
+}
+export fn counter_address() -> *mut u32 { &counter }
+```
+
+`global const` and `global mut` declare module-private objects with program-long
+storage duration. An explicit integer type and initializer are mandatory;
+write `= 0` (with the appropriate suffix) for zero initialization. All supported
+integer types, including target `usize`, are allowed; pointers, `bool`, arrays
+and records are deferred. Declarations may be referenced before their textual
+definition. Names must not collide with functions, records, globals or reserved
+intrinsics/entry symbols. Local bindings and parameters may shadow globals.
+
+Initializers must yield an exactly matching pure Static integer (`E2010` on
+Runtime work). Pure function calls are allowed under existing evaluation budgets.
+Reading another global, forming its address, calling foreign code or hiding a
+store behind a Static result is not allowed. No initialization-order dependency,
+Runtime constructor, automatic initializer function or destructor is introduced.
+All declarations are checked even when unused. These are storage declarations,
+not a reinterpretation of existing top-level `let` statements.
+
+Reading a global name loads its current value at Runtime, including a readonly
+object: `global const` is not a staging annotation. `&name` produces a pointer
+to the unshadowed global, `*const T` for readonly storage and `*mut T` for writable
+storage. Only global names can be addressed; local bindings, parameters,
+temporaries, aggregate fields and functions cannot. Writes use `*&name = value;`
+or an alias pointer, not direct name assignment. Volatile accesses such as
+`volatile *&counter` follow the existing volatile rules.
+
+Global addresses are symbolic Runtime values resolved by object relocations and
+linking, never numeric compiler-host pointers. `&name as usize` executes at
+Runtime and cannot satisfy a Static demand. Separate live objects have distinct
+addresses, including equal-initialized readonly objects and same-named globals
+in separate modules. Pointers may cross existing C ABI function boundaries;
+global symbols themselves are not imported/exported. A readonly object must
+not be mutated, including through integer casts or foreign aliases.
+
+LLVM uses internal symbols and target ABI alignment. On the tested ELF targets,
+ordinary defaults place readonly data in `.rodata`, nonzero writable data in
+`.data` and zero writable data in `.bss`. Optimization may remove unobservable
+storage or fold provably immutable reads; it must preserve observable address
+identity and memory effects. The loader/startup must establish initial contents
+before any Pagos function runs. Custom sections, fixed-address placement, TLS,
+external globals, dynamic initialization and allocation remain deferred.
 
 ## Volatile Access and MMIO (Milestone 3)
 

@@ -1,0 +1,4 @@
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --implicit-check-not=define --implicit-check-not=@pagos_main
+// RUN: %pagosc emit-obj %s -o %t.o
+global mut word: u32 = 0;
+// CHECK: @pagos.global.word = internal global i32 0, align 4

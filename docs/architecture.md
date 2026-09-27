@@ -456,6 +456,32 @@ No atomics, CPU fences or cache attributes are implied. The standalone QEMU
 example uses Pagos for UART and test-device MMIO, retaining assembly startup;
 it is not evidence of a complete device-memory model on physical hardware.
 
+### Global storage and symbolic addresses
+
+Global declarations are separate from legacy top-level executable statements.
+The semantic side table resolves name expressions to source declarations,
+respecting local shadowing; staging does not search caller scopes for globals.
+All initializers are evaluated before entry/export analysis and must be pure
+Static integers. Existing fuel and specialization budgets still apply.
+Declaration storage and LLVM allocations are not a new total-memory quota.
+
+HIR/MIR modules own typed global definitions and integer initializers.
+`GlobalAddress`/`GlobalAddressOperation` name an object without inventing a
+numeric address. They remain Runtime, including integer conversions, while a
+global-name value use creates a fresh load. MIR rejects missing symbols,
+duplicate/colliding names, initializer/target type mismatches and permission
+escalation. Global-only modules are valid without a synthetic entry function.
+
+LLVM creates internal global variables before function bodies, using target ABI
+alignment and default section selection. Address identity is significant: the
+frontend does not mark these objects `unnamed_addr`. Ordinary object relocations
+and the external linker resolve references; initialization uses loader/startup
+data, not generated Runtime constructors. The QEMU example shares existing
+assembly copy/clear support and uses volatile boot-state reads to keep fault
+injection observable under optimization. See the
+[source rules](grammar.md#global-integer-storage-milestone-3) and
+[LLVM globals](https://llvm.org/docs/LangRef.html#global-variables).
+
 ### ABI sequence
 
 The minimal boundary now carries linkage/declaration flags from syntax through

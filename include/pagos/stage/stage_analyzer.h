@@ -92,6 +92,8 @@ class StageAnalyzer {
         bool reserved{};
     };
     void note_runtime_work();
+    hir::ExprPtr global_address(const syntax::Module::Global& global,
+                                source::Span span);
     bool check_pointer_access(const hir::ExprPtr& pointer, source::Span span,
                               bool is_volatile = false);
     bool reserve_residual(ResidualEntry& entry, source::Span span);

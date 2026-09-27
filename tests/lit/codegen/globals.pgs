@@ -1,0 +1,42 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR --implicit-check-not=unnamed_addr --implicit-check-not=@pagos_main
+// RUN: %run_globals %s
+// RUN: %run_globals --optimize %s
+fn initial() -> u32 { 17 }
+global const identity: u32 = initial();
+global const twin: u32 = 17;
+global mut counter: u32 = 0;
+global mut configured: u32 = 41;
+global mut small: i8 = -128i8;
+global mut wide: u64 = 18446744073709551615u64;
+global mut size: usize = 7usize;
+extern fn change(p: *mut u32) -> u32;
+fn read() -> u32 { counter }
+fn increment() -> u32 { *&counter = counter + 1; counter }
+export fn counter_address() -> *mut u32 { &counter }
+export fn identity_address() -> *const u32 { &identity }
+export fn twin_address() -> *const u32 { &twin }
+export fn configured_address() -> *mut u32 { &configured }
+export fn check_state() -> u32 {
+    if counter == 0 && configured == 41 && identity == 17 &&
+       small == -128i8 && wide == ~0u64 && size == 7usize { 1 } else { 0 }
+}
+export fn step() -> u32 {
+    let before = read();
+    increment();
+    before + before + read()
+}
+export fn foreign_change() -> u32 { change(&counter); read() }
+export fn shadow(counter: u32) -> u32 { counter + read() }
+export fn recurse(n: u32) -> u32 {
+    if n == 0 { counter } else { increment(); recurse(n - 1) }
+}
+// HIR: global const identity: u32 = 17
+// HIR: global mut counter: u32 = 0
+// HIR: global_address(counter)
+// MIR: global mut @pagos.global.counter: u32 = 0
+// MIR: global_address @pagos.global.counter
+// IR: @pagos.global.identity = internal constant i32 17, align 4
+// IR: @pagos.global.counter = internal global i32 0, align 4
+// IR: @pagos.global.configured = internal global i32 41, align 4

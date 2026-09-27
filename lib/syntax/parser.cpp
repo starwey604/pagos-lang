@@ -63,7 +63,10 @@ std::unique_ptr<Module> Parser::parse_module() {
     auto module = std::make_unique<Module>();
     while (!at_end()) {
         const auto before = index_;
-        if (check(TokenKind::KwRecord)) {
+        if (check(TokenKind::KwGlobal)) {
+            if (auto global = parse_global())
+                module->globals.push_back(std::move(*global));
+        } else if (check(TokenKind::KwRecord)) {
             if (auto record = parse_record()) {
                 module->records.push_back(std::move(*record));
             }
@@ -116,6 +119,30 @@ std::optional<Module::Record> Parser::parse_record() {
         return std::nullopt;
     }
     return record;
+}
+
+std::optional<Module::Global> Parser::parse_global() {
+    consume(TokenKind::KwGlobal, "expected `global`");
+    const bool writable = match(TokenKind::KwMut);
+    if (!writable && !consume(TokenKind::KwConst,
+                              "expected `const` or `mut` after `global`"))
+        return std::nullopt;
+    const auto* name = consume(TokenKind::Identifier, "expected global name");
+    if (!name || !consume(TokenKind::Colon, "expected `:` after global name"))
+        return std::nullopt;
+    auto type = parse_type();
+    if (!type ||
+        !consume(TokenKind::Equal, "expected `=` before global initializer"))
+        return std::nullopt;
+    auto initializer = parse_expression();
+    if (!initializer ||
+        !consume(TokenKind::Semicolon, "expected `;` after global initializer"))
+        return std::nullopt;
+    return Module::Global{.name = std::string(name->lexeme),
+                          .name_span = name->span,
+                          .type = *type,
+                          .writable = writable,
+                          .initializer = std::move(initializer)};
 }
 
 std::optional<Type> Parser::parse_type() {
@@ -651,6 +678,16 @@ std::unique_ptr<Expr> Parser::parse_cast() {
 }
 
 std::unique_ptr<Expr> Parser::parse_unary() {
+    if (match(TokenKind::Ampersand)) {
+        const auto start = previous().span;
+        auto operand = parse_unary();
+        if (!operand)
+            return nullptr;
+        const auto span =
+            source::Span{.begin = start.begin, .end = operand->span.end};
+        return std::make_unique<UnaryExpr>(UnaryOperator::AddressOf,
+                                           std::move(operand), span);
+    }
     if (match(TokenKind::KwVolatile)) {
         const auto start = previous().span;
         if (!consume(TokenKind::Star, "expected `*` after `volatile`"))

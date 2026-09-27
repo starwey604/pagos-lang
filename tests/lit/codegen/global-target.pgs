@@ -1,0 +1,12 @@
+// RUN: %pagosc --target=riscv32-unknown-elf emit-llvm %s | %FileCheck %s --check-prefix=RV32
+// RUN: %pagosc --target=riscv64-unknown-elf emit-llvm %s | %FileCheck %s --check-prefix=RV64
+// RUN: %pagosc --target=riscv32-unknown-elf emit-obj %s -o %t.o
+// RUN: llvm-readobj --relocations %t.o | %FileCheck %s --check-prefix=RELOC
+global mut size: usize = ~0usize;
+let address = &size as usize;
+let result = *&size + address;
+// RV32: @pagos.global.size = internal global i32 -1, align 4
+// RV32: ptrtoint (ptr @pagos.global.size to i32)
+// RV64: @pagos.global.size = internal global i64 -1, align 8
+// RV64: ptrtoint (ptr @pagos.global.size to i64)
+// RELOC: R_RISCV_
