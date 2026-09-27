@@ -62,6 +62,7 @@ def main():
                  str(ROOT / "tests/lit/Inputs/globals.c"),
                  str(ROOT / "tests/lit/Inputs/global_arrays.c"),
                  str(ROOT / "tests/lit/Inputs/global_records.c"),
+                 str(ROOT / "tests/lit/Inputs/record_pointers.c"),
                  str(ROOT / "tests/lit/Inputs/sections.c")])
             for folder in ("lib", "tools"):
                 for source in sorted((ROOT / folder).rglob("*.cpp")):

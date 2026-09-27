@@ -34,7 +34,7 @@ struct Type {
     // Zero denotes a deferred array length in the semantic type table only.
     // Source array types and all residual array values must have positive size.
     std::uint32_t length{};
-    std::string record_name;
+    std::string record_name; // Record annotation or record-pointer pointee.
 
     Type() = default;
     Type(TypeKind kind, std::uint32_t length = 0)
@@ -64,6 +64,8 @@ struct Type {
         return type;
     }
     [[nodiscard]] Type pointee_type() const {
+        if (!record_name.empty())
+            return record(record_name);
         return integer_usize ? usize() : integer(integer_width, integer_signed);
     }
     [[nodiscard]] static Type record(std::string name) {

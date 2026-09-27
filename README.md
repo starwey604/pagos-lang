@@ -165,7 +165,8 @@ budgets do not guarantee termination or bound the target stack. These internal
 signatures are not C ABI.
 
 The minimal C ABI now provides `extern fn` imports and `export fn` definitions
-for `u32/i32` and integer pointers, with direct `emit-obj ... -o output.o` output.
+for `u32/i32` and integer/record pointers, with direct
+`emit-obj ... -o output.o` output.
 It is validated on x86-64 Linux LP64 and RV32 ELF ILP32 (I/M/A/C). The
 [bidirectional example](tests/lit/codegen/c-abi.pgs) runs with C on the host and
 as QEMU RV32 firmware; this ABI harness uses C/assembly startup and MMIO.
@@ -206,8 +207,12 @@ Global integer-field records now have declaration-order, target-aligned storage
 and Runtime field reads/addresses. The
 [record storage example](tests/lit/codegen/global-records.pgs) checks persistent
 state and C field-pointer access on the host and RV32; see the
-[layout rules](docs/grammar.md#global-integer-field-records). Whole-record pointers,
-copies, bool/nested storage and record-by-value C calls remain deferred.
+[layout rules](docs/grammar.md#global-integer-field-records). Record pointers now
+support `&state`, `(*p).field` and `&(*p).field`, with null checks before field
+address calculation. The [pointer example](tests/lit/codegen/record-pointers.pgs)
+exchanges C-owned and Pagos-owned records through the existing pointer ABI.
+Whole-record copies, local address-taking, bool/nested/pointer-field storage and
+record-by-value C calls remain deferred.
 
 ## Development
 

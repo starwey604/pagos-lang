@@ -29,7 +29,7 @@ struct Type {
     bool pointer_mutable{};
     TypeKind element_kind{TypeKind::Error};
     std::uint32_t length{}; // Zero is deferred in sema/HIR, never concrete MIR.
-    std::string record_name;
+    std::string record_name; // Nominal value type or record-pointer pointee.
 
     Type() = default;
     Type(TypeKind kind) : kind(kind) {}
@@ -64,15 +64,19 @@ struct Type {
     }
     [[nodiscard]] static Type pointer(const Type& pointee, bool writable,
                                       unsigned bits) {
-        if (pointee.kind != TypeKind::Integer || (bits != 32 && bits != 64))
+        if ((pointee.kind != TypeKind::Integer && !pointee.is_record()) ||
+            (bits != 32 && bits != 64))
             return TypeKind::Error;
         Type type{TypeKind::Pointer};
         type.integer_type = pointee.integer_type;
+        type.record_name = pointee.record_name;
         type.pointer_bits = bits;
         type.pointer_mutable = writable;
         return type;
     }
     [[nodiscard]] Type pointee_type() const {
+        if (!record_name.empty())
+            return record(record_name);
         auto type = Type(TypeKind::Integer);
         type.integer_type = integer_type;
         return type;

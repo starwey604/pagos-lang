@@ -106,7 +106,9 @@ required beyond LLVM `llvm-readobj`.
 Boot data/BSS now contain arrays; volatile checks inspect both first and last
 elements, plus a generated readonly table. Global record tests also compare C
 field offsets and padded object sizes, and repeat data/BSS fault injection with
-volatile record-field reads. The total with `--pagosc` is 50 cases.
+volatile record-field reads. Record-pointer tests exchange C-owned and Pagos-owned
+state through typed pointers, including recursive helpers and pointer returns.
+The total with `--pagosc` is 54 cases.
 `scripts/ci.py --rv32` includes all of them.
 The matching target libgcc is linked explicitly; do not substitute host compiler-rt.
 
@@ -172,7 +174,7 @@ python3 scripts/check_rv32.py --pagosc build/debug/pagosc
 ```
 
 `extern fn` imports and `export fn` exports use exact source symbol names,
-accept `u32/i32` and integer pointers, and always denote Runtime calls.
+accept `u32/i32` and integer/record pointers, and always denote Runtime calls.
 Validated targets are x86-64 Linux LP64 and generic RV32 ELF ILP32 with I/M/A/C.
 The C prototype and
 target flags must match; neither headers nor cross-language signature checks
@@ -226,7 +228,16 @@ include tail padding; C `offsetof` checks actual field addresses on the host and
 RV32, both before and after optimization. Existing `llvm-readobj`, Clang/GCC and
 QEMU suffice; no new dependency is needed. See
 [global record rules](grammar.md#global-integer-field-records). This does not
-enable record-pointer types or record-by-value C calls.
+enable record-by-value C calls.
+
+`tests/lit/codegen/record-pointers.pgs` and its C harness extend that coverage to
+whole-record addresses and field access through function parameters/results.
+Host tests also check null read/address/discard/store traps, address-before-RHS
+ordering, early returns, ordinary unaligned access and volatile alignment traps,
+both before and after optimization. C never dereferences an unaligned struct
+pointer: the unaligned test passes byte storage and converts inside Pagos.
+No new dependency is required. See
+[record pointer rules](grammar.md#record-pointers-and-field-access).
 
 Bound compile-time work with options placed anywhere before or after the
 command:

@@ -165,6 +165,7 @@ class Generator {
     std::expected<void, std::string>
     emit_function(const mir::Function& mir_function) {
         values_.clear();
+        record_pointees_.clear();
         signed_values_.clear();
         blocks_.clear();
         exits_.clear();
@@ -181,6 +182,11 @@ class Generator {
 
         for (const auto& block : mir_function.blocks) {
             for (const auto& instruction : block.instructions) {
+                if (instruction.type.is_pointer() &&
+                    instruction.type.pointee_type().is_record())
+                    record_pointees_.emplace(
+                        instruction.result,
+                        llvm_type(instruction.type.pointee_type()));
                 if (instruction.type.kind == mir::Type::Integer &&
                     instruction.type.integer_type.is_signed) {
                     signed_values_.insert(instruction.result);
@@ -301,12 +307,13 @@ class Generator {
     }
 
     llvm::Value* emit_instruction(const mir::Instruction& instruction) {
-        if (const auto* field = std::get_if<mir::GlobalFieldAddressOperation>(
+        if (const auto* field = std::get_if<mir::FieldAddressOperation>(
                 &instruction.operation)) {
-            auto* storage = module_->getNamedGlobal(field->name);
-            return builder_.CreateStructGEP(storage->getValueType(), storage,
-                                            field->field_index,
-                                            "global.field.address");
+            auto* pointer = values_.at(field->pointer);
+            guard_pointer(pointer, 1);
+            return builder_.CreateStructGEP(record_pointees_.at(field->pointer),
+                                            pointer, field->field_index,
+                                            "record.field.address");
         }
         if (const auto* element =
                 std::get_if<mir::GlobalElementAddressOperation>(
@@ -693,6 +700,7 @@ class Generator {
     TargetConfig config_;
     bool c_abi_supported_{};
     std::unordered_map<mir::ValueId, llvm::Value*> values_;
+    std::unordered_map<mir::ValueId, llvm::Type*> record_pointees_;
     // LLVM integer types erase signedness; retain each MIR definition's fact.
     std::unordered_set<mir::ValueId> signed_values_;
     std::unordered_map<mir::BlockId, llvm::BasicBlock*> blocks_;

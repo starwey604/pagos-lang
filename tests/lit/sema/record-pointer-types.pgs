@@ -1,0 +1,15 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+record Flags { ready: bool }
+record R { count: u32 }
+record S { count: u32 }
+extern fn bad(p: *mut Flags) -> u32;
+let missing = 1usize as *mut Missing;
+let p = 1usize as *const R;
+let permission = p as *mut R;
+let nominal = p as *const S;
+let integer = p as *const u32;
+let flag = 1usize as *const Flags;
+// CHECK: error[E1016]: record pointers require integer-only fields
+// CHECK: error[E1003]: unknown record type `Missing`
+// CHECK-COUNT-3: error[E1011]: pointer casts require `usize` or the same pointee
+// CHECK: error[E1016]: record pointers require integer-only fields

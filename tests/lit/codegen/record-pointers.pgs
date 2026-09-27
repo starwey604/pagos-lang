@@ -1,0 +1,66 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR --implicit-check-not=alloca --implicit-check-not=extractvalue
+// RUN: %run_c_abi %s %S/../Inputs/record_pointers.c read first discard store volatile late alignment
+// RUN: %run_c_abi --optimize %s %S/../Inputs/record_pointers.c read first discard store volatile late alignment
+record State { tag: u8, count: u32, wide: u64, size: usize }
+global mut state: State = State(tag: 3u8, count: 12, wide: ~0u64, size: 16usize);
+global const config: State = State(tag: 7u8, count: 99, wide: 0u64, size: 0usize);
+extern fn change(p: *mut State) -> u32;
+extern fn next() -> *mut State;
+extern fn payload() -> u32;
+extern fn foreign() -> *mut State;
+fn step(p: *mut State) -> u32 { *&(*p).count = (*p).count + 1; (*p).count }
+fn walk(p: *mut State, n: u32) -> u32 {
+    if n == 0 { (*p).count } else { step(p); walk(p, n - 1) }
+}
+export fn state_address() -> *mut State { &state }
+export fn config_address() -> *const State { &config }
+export fn count_address(p: *mut State) -> *mut u32 { &(*p).count }
+export fn tag_address(p: *const State) -> *const u8 { &(*p).tag }
+export fn read(p: *const State) -> u32 { (*p).count }
+export fn read_bytes(p: *const u8) -> u32 {
+    (*(p as usize as *const State)).count
+}
+export fn bump(p: *mut State) -> u32 { step(p) }
+export fn recurse(p: *mut State, n: u32) -> u32 { walk(p, n) }
+export fn snapshot(p: *mut State) -> u32 {
+    let old = (*p).count;
+    change(p);
+    old + old + (*p).count
+}
+export fn foreign_read() -> u32 { (*foreign()).count }
+export fn choose(a: *mut State, b: *mut State, n: u32) -> *mut State {
+    if n == 0 { a } else { b }
+}
+export fn conversions(p: *mut State) -> u32 {
+    let q = p as usize as *mut State;
+    let r = q as *const State;
+    if p == q && r != 0usize as *const State { (*r).size as u32 } else { 0 }
+}
+export fn order() -> u32 { *&(*next()).count = payload(); state.count }
+export fn early(mode: u32) -> u32 {
+    *&(*(if mode == 0 { return 77; } else { &state })).count = payload();
+    state.count
+}
+export fn always_return() -> u32 {
+    &(*(if true { return 55; } else { return 66; })).count;
+    0
+}
+export fn late_return(p: *mut State) -> u32 {
+    *&(*p).count = if true { return 88; } else { 0 };
+    0
+}
+export fn discard(p: *const State) -> u32 { &(*p).count; 0 }
+export fn store(p: *mut State) -> u32 { *&(*p).count = payload(); 0 }
+export fn volatile_read(p: *const State) -> u32 { volatile *&(*p).count }
+export fn volatile_bytes(p: *const u8) -> u32 {
+    volatile *&(*(p as usize as *const State)).count
+}
+// HIR: field_address(
+// MIR: : *mut State =
+// MIR: field_address %{{[0-9]+}}, 1
+// IR: icmp eq ptr
+// IR: call void @llvm.trap()
+// IR: getelementptr inbounds{{.*}} { i8, i32, i64, i64 }, ptr
+// IR: load i32, ptr {{.*}}, align 1

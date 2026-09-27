@@ -1,0 +1,10 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+record R { count: u32 }
+static let p = 4096usize as *const R;
+static let address = &(*p).count;
+static let read = (*p).count;
+// CHECK: error[E2001]:
+// CHECK: record field address count
+// CHECK: error[E2001]:
+// CHECK: record field address count
+// CHECK: record field read count

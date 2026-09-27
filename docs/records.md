@@ -4,8 +4,8 @@ This Milestone 2 slice generalizes per-element array staging to named scalar
 fields. It does not establish a systems-level layout or foreign ABI.
 Milestone 3 separately adds
 [integer-field global storage](grammar.md#global-integer-field-records), with
-target-defined layout and scalar field pointers; the value-staging rules below
-remain unchanged.
+target-defined layout, record pointers and scalar field pointers; the
+value-staging rules below remain unchanged.
 
 ## Declare, construct, and project
 

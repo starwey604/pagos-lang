@@ -17,6 +17,8 @@ struct TypeTable {
     std::unordered_map<const syntax::Expr*, sema::Type> expressions;
     std::unordered_map<const syntax::Expr*, const syntax::Module::Global*>
         global_references;
+    // Addressable scalar field projections, distinct from value projections.
+    std::unordered_map<const syntax::Expr*, Type> field_addresses;
 
     [[nodiscard]] Type resolve(const syntax::Type& annotation) const {
         return Type(annotation, pointer_bits);

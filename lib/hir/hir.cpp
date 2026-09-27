@@ -73,9 +73,10 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
     case Expr::Kind::GlobalAddress:
         output << "global_address(" << *expression->variable_name << ')';
         break;
-    case Expr::Kind::GlobalFieldAddress:
-        output << "global_field_address(" << *expression->variable_name << ", "
-               << expression->field_index << ')';
+    case Expr::Kind::FieldAddress:
+        output << "field_address(";
+        print_expression(expression->operands.at(0), output);
+        output << ", " << expression->field_index << ')';
         break;
     case Expr::Kind::GlobalElementAddress:
         output << "global_element_address(" << *expression->variable_name

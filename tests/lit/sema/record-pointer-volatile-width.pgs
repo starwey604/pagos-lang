@@ -1,0 +1,5 @@
+// RUN: %pagosc --target=x86_64-unknown-linux-gnu check %s
+// RUN: not %pagosc --target=riscv32-unknown-elf check %s 2>&1 | %FileCheck %s
+record R { value: u64 }
+export fn read(p: *const R) -> u32 { (volatile *&(*p).value) as u32 }
+// CHECK: error[E1012]: volatile access width exceeds target pointer width

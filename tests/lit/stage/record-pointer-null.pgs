@@ -1,0 +1,7 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+record R { first: u8, count: u32 }
+let p = 0usize as *mut R;
+let read = (*p).count;
+let first = &(*p).first;
+let discard = &(*p).count;
+// CHECK-COUNT-3: error[E4013]: cannot dereference a null pointer

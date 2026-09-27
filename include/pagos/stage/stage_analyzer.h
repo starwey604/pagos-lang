@@ -134,7 +134,7 @@ class StageAnalyzer {
                            source::Span span);
     hir::ExprPtr analyze_index(const syntax::IndexExpr& expression);
     hir::ExprPtr global_element_address(const syntax::IndexExpr& expression);
-    hir::ExprPtr global_field_address(const syntax::FieldExpr& expression);
+    hir::ExprPtr field_address(const syntax::FieldExpr& expression);
     hir::ExprPtr analyze_record(const syntax::RecordExpr& expression);
     hir::ExprPtr analyze_field(const syntax::FieldExpr& expression);
 

@@ -263,18 +263,20 @@ std::expected<void, std::string> verify_function(const Function& function,
                     return std::unexpected("invalid MIR global address");
                 continue;
             }
-            if (const auto* address = std::get_if<GlobalFieldAddressOperation>(
+            if (const auto* address = std::get_if<FieldAddressOperation>(
                     &instruction.operation)) {
-                const auto global = globals.find(address->name);
-                if (global == globals.end() ||
-                    !global->second->type.is_record() ||
-                    address->field_index >=
-                        global->second->type.fields.size() ||
+                const auto pointer = value_type(address->pointer);
+                if (!pointer || !pointer->is_pointer() ||
+                    !pointer->pointee_type().is_record() ||
+                    address->field_index >= pointer->fields.size() ||
                     instruction.type !=
-                        Type::pointer(
-                            global->second->type.fields[address->field_index],
-                            global->second->writable, pointer_bits))
-                    return std::unexpected("invalid MIR global field address");
+                        Type::pointer(pointer->fields[address->field_index],
+                                      pointer->pointer_mutable, pointer_bits))
+                    return std::unexpected("invalid MIR field address");
+                if (auto valid =
+                        require_dominance(address->pointer, block.id, index);
+                    !valid)
+                    return valid;
                 continue;
             }
             if (const auto* address =
@@ -481,6 +483,7 @@ std::expected<void, std::string> verify_function(const Function& function,
                     !valid)
                     return valid;
                 if (!pointer->is_pointer() ||
+                    pointer->pointee_type().kind != Type::Integer ||
                     instruction.type != pointer->pointee_type())
                     return std::unexpected("invalid MIR pointer load");
                 if (load->is_volatile &&
@@ -507,6 +510,7 @@ std::expected<void, std::string> verify_function(const Function& function,
                     !valid)
                     return valid;
                 if (!pointer->is_pointer() || !pointer->pointer_mutable ||
+                    pointer->pointee_type().kind != Type::Integer ||
                     *value != pointer->pointee_type() ||
                     instruction.type != Type::Void)
                     return std::unexpected("invalid MIR pointer store");
@@ -731,9 +735,8 @@ void print_instruction(const Instruction& instruction, std::ostream& output) {
             std::get_if<GlobalAddressOperation>(&instruction.operation)) {
         output << "global_address @" << address->name;
     } else if (const auto* field_address =
-                   std::get_if<GlobalFieldAddressOperation>(
-                       &instruction.operation)) {
-        output << "global_field_address @" << field_address->name << ", "
+                   std::get_if<FieldAddressOperation>(&instruction.operation)) {
+        output << "field_address " << value_name(field_address->pointer) << ", "
                << field_address->field_index;
     } else if (const auto* element = std::get_if<GlobalElementAddressOperation>(
                    &instruction.operation)) {
@@ -928,7 +931,9 @@ std::expected<void, std::string> verify(const Module& module) {
                                    "`");
     }
     std::unordered_map<std::string, Type> records;
-    const auto consistent = [&](const Type& type) {
+    const auto consistent = [&](const Type& original) {
+        const auto type =
+            original.is_pointer() ? original.pointee_type() : original;
         if (!type.is_record()) {
             return true;
         }
@@ -957,7 +962,7 @@ std::expected<void, std::string> verify(const Module& module) {
                 !std::ranges::all_of(function.parameters, supported))
                 return std::unexpected(
                     "C ABI MIR signatures require external "
-                    "linkage and i32/u32 or integer pointer types");
+                    "linkage and i32/u32 or integer/record pointer types");
         }
         if (!function.result_type.matches_pointer_width(module.pointer_bits))
             return std::unexpected(

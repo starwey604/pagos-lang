@@ -736,7 +736,7 @@ TEST(GlobalRecords, VerifierRejectsMalformedInitializersAndNominalSchemas) {
     }
 }
 
-TEST(GlobalRecords, VerifierChecksFieldAddressSymbolIndexTypeAndPermission) {
+TEST(GlobalRecords, VerifierChecksFieldAddressBaseIndexTypeAndPermission) {
     PointerInput input(
         "record R { field: u32 } global const data: R = R(field: 1); "
         "global const scalar: u32 = 0; "
@@ -752,18 +752,21 @@ TEST(GlobalRecords, VerifierChecksFieldAddressSymbolIndexTypeAndPermission) {
         auto& instructions = bad.functions[0].blocks[0].instructions;
         auto address =
             std::ranges::find_if(instructions, [](const auto& instruction) {
-                return std::holds_alternative<mir::GlobalFieldAddressOperation>(
+                return std::holds_alternative<mir::FieldAddressOperation>(
                     instruction.operation);
             });
         ASSERT_NE(address, instructions.end());
         auto& operation =
-            std::get<mir::GlobalFieldAddressOperation>(address->operation);
+            std::get<mir::FieldAddressOperation>(address->operation);
         switch (case_id) {
         case 0:
-            operation.name = "missing";
+            operation.pointer = 999;
             break;
         case 1:
-            operation.name = "pagos.global.scalar";
+            instructions[0].type =
+                mir::Type::pointer(mir::Type::U32, false, 64);
+            instructions[0].operation =
+                mir::GlobalAddressOperation{"pagos.global.scalar"};
             break;
         case 2:
             operation.field_index = 1;
@@ -781,7 +784,7 @@ TEST(GlobalRecords, VerifierChecksFieldAddressSymbolIndexTypeAndPermission) {
         bad.functions[0].result_type = address->type;
         const auto result = mir::verify(bad);
         ASSERT_FALSE(result) << case_id;
-        EXPECT_EQ(result.error(), "invalid MIR global field address");
+        EXPECT_EQ(result.error(), "invalid MIR field address");
         EXPECT_FALSE(codegen::LLVMCodegen::emit(bad));
     }
 }
@@ -810,6 +813,148 @@ TEST(GlobalRecords, ConstructionBudgetCountsLogicalFieldsNotStoragePadding) {
             EXPECT_EQ(target->layout_of(module->globals[0].type)->size_bytes,
                       8U);
         }
+    }
+}
+TEST(RecordPointers, IdentityIncludesNominalPointeePermissionAndTarget) {
+    const auto annotation =
+        syntax::Type::pointer(syntax::Type::record("R"), true);
+    EXPECT_EQ(annotation.pointee_type(), syntax::Type::record("R"));
+    EXPECT_EQ(syntax::type_name(annotation), "*mut R");
+    EXPECT_EQ(sema::Type(annotation), sema::TypeKind::Error);
+    for (unsigned bits : {32U, 64U}) {
+        const sema::Type type(annotation, bits);
+        EXPECT_EQ(type.pointee_type(), sema::Type::record("R"));
+        EXPECT_EQ(sema::type_name(type), "*mut R");
+        EXPECT_NE(type,
+                  sema::Type::pointer(sema::Type::record("S"), true, bits));
+        EXPECT_NE(type,
+                  sema::Type::pointer(sema::Type::record("R"), false, bits));
+        mir::Type record{mir::Type::Record};
+        record.record_name = "R";
+        record.fields = {mir::Type::integer(8),
+                         mir::Type::integer(bits, false, true)};
+        auto pointer = mir::Type::pointer(record, true, bits);
+        EXPECT_TRUE(pointer.valid());
+        EXPECT_EQ(pointer.pointee_type(), record);
+        EXPECT_EQ(mir::type_name(pointer), "*mut R");
+        EXPECT_TRUE(pointer.matches_pointer_width(bits));
+        EXPECT_FALSE(pointer.matches_pointer_width(bits == 32 ? 64 : 32));
+        pointer.fields[0] = mir::Type::Bool;
+        EXPECT_FALSE(pointer.valid());
+        pointer.fields.clear();
+        EXPECT_FALSE(pointer.valid());
+    }
+}
+
+TEST(RecordPointers, TargetSchemasAndResidualDefinitionsSurviveSessionReset) {
+    PointerInput input(
+        "record R { tag: u8, size: usize } "
+        "global mut state: R = R(tag: 0u8, size: 7usize); "
+        "fn get(p: *const R) -> usize { (*p).size } "
+        "export fn address() -> *mut R { &state } "
+        "export fn read(p: *const R) -> u32 { (get(p) + get(p)) as u32 }");
+    for (const auto* triple :
+         {"riscv32-unknown-elf", "x86_64-unknown-linux-gnu",
+          "riscv32-unknown-elf"}) {
+        const auto target = codegen::TargetLayout::create({.triple = triple});
+        ASSERT_TRUE(target);
+        sema::TypeChecker checker(input.diagnostics, target->pointer_bits());
+        ASSERT_TRUE(checker.check(*input.syntax));
+        stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
+        for (int session = 0; session < 2; ++session) {
+            const auto hir = analyzer.analyze(*input.syntax);
+            ASSERT_FALSE(input.diagnostics.has_error());
+            const auto module = mir::lower(*hir);
+            ASSERT_TRUE(module) << module.error();
+            auto function =
+                std::ranges::find(module->functions, std::string("address"),
+                                  &mir::Function::name);
+            ASSERT_NE(function, module->functions.end());
+            EXPECT_EQ(function->result_type.pointee_type(),
+                      module->globals[0].type);
+            const auto layout = target->layout_of(function->result_type);
+            ASSERT_TRUE(layout);
+            EXPECT_EQ(layout->size_bytes, target->pointer_bits() / 8);
+            const auto ir =
+                codegen::LLVMCodegen::emit_for_target(*module, *target);
+            ASSERT_TRUE(ir) << ir.error();
+            EXPECT_EQ(ir->find("alloca"), std::string::npos);
+        }
+    }
+}
+
+TEST(RecordPointers, VerifierRejectsInconsistentSchemasAndWholeRecordMemory) {
+    PointerInput input(
+        "record R { value: u32 } global mut state: R = R(value: 0); "
+        "export fn field(p: *mut R) -> *mut u32 { &(*p).value }");
+    sema::TypeChecker checker(input.diagnostics, 64);
+    ASSERT_TRUE(checker.check(*input.syntax));
+    stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
+    const auto hir = analyzer.analyze(*input.syntax);
+    const auto good = mir::lower(*hir);
+    ASSERT_TRUE(good);
+    for (int case_id = 0; case_id < 7; ++case_id) {
+        auto bad = *good;
+        auto& function = bad.functions[0];
+        auto& instructions = function.blocks[0].instructions;
+        switch (case_id) {
+        case 0:
+            function.parameters[0].fields[0] = mir::Type::integer(16);
+            break;
+        case 1:
+            function.parameters[0].fields[0] = mir::Type::Bool;
+            break;
+        case 2:
+            function.parameters[0].fields[0] =
+                mir::Type::integer(32, false, true);
+            break;
+        case 3:
+            std::swap(instructions[0], instructions[1]);
+            break;
+        case 4:
+            // No whole-record loads, even in an internal (non-C-ABI) function.
+            function.c_abi = false;
+            function.result_type = bad.globals[0].type;
+            instructions[1].type = bad.globals[0].type;
+            instructions[1].operation =
+                mir::LoadOperation{instructions[0].result};
+            break;
+        case 5:
+            instructions.push_back({.result = 100,
+                                    .type = bad.globals[0].type,
+                                    .operation = mir::ConstantOperation{
+                                        bad.globals[0].initializer}});
+            instructions.push_back({.result = 101,
+                                    .type = mir::Type::Void,
+                                    .operation = mir::StoreOperation{
+                                        instructions[0].result, 100}});
+            break;
+        case 6:
+            instructions[0].type.record_name = "S";
+            function.parameters[0] = instructions[0].type;
+            instructions[1].operation =
+                mir::PointerCastOperation{instructions[0].result};
+            instructions[1].type =
+                mir::Type::pointer(bad.globals[0].type, true, 64);
+            function.result_type = instructions[1].type;
+            break;
+        }
+        EXPECT_FALSE(mir::verify(bad)) << case_id;
+        EXPECT_FALSE(codegen::LLVMCodegen::emit(bad)) << case_id;
+    }
+}
+
+TEST(RecordPointers, StaticNullFieldAddressesFailWithoutHostDereference) {
+    for (const auto* expression : {"(*p).first", "&(*p).first", "&(*p).last"}) {
+        PointerInput input(std::string("record R { first: u8, last: u32 } ") +
+                           "static let p = 0usize as *const R; let result = " +
+                           expression + ";");
+        sema::TypeChecker checker(input.diagnostics, 32);
+        ASSERT_TRUE(checker.check(*input.syntax));
+        stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
+        const auto hir = analyzer.analyze(*input.syntax);
+        ASSERT_TRUE(input.diagnostics.has_error());
+        EXPECT_EQ(input.diagnostics.diagnostics().back().code, "E4013");
     }
 }
 } // namespace

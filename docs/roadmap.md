@@ -135,8 +135,12 @@ is implied. The thirteenth slice adds global integer-field records with
 declaration-order, target-aligned storage layout, pure Static initializers,
 Runtime field reads and integer field pointers. Host/RV32 C layout and alias
 checks cover padded sizes/offsets and startup data/BSS, without aggregate call
-lowering. Whole-aggregate values/addresses, local address-taking, nested storage,
-bool storage, external globals and aggregate C calling conventions remain open.
+lowering. The fourteenth slice adds nominal record pointers, whole-global record
+addresses and scalar field projections through pointers. Global and indirect
+fields share null-checked address lowering; C exchanges record pointers on the
+host/RV32, including aliases, recursive helpers and pointer results. Whole-record
+copies, whole-array addresses, local address-taking, nested/pointer-field storage,
+bool storage, external globals and aggregate-by-value C conventions remain open.
 
 Add the minimum systems features needed for real firmware:
 

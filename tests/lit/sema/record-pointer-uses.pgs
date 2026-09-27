@@ -1,0 +1,21 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+record R { count: u32 }
+let p = 4096usize as *mut R;
+let whole = *p;
+*p = R(count: 0);
+let whole_volatile = volatile *p;
+let direct = p.count;
+let unknown = (*p).missing;
+let indexed = p[0];
+let readonly = p as *const R;
+*&(*readonly).count = 3;
+let local = R(count: 0);
+let local_pointer = &local;
+// CHECK: error[E1016]: record dereference requires field selection
+// CHECK: error[E1016]: whole-record stores are not supported
+// CHECK: error[E1016]: record dereference requires field selection
+// CHECK: error[E1008]: field access requires a record
+// CHECK: error[E1008]: unknown field `missing` in `R`
+// CHECK: error[E1008]: indexing requires an array
+// CHECK: error[E1011]: store requires a `*mut` pointer
+// CHECK: error[E1013]: address-taking requires

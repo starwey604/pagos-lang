@@ -213,9 +213,10 @@ std::optional<Type> Parser::parse_type() {
         auto pointee = parse_type();
         if (!pointee)
             return std::nullopt;
-        if (pointee->kind != TypeKind::Integer) {
-            diagnostics_.error("E1011",
-                               "pointer pointee must be an integer type", span);
+        if (pointee->kind != TypeKind::Integer && !pointee->is_record()) {
+            diagnostics_.error(
+                "E1011", "pointer pointee must be an integer or record type",
+                span);
             return std::nullopt;
         }
         return Type::pointer(*pointee, writable);

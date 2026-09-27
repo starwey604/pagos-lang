@@ -29,6 +29,7 @@ struct Type {
     bool pointer_mutable{};
     Kind element_kind{Invalid};
     std::uint32_t length{};
+    // Record value schema, or pointee schema for a record pointer.
     std::string record_name;
     std::vector<Type> fields;
     Type() = default;
@@ -57,15 +58,23 @@ struct Type {
     }
     [[nodiscard]] static Type pointer(const Type& pointee, bool writable,
                                       unsigned bits) {
-        if (pointee.kind != Integer)
+        if (pointee.kind != Integer && !pointee.is_record())
             return Invalid;
         Type type{Pointer};
         type.integer_type = pointee.integer_type;
+        type.record_name = pointee.record_name;
+        type.fields = pointee.fields;
         type.pointer_bits = bits;
         type.pointer_mutable = writable;
         return type;
     }
     [[nodiscard]] Type pointee_type() const {
+        if (!record_name.empty()) {
+            Type record{Record};
+            record.record_name = record_name;
+            record.fields = fields;
+            return record;
+        }
         return integer(integer_type.width, integer_type.is_signed,
                        integer_type.is_usize);
     }
@@ -86,10 +95,19 @@ struct Type {
         return type;
     }
     [[nodiscard]] bool valid() const noexcept {
-        if (is_pointer())
-            return (pointer_bits == 32 || pointer_bits == 64) &&
-                   integer_type.valid() && record_name.empty() &&
-                   fields.empty() && length == 0 && element_kind == Invalid;
+        if (is_pointer()) {
+            if ((pointer_bits != 32 && pointer_bits != 64) || length != 0 ||
+                element_kind != Invalid)
+                return false;
+            if (record_name.empty())
+                return integer_type.valid() && fields.empty();
+            if (fields.empty())
+                return false;
+            for (const auto& field : fields)
+                if (field.kind != Integer || !field.valid())
+                    return false;
+            return true;
+        }
         if (pointer_bits != 0 || pointer_mutable)
             return false;
         if (is_record()) {
@@ -149,9 +167,10 @@ struct GlobalElementAddressOperation {
     std::string name;
     ValueId index; // Checked u32 index into a named integer array object.
 };
-struct GlobalFieldAddressOperation {
-    std::string name;
-    std::uint32_t field_index; // Declaration-order field in a global record.
+struct FieldAddressOperation {
+    ValueId pointer;
+    // Null-check the base before computing the declaration-order field offset.
+    std::uint32_t field_index;
 };
 
 struct ParameterOperation {
@@ -230,7 +249,7 @@ using Operation =
                  FieldOperation, ParameterOperation, CallOperation,
                  PointerCastOperation, LoadOperation, StoreOperation,
                  GlobalAddressOperation, GlobalElementAddressOperation,
-                 GlobalFieldAddressOperation>;
+                 FieldAddressOperation>;
 
 struct Instruction {
     ValueId result;

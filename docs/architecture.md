@@ -429,9 +429,9 @@ in its identity. These boundaries precede adding a richer effect model.
 
 ### Raw target memory
 
-Pointer types carry an integer pointee, read/write permission and semantic
-target width. `PointerConstant` stores a tagged target `usize` address rather
-than a host pointer; it cannot be confused with an integer constant or a value
+Pointer types carry an integer or nominal record pointee, read/write permission
+and semantic target width. `PointerConstant` stores a tagged target `usize`
+address rather than a host pointer; it cannot be confused with an integer constant or a value
 from a different target width. HIR loads/stores are always Runtime. Ordinary
 scalar specialization, recursive signatures, sequencing and computation
 identity reuse also apply to pointers. The evaluator refuses memory reads.
@@ -486,14 +486,20 @@ existing value-array path. See LLVM's
 [GEP explanation](https://llvm.org/docs/GetElementPtr.html): address calculation
 itself does not load memory or provide a bounds check.
 
-Global record fields use a separate `GlobalFieldAddress` operation carrying the
-symbol and declaration-order field index. Sema resolves the unshadowed storage
-base; staging does not evaluate a whole-record value to access one field. MIR
+Record fields use a shared `FieldAddress` operation carrying a record-pointer
+operand and declaration-order field index. Global access lowers through
+`GlobalAddress` plus `FieldAddress`; `(*p).field` uses the evaluated pointer.
+Sema records addressable projections separately from value projections; staging
+does not evaluate a whole-record value to access one field. MIR
 checks nominal initializer identity, field types/counts, pointer permissions and
-field index, and requires consistent record schemas across globals and functions.
+field index and base dominance, and requires consistent record schemas across
+globals, values and pointer signatures. Whole-record loads/stores are rejected.
 Lowering registers record schemas before lowering globals. LLVM shares record
 constant emission with value records and uses an unpacked struct plus struct GEP,
-followed by a scalar load/store. `TargetLayout::layout_of` exposes allocation
+followed by a scalar load/store. Pointer pointee schemas supply the GEP source
+type even though LLVM pointers are opaque. A null-base guard precedes GEP,
+including discarded/offset-zero addresses; ordinary fields remain align-1
+accesses. `TargetLayout::layout_of` exposes allocation
 size, ABI alignment and field offsets for compiler tests; global `align` metadata
 does not alter those offsets. Padded object size is checked against the target
 signed-offset limit before LLVM global creation. No aggregate calling-convention
@@ -521,7 +527,7 @@ injection observable under optimization. See the
 The minimal boundary now carries linkage/declaration flags from syntax through
 HIR and MIR. Export roots and extern signatures are predeclared independently
 of internal specialization caches; MIR retains public source names and verifies
-the `u32/i32` and integer-pointer subset. LLVM uses its default C calling
+the `u32/i32` and integer/record-pointer subset. LLVM uses its default C calling
 convention, gated to x86-64 Linux LP64 and generic RV32 ELF ILP32 with I/M/A/C.
 Supporting other
 types/targets requires explicit ABI classification, not just LLVM storage types;
@@ -537,7 +543,8 @@ rejecting an output that aliases the input. Linking remains an external
 Clang/GCC/LLD task. Library-style boundary modules omit synthetic `pagos_main`.
 
 1. Emit and consume `u32/i32` and integer-pointer C ABI symbols (implemented).
-2. Extend manually declared C functions to layout-compatible records.
+2. Exchange pointers to layout-compatible integer-field records (implemented);
+   classify aggregate-by-value calls separately (deferred).
 3. Add a Clang-based binding generator or consume a stable generated format.
 4. Use C shims for C++ libraries.
 5. Consider direct C++ ABI integration only after exceptions, RTTI, overloads,

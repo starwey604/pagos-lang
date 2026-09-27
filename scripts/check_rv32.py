@@ -44,6 +44,7 @@ def main():
             for name, harness in (("c-abi", "c_abi.c"), ("pointers", "pointers.c"),
                                   ("global-arrays", "global_arrays.c"),
                                   ("global-records", "global_records.c"),
+                                  ("record-pointers", "record_pointers.c"),
                                   ("mmio", None)):
                 source = str(PLATFORM / "mmio.pgs" if harness is None else
                              ROOT / f"tests/lit/codegen/{name}.pgs")

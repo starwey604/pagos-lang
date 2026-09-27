@@ -6,9 +6,9 @@ Later milestones should not silently change accepted programs.
 ## Scope
 
 The compiler supports `bool`, unsigned `u8/u16/u32/u64`, signed `i8/i16/i32/i64`,
-target-sized unsigned `usize`, fixed-length scalar arrays, raw integer pointers,
-immutable bindings, functions, calls, `if` expressions, explicit stage constraints,
-and range-based `for` statements.
+target-sized unsigned `usize`, fixed-length scalar arrays, raw integer/record
+pointers, immutable bindings, functions, calls, `if` expressions, explicit stage
+constraints, and range-based `for` statements.
 Static ranges execute during analysis; Runtime ranges residualize as target
 control flow. A `return` inside an expression block or loop exits the nearest
 enclosing function, including when the compiler inlines that function.
@@ -28,7 +28,7 @@ The grammar uses EBNF: `{ x }` repeats `x`, `[ x ]` makes `x` optional, and
 source          = { global | record | function | statement } EOF ;
 global          = "global" ( "const" | "mut" ) identifier ":" storage-type
                   { storage-attribute } "=" expression ";" ;
-storage-type    = integer-type | "[" integer-type ";" integer "]" ;
+storage-type    = integer-type | "[" integer-type ";" integer "]" | identifier ;
 storage-attribute = "section" "(" quoted-section-name ")"
                   | "align" "(" decimal-alignment ")" ;
 record          = "record" identifier "{" record-fields [ "," ] "}" ;
@@ -44,7 +44,7 @@ parameter       = identifier ":" type ;
 integer-type    = "u8" | "u16" | "u32" | "u64"
                 | "i8" | "i16" | "i32" | "i64" | "usize" ;
 scalar-type     = "bool" | integer-type ;
-pointer-type    = "*" ( "const" | "mut" ) integer-type ;
+pointer-type    = "*" ( "const" | "mut" ) ( integer-type | identifier ) ;
 type            = scalar-type | pointer-type | identifier
                 | "[" scalar-type ";" integer "]" ;
 
@@ -164,9 +164,12 @@ export fn sample(offset: u32) -> u32 { platform_read() + offset }
 
 `extern fn` declares a C symbol without a body; `export fn` defines one using
 its exact source name. Both require explicit parameter/result types: `u32` and
-`i32` (C `uint32_t` and `int32_t`), or pointers to the supported integer types.
+`i32` (C `uint32_t` and `int32_t`), or pointers to supported integer/record types.
 `*const T` / `*mut T` map to `const T*` / `T*` with the corresponding C integer
-type; a `usize` pointee uses `uintptr_t`. Zero parameters are allowed;
+type; a `usize` pointee uses `uintptr_t`. Integer-only record pointers map to
+`const struct R*` / `struct R*`; C declarations must match the target field types,
+order and natural layout, without packing. This exchanges addresses, not records
+by value. Zero parameters are allowed;
 `void`, `bool`, other by-value widths, by-value `usize`, aggregates, varargs, and
 overloads are not. Declarations cannot be repeated or redeclared as definitions
 in the same module. `pagos_main` and `pagos_external_input` are reserved names.
@@ -201,8 +204,9 @@ export fn increment(p: *mut u32) -> u32 {
 ```
 
 Pointers are copyable, non-owning target addresses. `*const T` permits reads;
-`*mut T` permits reads/writes. `T` is an integer, including `usize`; `bool`,
-records, arrays, and pointers themselves are not supported pointees yet.
+`*mut T` permits reads/writes. `T` is an integer, including `usize`, or a named
+integer-only record. `bool`, arrays, and pointers themselves are not supported
+pointees yet. Record pointers permit field access, not whole-record loads/stores.
 An immutable `let p` fixes the pointer value, not the pointed-to bytes.
 `*const` does not promise immutable memory and `*mut` does not promise exclusive
 access. Aliases may observe each other's writes. There is no borrow checker,
@@ -246,6 +250,49 @@ must additionally obey C's own object/access rules. Local address-taking,
 allocation/free, pointer-containing aggregates, `defer`/RAII, atomics, address
 spaces are deferred. Plain pointer accesses must not be used
 as substitutes for volatile device access.
+
+### Record pointers and field access
+
+```pagos
+record State { counter: u32, capacity: usize }
+global mut state: State = State(counter: 0, capacity: 16usize);
+fn advance(p: *mut State) -> u32 {
+    *&(*p).counter = (*p).counter + 1;
+    (*p).counter
+}
+export fn tick() -> u32 { advance(&state) }
+```
+
+`&name` now accepts an unshadowed global integer-only record, yielding
+`*const R` or `*mut R`. A record pointer retains nominal record identity and
+permission; direct casts cannot change the record type or add write permission.
+Existing `usize` address conversions, null values, equality, specialization,
+recursive calls and explicit mutable-to-const casts also apply. Pointers may be
+passed or returned through the supported C ABI; local records remain value-only.
+
+`(*p).field` reads one scalar; `&(*p).field` produces a scalar pointer inheriting
+`p`'s permission. Both are Runtime even when `p` is a Static numeric address.
+The pointer expression is evaluated once, then checked for null **before** field
+address calculation, including offset-zero fields and discarded addresses.
+Known Static null bases report `E4013`; Runtime null bases trap. Forming or
+passing a null record pointer alone remains valid. There is no implicit pointer
+dereference (`p.field`) or `->` syntax.
+
+For `*&(*p).field = value;`, the base expression and field-address check precede
+the right-hand side. Early return in the base skips the right-hand side; early
+return in the right-hand side skips only the store, not the earlier address
+check. Captured field reads remain snapshots; fresh reads observe alias writes.
+Plain scalar accesses still allow unaligned storage (`align 1`).
+`volatile *&(*p).field` instead checks the selected field's natural alignment and
+native-width limit; it is never an aggregate volatile operation.
+
+The caller must provide live storage covering the record's target layout and
+permission for accessed fields; reads require initialized field bytes. Null
+checks do not validate lifetime, bounds, mapping or provenance. C code must also
+obey its own alignment and object-access rules. Do not interpret packed C structs
+as natural-layout records. No borrowing, ownership or implicit allocation is added.
+Bare `*p`, `*p = record`, `&*p`, whole-record volatile operations, local
+address-taking and pointer-containing/nested records remain unsupported.
 
 ## Global Integer Storage (Milestone 3)
 
@@ -385,8 +432,9 @@ while a later field read observes intervening writes. Early return in a store's
 right-hand side skips the store. Local shadowing preserves ordinary value-record
 semantics and does not make a local record addressable.
 
-Bare global-record values and whole-record addresses are rejected (`E1015`).
-Whole-record copies, record-pointer types, local address-taking, nested/array
+Bare global-record values are rejected (`E1015`); `&name` yields a record pointer
+under the [record pointer rules](#record-pointers-and-field-access).
+Whole-record copies, local address-taking, nested/array
 fields, arrays of records and packed/bitfield layouts remain deferred. Existing
 value records with `bool` fields remain supported, but cannot be global storage.
 C may use integer field pointers through the existing ABI. Host/RV32 tests compare
@@ -504,8 +552,8 @@ keep all projections Runtime. Diagnostics identify the selected field's source.
 Records can cross into residual MIR/LLVM as value aggregates without exposing
 host addresses. Value construction does not allocate addressable storage.
 The [global record subset](#global-integer-field-records) defines target storage
-layout for integer-only fields; general record pointers, packing and record C
-calling conventions remain deferred.
+layout for integer-only fields. Record pointers support scalar field access;
+packing and record-by-value C calling conventions remain deferred.
 Existing fuel/depth/specialization limits apply. Shared aggregate construction
 quotas charge every declared field before member allocation or initializer
 evaluation; array-only quotas still exclude records. See

@@ -25,6 +25,7 @@ bool compatible(const sema::Type& expected, const sema::Type& actual) {
 bool TypeChecker::check(syntax::Module& module) {
     types_.expressions.clear();
     types_.global_references.clear();
+    types_.field_addresses.clear();
     globals_.clear();
     functions_.clear();
     records_.clear();
@@ -90,7 +91,7 @@ bool TypeChecker::check(syntax::Module& module) {
                      type.integer_width != 32 || type.integer_usize))
                     diagnostics_.error("E1010",
                                        "C ABI boundary supports only `u32`, "
-                                       "`i32`, and integer pointers",
+                                       "`i32`, and integer/record pointers",
                                        span);
             };
             boundary_type(function->result, function->name_span);
@@ -145,6 +146,17 @@ void TypeChecker::collect_records(const syntax::Module& module) {
 }
 
 void TypeChecker::validate_type(const sema::Type& type, source::Span span) {
+    if (type.is_pointer() && type.pointee_type().is_record()) {
+        const auto pointee = type.pointee_type();
+        validate_type(pointee, span);
+        const auto record = records_.find(pointee.record_name);
+        if (record != records_.end() &&
+            std::ranges::any_of(record->second->fields, [&](const auto& field) {
+                return types_.resolve(field.type).kind != TypeKind::Integer;
+            }))
+            diagnostics_.error(
+                "E1016", "record pointers require integer-only fields", span);
+    }
     if (type.kind == TypeKind::Error) {
         diagnostics_.error("E1005", "`usize` requires a target pointer width",
                            span);
@@ -243,6 +255,10 @@ void TypeChecker::check_statement(syntax::Stmt& statement,
         saw_return = saw_return || pointer == TypeKind::Never ||
                      value == TypeKind::Never;
         if (pointer.is_pointer()) {
+            if (pointer.pointee_type().is_record())
+                diagnostics_.error("E1016",
+                                   "whole-record stores are not supported",
+                                   store.span);
             if (store.is_volatile &&
                 pointer.integer_type.width > pointer.pointer_bits)
                 diagnostics_.error(
@@ -392,8 +408,19 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression,
     }
     case syntax::Expr::Kind::Unary: {
         auto& unary = static_cast<syntax::UnaryExpr&>(expression);
-        const auto operand_type = check_expression(*unary.operand);
+        const auto operand_type = check_expression(
+            *unary.operand,
+            unary.operation == syntax::UnaryOperator::AddressOf &&
+                    unary.operand->kind == syntax::Expr::Kind::Name
+                ? TypeKind::Record
+                : TypeKind::Error);
         if (unary.operation == syntax::UnaryOperator::AddressOf) {
+            if (const auto field =
+                    types_.field_addresses.find(unary.operand.get());
+                field != types_.field_addresses.end()) {
+                type = field->second;
+                break;
+            }
             const auto global =
                 types_.global_references.find(unary.operand.get());
             if (global == types_.global_references.end())
@@ -402,10 +429,9 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression,
                     "address-taking requires an unshadowed "
                     "global name, array element, or record field",
                     unary.span);
-            else if (!operand_type.is_array() && !operand_type.is_record()) {
-                // Bare aggregate storage already reports E1015 above; do not
-                // turn an unsupported whole-object address into a bogus
-                // unresolved-usize diagnostic from Type::pointer.
+            else if (!operand_type.is_array()) {
+                // Whole-array addresses remain unsupported. Record names
+                // here denote storage, not a whole-record value load.
                 type =
                     operand_type == TypeKind::Never
                         ? Type(TypeKind::Never)
@@ -428,9 +454,16 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression,
                     "E1012",
                     "volatile access width exceeds target pointer width",
                     unary.span);
-            if (operand_type.is_pointer())
+            if (operand_type.is_pointer()) {
                 type = operand_type.pointee_type();
-            else if (operand_type != TypeKind::Error)
+                if (type.is_record() &&
+                    (global_storage_base != TypeKind::Record ||
+                     unary.operation ==
+                         syntax::UnaryOperator::VolatileDereference))
+                    diagnostics_.error(
+                        "E1016", "record dereference requires field selection",
+                        unary.span);
+            } else if (operand_type != TypeKind::Error)
                 diagnostics_.error("E1011", "dereference requires a pointer",
                                    unary.span);
             break;
@@ -465,6 +498,7 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression,
         auto& cast = static_cast<syntax::CastExpr&>(expression);
         const auto operand = check_expression(*cast.operand);
         const auto destination = types_.resolve(cast.destination);
+        validate_type(destination, cast.span);
         if (operand.is_pointer() || destination.is_pointer()) {
             const auto is_size = [](const Type& value) {
                 return value.kind == TypeKind::Integer &&
@@ -686,6 +720,15 @@ sema::Type TypeChecker::check_record(syntax::RecordExpr& expression) {
 
 sema::Type TypeChecker::check_field(syntax::FieldExpr& expression) {
     auto type = check_expression(*expression.record, TypeKind::Record);
+    const syntax::UnaryExpr* dereference = nullptr;
+    if (expression.record->kind == syntax::Expr::Kind::Unary) {
+        const auto& unary =
+            static_cast<const syntax::UnaryExpr&>(*expression.record);
+        if (unary.operation == syntax::UnaryOperator::Dereference)
+            dereference = &unary;
+    }
+    if (type == TypeKind::Never && dereference)
+        types_.field_addresses.emplace(&expression, TypeKind::Never);
     if (type == sema::TypeKind::Never || type == sema::TypeKind::Error) {
         return type;
     }
@@ -710,8 +753,19 @@ sema::Type TypeChecker::check_field(syntax::FieldExpr& expression) {
     }
     if (const auto global =
             types_.global_references.find(expression.record.get());
-        global != types_.global_references.end())
+        global != types_.global_references.end()) {
         types_.global_references.emplace(&expression, global->second);
+        types_.field_addresses.emplace(
+            &expression,
+            Type::pointer(types_.resolve(field->type), global->second->writable,
+                          types_.pointer_bits));
+    } else if (dereference) {
+        const auto& pointer = types_.expressions.at(dereference->operand.get());
+        types_.field_addresses.emplace(
+            &expression,
+            Type::pointer(types_.resolve(field->type), pointer.pointer_mutable,
+                          types_.pointer_bits));
+    }
     return types_.resolve(field->type);
 }
 

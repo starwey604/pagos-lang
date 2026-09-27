@@ -47,8 +47,8 @@ export fn shadow() -> u32 {
     state.count
 }
 // HIR: global mut state: State section(".data.state") align(64) = State(3, 12,
-// HIR: global_field_address(state, 1)
-// MIR: global_field_address @pagos.global.state, 1
+// HIR: field_address(global_address(state), 1)
+// MIR: field_address %{{[0-9]+}}, 1
 // IR: @pagos.global.state = internal global { i8, i32, i64, i64, i16 } { i8 3, i32 12, i64 -1, i64 -1, i16 -7 }, section ".data.state", align 64
 // IR: @pagos.global.zero = internal global { i8, i32, i64, i64, i16 } zeroinitializer, section ".bss.state", align 32
 // IR: @pagos.global.config = internal constant { i8, i32, i64, i64, i16 }
