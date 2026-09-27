@@ -1,0 +1,13 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+global mut buffer: [u8; 2] = [0u8, 0u8];
+global const table: [u32; 2] = [1, 2];
+let copy = buffer;
+let whole_address = &buffer;
+let bad_index = buffer[0usize];
+*&table[0] = 7;
+let local = [1, 2];
+let local_address = &local[0];
+// CHECK-COUNT-2: error[E1015]: global arrays require element indexing
+// CHECK: error[E1008]: type mismatch in array index
+// CHECK: error[E1011]:
+// CHECK: error[E1013]: address-taking requires an unshadowed global name or array element

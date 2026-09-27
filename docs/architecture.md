@@ -465,12 +465,24 @@ All initializers are evaluated before entry/export analysis and must be pure
 Static integers. Existing fuel and specialization budgets still apply.
 Declaration storage and LLVM allocations are not a new total-memory quota.
 
-HIR/MIR modules own typed global definitions and integer initializers.
+HIR/MIR modules own typed global definitions and integer/scalar-array initializers.
 `GlobalAddress`/`GlobalAddressOperation` name an object without inventing a
 numeric address. They remain Runtime, including integer conversions, while a
 global-name value use creates a fresh load. MIR rejects missing symbols,
 duplicate/colliding names, initializer/target type mismatches and permission
 escalation. Global-only modules are valid without a synthetic entry function.
+
+Global arrays are storage objects, not implicit aggregate value snapshots.
+Sema resolves indexed global uses independently of local value-array indexing;
+bare global-array values and whole-array addresses are rejected. HIR/MIR use a
+dedicated `GlobalElementAddress` operation carrying the symbol and one evaluated
+`u32` index, followed by an ordinary scalar load when needed. MIR validates
+initializer shape, element types, target-size limits, pointer permissions and
+index dominance. LLVM checks bounds before target-width GEP and does not allocate
+a stack copy. Integer constant emission and bounds guards are shared with the
+existing value-array path. See LLVM's
+[GEP explanation](https://llvm.org/docs/GetElementPtr.html): address calculation
+itself does not load memory or provide a bounds check.
 
 LLVM creates internal global variables before function bodies, using target ABI
 alignment and default section selection unless explicitly requested otherwise.

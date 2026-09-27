@@ -73,6 +73,12 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
     case Expr::Kind::GlobalAddress:
         output << "global_address(" << *expression->variable_name << ')';
         break;
+    case Expr::Kind::GlobalElementAddress:
+        output << "global_element_address(" << *expression->variable_name
+               << ", ";
+        print_expression(expression->operands.at(0), output);
+        output << ')';
+        break;
     case Expr::Kind::Constant: {
         print_constant(expression->constant.value(), output);
         break;
@@ -254,7 +260,9 @@ void print(const Module& module, std::ostream& output) {
             output << " section(\"" << global.storage.section << "\")";
         if (global.storage.alignment != 0)
             output << " align(" << global.storage.alignment << ')';
-        output << " = " << global.initializer.decimal() << '\n';
+        output << " = ";
+        print_constant(global.initializer, output);
+        output << '\n';
     }
     for (const auto& function : module.residual_functions) {
         if (function->c_abi) {

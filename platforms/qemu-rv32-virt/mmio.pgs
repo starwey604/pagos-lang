@@ -1,14 +1,17 @@
 // QEMU virt only: UART 0x10000000, LSR +5, SiFive test device 0x100000.
 // All device accesses are Pagos; startup/linker support remains assembly.
-global mut boot_seed: u32 section(".data.boot") align(64) = 37;
-global mut boot_count: u32 section(".bss.boot") align(128) = 0;
+global mut boot_seed: [u32; 2] section(".data.boot") align(64) = [37, 99];
+global mut boot_count: [u32; 2] section(".bss.boot") align(128) = [0, 0];
+global const boot_table: [u32; 16] section(".rodata.boot") align(32) = [for i in 0..16 { i * i }];
 global const poll_limit: u32 section(".rodata.uart") align(32) = 100000;
 
-fn bump_boot() -> u32 { *&boot_count = boot_count + 1; boot_count }
+fn bump_boot() -> u32 { *&boot_count[0] = boot_count[0] + 1; boot_count[0] }
 fn boot_ok() -> bool {
     // Volatile reads inspect physical startup state even after LLVM optimization.
-    (volatile *&boot_seed) == 37 && (volatile *&boot_count) == 0 &&
-    bump_boot() == 1 && bump_boot() == 2 && (volatile *&boot_count) == 2
+    (volatile *&boot_seed[0]) == 37 && (volatile *&boot_seed[1]) == 99 &&
+    (volatile *&boot_count[0]) == 0 && (volatile *&boot_count[1]) == 0 &&
+    (volatile *&boot_table[15]) == 225 &&
+    bump_boot() == 1 && bump_boot() == 2 && (volatile *&boot_count[0]) == 2
 }
 fn put(byte: u8) -> u32 {
     let status = 268435461usize as *const u8;

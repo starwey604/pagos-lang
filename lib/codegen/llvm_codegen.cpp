@@ -56,8 +56,7 @@ class Generator {
                 return std::unexpected(
                     "explicit global sections require an ELF target");
             auto* type = llvm_type(global.type);
-            auto* value =
-                llvm::ConstantInt::get(type, global.initializer.bits());
+            auto* value = emit_integer_storage(global.type, global.initializer);
             auto* storage = new llvm::GlobalVariable(
                 *module_, type, !global.writable,
                 llvm::GlobalValue::InternalLinkage, value, global.name);
@@ -257,7 +256,35 @@ class Generator {
         return detail::storage_type(type, context_);
     }
 
+    llvm::Constant* emit_integer_storage(const mir::Type& type,
+                                         const Constant& value) {
+        if (const auto* integer = std::get_if<IntegerValue>(&value))
+            return llvm::ConstantInt::get(llvm_type(type), integer->bits());
+        std::vector<llvm::Constant*> elements;
+        elements.reserve(type.length);
+        for (const auto& integer : std::get<std::vector<IntegerValue>>(value))
+            elements.push_back(llvm::ConstantInt::get(
+                llvm_type(type.element_type()), integer.bits()));
+        return llvm::ConstantArray::get(
+            llvm::cast<llvm::ArrayType>(llvm_type(type)), elements);
+    }
+
     llvm::Value* emit_instruction(const mir::Instruction& instruction) {
+        if (const auto* element =
+                std::get_if<mir::GlobalElementAddressOperation>(
+                    &instruction.operation)) {
+            auto* storage = module_->getNamedGlobal(element->name);
+            auto* type = llvm::cast<llvm::ArrayType>(storage->getValueType());
+            auto* index = values_.at(element->index);
+            guard_index(index, type->getNumElements());
+            auto* offset_type = builder_.getIntNTy(
+                module_->getDataLayout().getIndexSizeInBits(0));
+            auto* offset =
+                builder_.CreateZExtOrTrunc(index, offset_type, "global.index");
+            return builder_.CreateInBoundsGEP(
+                type, storage, {llvm::ConstantInt::get(offset_type, 0), offset},
+                "global.element.address");
+        }
         if (const auto* address = std::get_if<mir::GlobalAddressOperation>(
                 &instruction.operation))
             return module_->getNamedGlobal(address->name);
@@ -283,11 +310,10 @@ class Generator {
                         context_, llvm::APInt(pointer->address.type().width,
                                               pointer->address.bits())),
                     llvm_type(instruction.type));
-            if (const auto* integer =
-                    std::get_if<IntegerValue>(&constant->value)) {
-                return llvm::ConstantInt::get(llvm_type(instruction.type),
-                                              integer->bits());
-            }
+            if (std::holds_alternative<IntegerValue>(constant->value) ||
+                std::holds_alternative<std::vector<IntegerValue>>(
+                    constant->value))
+                return emit_integer_storage(instruction.type, constant->value);
             if (std::holds_alternative<bool>(constant->value)) {
                 return builder_.getInt1(std::get<bool>(constant->value));
             }
@@ -315,24 +341,8 @@ class Generator {
             }
             std::vector<llvm::Constant*> elements;
             elements.reserve(instruction.type.length);
-            std::visit(
-                [&](const auto& values) {
-                    if constexpr (requires { values.size(); }) {
-                        for (auto value : values) {
-                            if constexpr (std::is_same_v<decltype(value),
-                                                         IntegerValue>) {
-                                elements.push_back(llvm::ConstantInt::get(
-                                    llvm_type(instruction.type.element_type()),
-                                    value.bits()));
-                            } else {
-                                elements.push_back(llvm::ConstantInt::get(
-                                    llvm_type(instruction.type.element_type()),
-                                    value));
-                            }
-                        }
-                    }
-                },
-                constant->value);
+            for (bool value : std::get<std::vector<bool>>(constant->value))
+                elements.push_back(builder_.getInt1(value));
             return llvm::ConstantArray::get(
                 llvm::cast<llvm::ArrayType>(llvm_type(instruction.type)),
                 elements);
@@ -468,18 +478,10 @@ class Generator {
         builder_.SetInsertPoint(valid_block);
     }
 
-    llvm::Value* emit_index(const mir::IndexOperation& operation) {
-        auto* array = values_.at(operation.array);
-        auto* index = values_.at(operation.index);
-        auto* type = llvm::cast<llvm::ArrayType>(array->getType());
-        const auto length = type->getNumElements();
+    void guard_index(llvm::Value* index, std::uint64_t length) {
         if (const auto* offset = llvm::dyn_cast<llvm::ConstantInt>(index);
-            offset && offset->getZExtValue() < length) {
-            return builder_.CreateExtractValue(
-                array, {static_cast<unsigned>(offset->getZExtValue())},
-                "array.element");
-        }
-
+            offset && offset->getZExtValue() < length)
+            return;
         auto* function = builder_.GetInsertBlock()->getParent();
         auto* trap_block =
             llvm::BasicBlock::Create(context_, "index.oob", function);
@@ -495,7 +497,21 @@ class Generator {
         builder_.CreateCall(trap);
         builder_.CreateUnreachable();
         builder_.SetInsertPoint(continue_block);
+    }
 
+    llvm::Value* emit_index(const mir::IndexOperation& operation) {
+        auto* array = values_.at(operation.array);
+        auto* index = values_.at(operation.index);
+        auto* type = llvm::cast<llvm::ArrayType>(array->getType());
+        const auto length = type->getNumElements();
+        if (const auto* offset = llvm::dyn_cast<llvm::ConstantInt>(index);
+            offset && offset->getZExtValue() < length) {
+            return builder_.CreateExtractValue(
+                array, {static_cast<unsigned>(offset->getZExtValue())},
+                "array.element");
+        }
+        guard_index(index, length);
+        auto* function = builder_.GetInsertBlock()->getParent();
         llvm::Value* storage{};
         if (auto* constant = llvm::dyn_cast<llvm::Constant>(array)) {
             auto [entry, inserted] = tables_.try_emplace(constant, nullptr);

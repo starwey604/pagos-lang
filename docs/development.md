@@ -84,12 +84,14 @@ semantics or evidence of CH32 support. See the
 and [test device](https://gitlab.com/qemu-project/qemu/-/blob/v11.1.0/hw/misc/sifive_test.c).
 
 Without extra arguments this remains a ten-case environment probe. Add
-`--pagosc build/debug/pagosc` to run eight additional Pagos/C ABI firmware cases:
+`--pagosc build/debug/pagosc` to run twelve additional Pagos/C ABI firmware cases:
 direct object output and Clang `-O2` optimized IR, each linked against Clang-
 and GCC-compiled C. They exercise exports/imports, recursion, signed values,
 ten-argument register/stack passing, and effect order. The pointer suite also
 executes Pagos RAM loads/stores, aliasing, recursive/loop updates, integer-address
 round trips, and unaligned access. These ABI cases use C/assembly device support.
+The global-array suite shares Pagos-owned buffers and generated tables with C,
+checking element strides, alias snapshots, repeated effects and target `usize`.
 Eight more cases run `platforms/qemu-rv32-virt/mmio.pgs` directly: Pagos polls
 UART, prints `PAGOS MMIO PASS` or `PAGOS MMIO FAIL`, then writes the test device.
 Both exit paths run with direct objects and optimized IR under both toolchains,
@@ -101,7 +103,9 @@ The globals use named data subsections with explicit alignment. Shared
 `scripts/elf_storage.py` checks object and linked-image section membership,
 flags, storage kind and symbol alignment before execution; no new tools are
 required beyond LLVM `llvm-readobj`.
-The total with `--pagosc` is 34 cases. `scripts/ci.py --rv32` includes all of them.
+Boot data/BSS now contain arrays; volatile checks inspect both first and last
+elements, plus a generated readonly table. The total with `--pagosc` is 38 cases.
+`scripts/ci.py --rv32` includes all of them.
 The matching target libgcc is linked explicitly; do not substitute host compiler-rt.
 
 ### Host compiler commands
@@ -204,6 +208,14 @@ objects, actual pointer alignment and persistent writes. RV64 global-only object
 emission is tested separately; this does not expand the supported C ABI.
 `align` is a minimum request, and `section` does not retain unused objects.
 See [placement rules](grammar.md#data-subsections-and-alignment).
+
+`tests/lit/codegen/global-arrays.pgs` and its C harness cover array element
+addresses and mutation through the existing scalar-pointer ABI. Native negative
+runs verify read/store/address/discard bounds traps before and after optimization.
+Separate fixtures check index evaluation order and suppression of store-value
+evaluation after an out-of-range address. See
+[global array rules](grammar.md#global-integer-arrays); this is not array-by-value
+C ABI support or local array address-taking.
 
 Bound compile-time work with options placed anywhere before or after the
 command:

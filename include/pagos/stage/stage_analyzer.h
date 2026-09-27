@@ -133,6 +133,7 @@ class StageAnalyzer {
     bool reserve_aggregate(const std::array<std::size_t, 4>& width_counts,
                            source::Span span);
     hir::ExprPtr analyze_index(const syntax::IndexExpr& expression);
+    hir::ExprPtr global_element_address(const syntax::IndexExpr& expression);
     hir::ExprPtr analyze_record(const syntax::RecordExpr& expression);
     hir::ExprPtr analyze_field(const syntax::FieldExpr& expression);
 

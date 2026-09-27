@@ -1,0 +1,81 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR --implicit-check-not=alloca --implicit-check-not=extractvalue --implicit-check-not=unnamed_addr
+// RUN: %run_c_abi %s %S/../Inputs/global_arrays.c read store address discard
+// RUN: %run_c_abi --optimize %s %S/../Inputs/global_arrays.c read store address discard
+// RUN: %pagosc emit-obj %s -o %t.o
+// RUN: llvm-readobj --sections --symbols %t.o | %FileCheck %s --check-prefix=ELF
+global mut buffer: [u8; 16] section(".bss.buffer") align(64) = [for i in 0..16 { 0u8 }];
+global const squares: [u32; 16] section(".rodata.squares") align(32) = [for i in 0..16 { i * i }];
+global const twin: [u32; 16] = [for i in 0..16 { i * i }];
+global mut words: [u32; 4] section(".data.words") = [1, 2, 3, 4];
+global mut narrow: [i16; 2] = [-1234i16, 32767i16];
+global mut wide: [u64; 2] = [~0u64, 1u64];
+global mut sizes: [usize; 2] = [~0usize, 7usize];
+extern fn next() -> u32;
+extern fn payload() -> u32;
+extern fn change(p: *mut u8) -> u32;
+fn read(i: u32) -> u32 { buffer[i] as u32 }
+fn set() -> u32 { *&buffer[0] = 7u8; 1 }
+export fn buffer_address(i: u32) -> *mut u8 { &buffer[i] }
+export fn square_address(i: u32) -> *const u32 { &squares[i] }
+export fn twin_address() -> *const u32 { &twin[0] }
+export fn word_address(i: u32) -> *mut u32 { &words[i] }
+export fn narrow_address(i: u32) -> *mut i16 { &narrow[i] }
+export fn wide_address(i: u32) -> *mut u64 { &wide[i] }
+export fn size_address(i: u32) -> *mut usize { &sizes[i] }
+export fn lookup(i: u32) -> u32 { squares[i] }
+export fn snapshot() -> u32 {
+    let old = read(0);
+    *&buffer[0] = 9u8;
+    old + old + read(0)
+}
+export fn foreign_change() -> u32 { change(&buffer[0]); read(0) }
+export fn repeat() -> u32 {
+    static let a = set();
+    change(&buffer[0]);
+    static let b = set();
+    a + b + read(0)
+}
+export fn fill(n: u32) -> u32 {
+    for i in 0..n { *&buffer[i] = i as u8; }
+    read(n - 1)
+}
+export fn recurse(n: u32) -> u32 {
+    if n == 0 { read(0) } else { *&buffer[0] = buffer[0] + 1u8; recurse(n - 1) }
+}
+export fn order() -> u32 { *&words[next()] = payload(); words[1] }
+export fn early(mode: u32) -> u32 {
+    *&buffer[if mode == 0 { return 77; } else { 0 }] = 5u8;
+    read(0)
+}
+export fn always_return() -> u32 {
+    &buffer[if true { return 55; } else { return 66; }]; 0
+}
+export fn shadow() -> u32 { let buffer = [1u8, 2u8]; buffer[1] as u32 }
+export fn trap_read(i: u32) -> u32 { buffer[i] as u32 }
+export fn trap_store(i: u32) -> u32 { *&buffer[i] = 1u8; 0 }
+export fn trap_discard(i: u32) -> u32 { &buffer[i]; 0 }
+// HIR: global mut buffer: [u8; 16] section(".bss.buffer") align(64) = [0, 0,
+// HIR: global_element_address(buffer,
+// MIR: global_element_address @pagos.global.buffer,
+// IR: @pagos.global.buffer = internal global [16 x i8] zeroinitializer, section ".bss.buffer", align 64
+// IR: @pagos.global.squares = internal constant [16 x i32]
+// IR: icmp ult i32
+// IR: call void @llvm.trap()
+// IR: getelementptr inbounds [16 x i8], ptr @pagos.global.buffer
+// ELF: Name: .bss.buffer
+// ELF: Type: SHT_NOBITS
+// ELF: SHF_ALLOC
+// ELF: SHF_WRITE
+// ELF: Size: 16
+// ELF: AddressAlignment: 64
+// ELF: Name: .rodata.squares
+// ELF: Type: SHT_PROGBITS
+// ELF: SHF_ALLOC
+// ELF-NOT: SHF_WRITE
+// ELF: Size: 64
+// ELF: AddressAlignment: 32
+// ELF: Name: pagos.global.buffer
+// ELF: Size: 16
+// ELF: Binding: Local

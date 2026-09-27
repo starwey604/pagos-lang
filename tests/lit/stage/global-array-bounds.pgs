@@ -1,0 +1,5 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+global mut buffer: [u32; 2] = [0, 0];
+let bad_read = buffer[2];
+let bad_address = &buffer[~0];
+// CHECK-COUNT-2: error[E4007]: array index out of bounds

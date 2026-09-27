@@ -333,14 +333,19 @@ validity and volatile device validity are different obligations; consult the
 target-width limits and the absence of synchronization/barrier guarantees.
 
 Global storage initialization is a separate Static-only boundary: its value
-must be a pure integer and may not retain Runtime work, even behind a Static
-helper result. Storage qualifiers `global const`/`global mut` are independent
+must be a pure integer or integer array and may not retain Runtime work, even
+behind a Static helper result. Storage qualifiers `global const`/`global mut` are independent
 of binding time. A global-name read is Runtime, and global addresses remain
 symbolic Runtime values until relocation/linking. No global read is memoized
 as its initializer, and taking an address never exposes compiler-host storage.
 Section/alignment metadata does not change staging or trigger Runtime work.
 A `.bss.*` object's pure Static initializer must additionally evaluate to zero;
 even an unused invalid declaration is rejected.
+Global-array initializer generators use the existing construction budgets and
+must resolve to the declared length. Element reads and addresses remain Runtime,
+even for a readonly table and a Static index; their checked-address operation
+retains index effects and possible traps when its result is discarded. A Static
+helper result does not make an initializer with such residual work admissible.
 
 `build.fs` and `build.env` calls record exact dependencies for incremental and
 content-addressed builds. Network access should be disabled by default. External

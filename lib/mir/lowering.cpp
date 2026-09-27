@@ -159,6 +159,17 @@ class Lowerer {
         std::expected<ValueId, std::string> result =
             std::unexpected("unknown HIR expression");
         switch (expression->kind) {
+        case hir::Expr::Kind::GlobalElementAddress: {
+            auto index = lower_expression(expression->operands.at(0));
+            if (!index || !live_)
+                return index;
+            result =
+                emit(type_of(expression->type),
+                     GlobalElementAddressOperation{
+                         "pagos.global." + *expression->variable_name, *index},
+                     expression->span);
+            break;
+        }
         case hir::Expr::Kind::GlobalAddress:
             result = emit(type_of(expression->type),
                           GlobalAddressOperation{"pagos.global." +

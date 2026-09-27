@@ -1,0 +1,6 @@
+// RUN: %run_residual %s trap
+// RUN: %run_optimized %s trap
+global mut buffer: [u8; 2] = [0u8, 0u8];
+runtime let index = 2;
+&buffer[index];
+let result = 0;

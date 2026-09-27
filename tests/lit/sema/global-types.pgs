@@ -1,7 +1,7 @@
 // RUN: not %pagosc check %s 2>&1 | %FileCheck %s
 global mut flag: bool = true;
 global mut ptr: *mut u32 = 4096usize as *mut u32;
-global mut numbers: [u32; 2] = [1, 2];
+global mut flags: [bool; 2] = [true, false];
 global const wrong: u8 = 1;
-// CHECK-COUNT-3: error[E1013]: global storage requires an integer type
+// CHECK-COUNT-3: error[E1013]: global storage requires an integer or integer array type
 // CHECK: error[E1008]: type mismatch in global initializer

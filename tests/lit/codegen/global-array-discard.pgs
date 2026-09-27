@@ -1,0 +1,7 @@
+// RUN: %run_residual %s trap 2
+// RUN: %run_optimized %s trap 2
+// RUN: %run_residual %s 5 1
+// RUN: %run_optimized %s 5 1
+global const table: [u32; 2] = [1, 2];
+fn discard(index: u32) -> u32 { &table[index]; 5 }
+static let result = discard(external_input());

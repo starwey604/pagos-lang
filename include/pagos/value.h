@@ -30,6 +30,11 @@ using Constant =
 [[nodiscard]] std::size_t constant_hash(const Constant& value) noexcept;
 [[nodiscard]] bool constant_equal(const Constant& left, const Constant& right);
 [[nodiscard]] Constant from_scalar(const ScalarConstant& value);
+// Length zero denotes scalar storage; arrays must have positive length.
+[[nodiscard]] bool matches_integer_storage(const Constant& value,
+                                           IntegerType element,
+                                           std::uint32_t length);
+[[nodiscard]] bool is_zero_integer_storage(const Constant& value);
 void print_constant(const Constant& value, std::ostream& output);
 
 } // namespace pagos

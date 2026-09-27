@@ -51,10 +51,19 @@ bool TypeChecker::check(syntax::Module& module) {
                                    global.name + "`",
                                global.name_span);
         const auto type = types_.resolve(global.type);
-        if (type.kind != TypeKind::Integer)
-            diagnostics_.error("E1013",
-                               "global storage requires an integer type",
-                               global.name_span);
+        if (type.kind != TypeKind::Integer &&
+            !(type.is_array() && type.element_type().kind == TypeKind::Integer))
+            diagnostics_.error(
+                "E1013",
+                "global storage requires an integer or integer array type",
+                global.name_span);
+        if (type.is_array() &&
+            (types_.pointer_bits == 32 || types_.pointer_bits == 64) &&
+            !GlobalStorage::fits_target(type.integer_type.width, type.length,
+                                        types_.pointer_bits))
+            diagnostics_.error(
+                "E1013", "global storage exceeds target object size limit",
+                global.name_span);
         validate_type(type, global.name_span);
     }
     for (auto& global : module.globals) {
@@ -309,7 +318,8 @@ void TypeChecker::check_statement(syntax::Stmt& statement,
     }
 }
 
-sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
+sema::Type TypeChecker::check_expression(syntax::Expr& expression,
+                                         bool global_array_base) {
     sema::Type type = sema::TypeKind::Error;
     switch (expression.kind) {
     case syntax::Expr::Kind::Record:
@@ -353,6 +363,12 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
                 global != globals_.end()) {
                 types_.global_references.emplace(&expression, global->second);
                 type = types_.resolve(global->second->type);
+                if (type.is_array() && !global_array_base)
+                    diagnostics_.error(
+                        "E1015", "global arrays require element indexing",
+                        expression.span,
+                        "use name[index] or &name[index]; whole-array values "
+                        "and addresses are not supported");
                 break;
             }
         }
@@ -366,13 +382,16 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
             const auto global =
                 types_.global_references.find(unary.operand.get());
             if (global == types_.global_references.end())
-                diagnostics_.error(
-                    "E1013",
-                    "address-taking requires an unshadowed global name",
-                    unary.span);
+                diagnostics_.error("E1013",
+                                   "address-taking requires an unshadowed "
+                                   "global name or array element",
+                                   unary.span);
             else {
-                type = Type::pointer(operand_type, global->second->writable,
-                                     types_.pointer_bits);
+                type =
+                    operand_type == TypeKind::Never
+                        ? Type(TypeKind::Never)
+                        : Type::pointer(operand_type, global->second->writable,
+                                        types_.pointer_bits);
                 validate_type(type, unary.span);
             }
             break;
@@ -572,8 +591,14 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression) {
     }
     case syntax::Expr::Kind::Index: {
         auto& index = static_cast<syntax::IndexExpr&>(expression);
-        const auto array_type = check_expression(*index.array);
+        const auto array_type = check_expression(*index.array, true);
         const auto index_type = check_expression(*index.index);
+        if (array_type.is_array()) {
+            const auto global =
+                types_.global_references.find(index.array.get());
+            if (global != types_.global_references.end())
+                types_.global_references.emplace(&expression, global->second);
+        }
         if (!compatible(sema::TypeKind::Integer, index_type)) {
             type_mismatch(index.index->span, sema::TypeKind::Integer,
                           index_type, "array index");

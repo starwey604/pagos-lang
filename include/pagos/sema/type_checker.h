@@ -45,7 +45,8 @@ class TypeChecker {
                            const sema::Type& expected_return, bool& saw_return);
     void check_statement(syntax::Stmt& statement,
                          const sema::Type& expected_return, bool& saw_return);
-    sema::Type check_expression(syntax::Expr& expression);
+    sema::Type check_expression(syntax::Expr& expression,
+                                bool global_array_base = false);
     sema::Type check_binary(syntax::BinaryExpr& expression);
     sema::Type check_call(syntax::CallExpr& expression);
     sema::Type check_if(syntax::IfExpr& expression);

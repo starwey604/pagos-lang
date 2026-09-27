@@ -26,8 +26,9 @@ The grammar uses EBNF: `{ x }` repeats `x`, `[ x ]` makes `x` optional, and
 
 ```ebnf
 source          = { global | record | function | statement } EOF ;
-global          = "global" ( "const" | "mut" ) identifier ":" integer-type
+global          = "global" ( "const" | "mut" ) identifier ":" storage-type
                   { storage-attribute } "=" expression ";" ;
+storage-type    = integer-type | "[" integer-type ";" integer "]" ;
 storage-attribute = "section" "(" quoted-section-name ")"
                   | "align" "(" decimal-alignment ")" ;
 record          = "record" identifier "{" record-fields [ "," ] "}" ;
@@ -260,14 +261,15 @@ export fn counter_address() -> *mut u32 { &counter }
 ```
 
 `global const` and `global mut` declare module-private objects with program-long
-storage duration. An explicit integer type and initializer are mandatory;
-write `= 0` (with the appropriate suffix) for zero initialization. All supported
-integer types, including target `usize`, are allowed; pointers, `bool`, arrays
-and records are deferred. Declarations may be referenced before their textual
+storage duration. An explicit integer or fixed-length integer-array type and
+initializer are mandatory; scalar zero initialization uses `= 0` with the
+appropriate suffix. All integer types, including target `usize`, are allowed;
+pointers, `bool`, records and nested aggregate storage are deferred.
+Declarations may be referenced before their textual
 definition. Names must not collide with functions, records, globals or reserved
 intrinsics/entry symbols. Local bindings and parameters may shadow globals.
 
-Initializers must yield an exactly matching pure Static integer (`E2010` on
+Initializers must yield an exactly matching pure Static value (`E2010` on
 Runtime work). Pure function calls are allowed under existing evaluation budgets.
 Reading another global, forming its address, calling foreign code or hiding a
 store behind a Static result is not allowed. No initialization-order dependency,
@@ -275,11 +277,12 @@ Runtime constructor, automatic initializer function or destructor is introduced.
 All declarations are checked even when unused. These are storage declarations,
 not a reinterpretation of existing top-level `let` statements.
 
-Reading a global name loads its current value at Runtime, including a readonly
-object: `global const` is not a staging annotation. `&name` produces a pointer
+Reading a scalar global name loads its current value at Runtime, including a
+readonly object: `global const` is not a staging annotation. `&name` produces a pointer
 to the unshadowed global, `*const T` for readonly storage and `*mut T` for writable
-storage. Only global names can be addressed; local bindings, parameters,
-temporaries, aggregate fields and functions cannot. Writes use `*&name = value;`
+storage. Global array elements can also be addressed as described below;
+local bindings, parameters, temporaries, record fields and functions cannot.
+Scalar writes use `*&name = value;`
 or an alias pointer, not direct name assignment. Volatile accesses such as
 `volatile *&counter` follow the existing volatile rules.
 
@@ -299,6 +302,51 @@ identity and memory effects. The loader/startup must establish initial contents
 before any Pagos function runs. Named data subsections and explicit alignment
 are described below. Fixed-address placement, TLS, external globals, dynamic
 initialization and allocation remain deferred.
+
+### Global integer arrays
+
+```pagos
+global mut buffer: [u8; 16] section(".bss.buffer") align(64) =
+    [for i in 0..16 { 0u8 }];
+global const squares: [u32; 16] = [for i in 0..16 { i * i }];
+export fn sample(index: u32) -> u32 {
+    *&buffer[index] = 7u8;
+    squares[index] + buffer[index] as u32
+}
+export fn element(index: u32) -> *mut u8 { &buffer[index] }
+```
+
+Array storage is contiguous, in element order, with target integer width and
+endianness; `usize` elements use the target pointer width. Array length is a
+positive literal as in existing array types. Initializer element types and the
+fully evaluated length must match exactly. Existing array/aggregate construction,
+fuel and specialization budgets also apply to unused global initializers.
+These are construction quotas, not total compiler-memory or target-RAM limits.
+Objects larger than `2^(pointer_bits - 1) - 1` bytes are rejected before array
+construction, so element byte offsets fit signed target address arithmetic.
+
+`name[index]` reads the current element at Runtime, including readonly objects;
+it does not materialize or copy the whole array. `&name[index]` yields a Runtime
+integer pointer with the object's write permission. The index is a `u32`, matching
+existing array indexing, and is evaluated exactly once. Known Static out-of-range
+indices report `E4007`; Runtime out-of-range indices trap before forming the
+element address, even when the read or address result is discarded. One-past-end
+addresses are not accepted by this syntax. An index that returns early skips
+the address calculation and any subsequent read/store.
+
+Writes use `*&name[index] = value;` or an alias pointer. Address evaluation,
+including the bounds check, precedes the store's right-hand side. A captured
+element value is a snapshot; a later source-level element read observes current
+memory. Pointers may cross the existing C ABI; C must respect object bounds,
+permissions and lifetime. Bounds metadata is not carried in the raw pointer.
+`volatile *&name[index]` uses existing volatile rules, not an aggregate access.
+
+Bare array-name values, whole-array addresses/assignment and implicit decay to
+the first element are not supported (`E1015` for bare-name use); write `&name[0]`
+explicitly. Local arrays retain their existing value semantics, but cannot be
+addressed. Local shadowing does not grant global storage to a local array.
+Section and alignment attributes apply to the complete object, not each element;
+`.bss.*` requires every initializer element to be zero.
 
 ### Data subsections and alignment
 

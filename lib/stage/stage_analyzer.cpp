@@ -431,8 +431,12 @@ StageAnalyzer::analyze(const syntax::Module& module) {
                  .dependency_path = std::move(path)});
             continue;
         }
-        const auto value = std::get<IntegerValue>(*initializer->constant);
-        if (global.storage.requires_zero() && value.bits() != 0) {
+        if (!check_resolved_type(types_.resolve(global.type), initializer,
+                                 global.initializer->span,
+                                 "global initializer"))
+            continue;
+        const auto& value = *initializer->constant;
+        if (global.storage.requires_zero() && !is_zero_integer_storage(value)) {
             diagnostics_.error("E2011",
                                "BSS storage requires a zero initializer",
                                global.initializer->span);
@@ -1148,6 +1152,15 @@ hir::ExprPtr StageAnalyzer::finish_array(std::vector<hir::ExprPtr> elements,
 }
 
 hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
+    if (types_.global_references.contains(&expression)) {
+        auto address = global_element_address(expression);
+        if (!address || !address->falls_through)
+            return address;
+        auto trace = *address->trace;
+        trace.path.push_back("global array read");
+        return make_runtime(hir::Expr::Kind::Load, type_of(expression),
+                            expression.span, {address}, std::move(trace));
+    }
     auto array = analyze_expression(*expression.array);
     if (!array || !array->falls_through) {
         return array;
@@ -1205,11 +1218,44 @@ hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
                         expression.span, {array, index}, std::move(trace));
 }
 
+hir::ExprPtr
+StageAnalyzer::global_element_address(const syntax::IndexExpr& expression) {
+    const auto& global = *types_.global_references.at(&expression);
+    auto index = analyze_expression(*expression.index);
+    if (!index || !index->falls_through)
+        return index;
+    const auto array_type = types_.resolve(global.type);
+    if (index->stage == hir::Stage::Static &&
+        std::get<IntegerValue>(*index->constant).bits() >= array_type.length) {
+        diagnostics_.error("E4007", "array index out of bounds",
+                           expression.index->span);
+        return nullptr;
+    }
+    const auto origin = "global element address " + global.name;
+    auto trace =
+        index->trace.value_or(hir::RuntimeTrace{.origin_span = expression.span,
+                                                .origin_name = origin,
+                                                .path = {origin}});
+    if (index->trace)
+        trace.path.push_back(origin);
+    auto address = std::make_shared<hir::Expr>(
+        *make_runtime(hir::Expr::Kind::GlobalElementAddress,
+                      sema::Type::pointer(array_type.element_type(),
+                                          global.writable, types_.pointer_bits),
+                      expression.span, {index}, std::move(trace)));
+    address->variable_name = global.name;
+    return address;
+}
+
 hir::ExprPtr StageAnalyzer::analyze_unary(const syntax::UnaryExpr& expression) {
-    if (expression.operation == syntax::UnaryOperator::AddressOf)
+    if (expression.operation == syntax::UnaryOperator::AddressOf) {
+        if (expression.operand->kind == syntax::Expr::Kind::Index)
+            return global_element_address(
+                static_cast<const syntax::IndexExpr&>(*expression.operand));
         return global_address(
             *types_.global_references.at(expression.operand.get()),
             expression.span);
+    }
     auto operand = analyze_expression(*expression.operand);
     if (!operand || !operand->falls_through) {
         return operand;

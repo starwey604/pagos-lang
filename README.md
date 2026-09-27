@@ -198,6 +198,10 @@ Optional `section(".data.boot")` and `align(64)` attributes now control named
 ELF data subsections and minimum object alignment. The
 [placement example](tests/lit/codegen/global-sections.pgs) checks actual ELF
 flags and alignment; final memory regions remain a linker-script decision.
+Fixed-length integer globals now support generated Static initializers,
+Runtime element reads and checked `&name[index]` addresses. The
+[array example](tests/lit/codegen/global-arrays.pgs) shares a Pagos-owned buffer
+with C on the host and RV32, without whole-array copies or array-pointer types.
 
 ## Development
 

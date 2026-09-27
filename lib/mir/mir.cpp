@@ -239,6 +239,25 @@ std::expected<void, std::string> verify_function(const Function& function,
                     return std::unexpected("invalid MIR global address");
                 continue;
             }
+            if (const auto* address =
+                    std::get_if<GlobalElementAddressOperation>(
+                        &instruction.operation)) {
+                const auto global = globals.find(address->name);
+                const auto offset = value_type(address->index);
+                if (global == globals.end() ||
+                    !global->second->type.is_array() || !offset ||
+                    *offset != Type::U32 ||
+                    instruction.type !=
+                        Type::pointer(global->second->type.element_type(),
+                                      global->second->writable, pointer_bits))
+                    return std::unexpected(
+                        "invalid MIR global element address");
+                if (auto valid =
+                        require_dominance(address->index, block.id, index);
+                    !valid)
+                    return valid;
+                continue;
+            }
             if (const auto* call =
                     std::get_if<CallOperation>(&instruction.operation)) {
                 const auto found = functions.find(call->callee);
@@ -673,6 +692,10 @@ void print_instruction(const Instruction& instruction, std::ostream& output) {
     if (const auto* address =
             std::get_if<GlobalAddressOperation>(&instruction.operation)) {
         output << "global_address @" << address->name;
+    } else if (const auto* element = std::get_if<GlobalElementAddressOperation>(
+                   &instruction.operation)) {
+        output << "global_element_address @" << element->name << ", "
+               << value_name(element->index);
     } else if (const auto* constant =
                    std::get_if<ConstantOperation>(&instruction.operation)) {
         output << "const ";
@@ -839,12 +862,22 @@ std::expected<void, std::string> verify(const Module& module) {
             !globals.emplace(global.name, &global).second)
             return std::unexpected("duplicate or reserved MIR global name");
         if ((module.pointer_bits != 32 && module.pointer_bits != 64) ||
-            global.type.kind != Type::Integer || !global.type.valid() ||
+            (global.type.kind != Type::Integer &&
+             !(global.type.is_array() &&
+               global.type.element_kind == Type::Integer)) ||
+            !global.type.valid() ||
             !global.type.matches_pointer_width(module.pointer_bits) ||
-            global.initializer.type() != global.type.integer_type)
+            !GlobalStorage::fits_target(
+                global.type.integer_type.width,
+                global.type.is_array() ? global.type.length : 1,
+                module.pointer_bits) ||
+            !matches_integer_storage(
+                global.initializer, global.type.integer_type,
+                global.type.is_array() ? global.type.length : 0))
             return std::unexpected("invalid MIR global initializer or type");
         if (!global.storage.valid(global.writable) ||
-            (global.storage.requires_zero() && global.initializer.bits() != 0))
+            (global.storage.requires_zero() &&
+             !is_zero_integer_storage(global.initializer)))
             return std::unexpected("invalid MIR global storage attributes");
     }
     for (const auto& function : module.functions) {
@@ -921,7 +954,9 @@ void print(const Module& module, std::ostream& output) {
             output << " section(\"" << global.storage.section << "\")";
         if (global.storage.alignment != 0)
             output << " align(" << global.storage.alignment << ')';
-        output << " = " << global.initializer.decimal() << '\n';
+        output << " = ";
+        print_constant(global.initializer, output);
+        output << '\n';
     }
     for (const auto& function : module.functions) {
         output << (function.declaration ? "extern C func @"

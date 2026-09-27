@@ -42,6 +42,7 @@ def main():
             pagosc = str(args.pagosc.resolve())
             target = ["--target=riscv32-unknown-elf", "--features=+m,+a,+c"]
             for name, harness in (("c-abi", "c_abi.c"), ("pointers", "pointers.c"),
+                                  ("global-arrays", "global_arrays.c"),
                                   ("mmio", None)):
                 source = str(PLATFORM / "mmio.pgs" if harness is None else
                              ROOT / f"tests/lit/codegen/{name}.pgs")
@@ -60,9 +61,17 @@ def main():
                         "boot_seed": (".data.boot", 64, True, False),
                         "boot_count": (".bss.boot", 128, True, True),
                         "poll_limit": (".rodata.uart", 32, False, False),
+                        "boot_table": (".rodata.boot", 32, False, False),
                     }
                     for key in (name, name + "-opt"):
                         verify_storage(objects[key], placement)
+                if name == "global-arrays":
+                    for key in (name, name + "-opt"):
+                        verify_storage(objects[key], {
+                            "buffer": (".bss.buffer", 64, True, True),
+                            "squares": (".rodata.squares", 32, False, False),
+                            "words": (".data.words", 4, True, False),
+                        })
         for compiler in ("clang", "riscv64-elf-gcc"):
             cases = [
                 ("success", None, 0),
@@ -109,6 +118,7 @@ def main():
                         "boot_seed": (".data", 64, True, False),
                         "boot_count": (".bss", 128, True, True),
                         "poll_limit": (".rodata", 32, False, False),
+                        "boot_table": (".rodata", 32, False, False),
                     })
                 qemu = ["qemu-system-riscv32", "-machine", "virt", "-cpu", CPU,
                         "-accel", "tcg", "-smp", "1", "-m", "16M", "-bios", "none",

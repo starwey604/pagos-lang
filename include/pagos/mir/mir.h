@@ -145,6 +145,10 @@ struct ExternalInputOperation {};
 struct GlobalAddressOperation {
     std::string name;
 };
+struct GlobalElementAddressOperation {
+    std::string name;
+    ValueId index; // Checked u32 index into a named integer array object.
+};
 
 struct ParameterOperation {
     std::uint32_t index;
@@ -221,7 +225,7 @@ using Operation =
                  PhiOperation, ArrayOperation, IndexOperation, RecordOperation,
                  FieldOperation, ParameterOperation, CallOperation,
                  PointerCastOperation, LoadOperation, StoreOperation,
-                 GlobalAddressOperation>;
+                 GlobalAddressOperation, GlobalElementAddressOperation>;
 
 struct Instruction {
     ValueId result;
@@ -270,7 +274,7 @@ struct Module {
         std::string name;
         Type type;
         bool writable{};
-        IntegerValue initializer;
+        Constant initializer;
         GlobalStorage storage;
     };
     std::vector<Function> functions;

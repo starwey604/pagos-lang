@@ -129,6 +129,11 @@ stable record layout and external globals remain open. The eleventh slice adds
 named ELF data subsections and minimum object alignment, with verified section
 flags, BSS-zero constraints and linked RV32 startup coverage. Arbitrary sections,
 retained/uninitialized memory and fixed-address placement remain open.
+The twelfth slice adds global fixed-length integer arrays, pure Static generated
+initializers, Runtime element reads and checked element addresses. Host and RV32
+C interoperation uses existing integer pointers; no aggregate calling convention
+is implied. Whole-array values/addresses, local address-taking, nested storage
+and record layout remain open.
 
 Add the minimum systems features needed for real firmware:
 

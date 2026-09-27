@@ -1,5 +1,6 @@
 #include "pagos/value.h"
 
+#include <algorithm>
 #include <functional>
 #include <ostream>
 #include <type_traits>
@@ -68,6 +69,28 @@ bool constant_equal(const Constant& left, const Constant& right) {
 
 Constant from_scalar(const ScalarConstant& value) {
     return std::visit([](auto scalar) -> Constant { return scalar; }, value);
+}
+
+bool matches_integer_storage(const Constant& value, IntegerType element,
+                             std::uint32_t length) {
+    if (length == 0) {
+        const auto* integer = std::get_if<IntegerValue>(&value);
+        return integer && integer->type() == element;
+    }
+    const auto* array = std::get_if<std::vector<IntegerValue>>(&value);
+    return array && array->size() == length &&
+           std::ranges::all_of(*array, [element](const auto& integer) {
+               return integer.type() == element;
+           });
+}
+
+bool is_zero_integer_storage(const Constant& value) {
+    if (const auto* integer = std::get_if<IntegerValue>(&value))
+        return integer->bits() == 0;
+    const auto* array = std::get_if<std::vector<IntegerValue>>(&value);
+    return array && std::ranges::all_of(*array, [](const auto& integer) {
+               return integer.bits() == 0;
+           });
 }
 
 void print_constant(const Constant& value, std::ostream& output) {

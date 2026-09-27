@@ -266,8 +266,9 @@ TEST(GlobalStorage, TargetInitializersAndSymbolicAddressesSurviveSessionReset) {
             const auto hir = analyzer.analyze(*input.syntax);
             ASSERT_FALSE(input.diagnostics.has_error());
             ASSERT_EQ(hir->globals.size(), 1U);
-            EXPECT_EQ(hir->globals[0].initializer.type(),
-                      (IntegerType{bits, false, true}));
+            EXPECT_EQ(
+                std::get<IntegerValue>(hir->globals[0].initializer).type(),
+                (IntegerType{bits, false, true}));
             auto address = hir->bindings[0].value;
             while (address->kind == hir::Expr::Kind::Reference)
                 address = address->operands.front();
@@ -369,7 +370,9 @@ TEST(GlobalStorage, PlacementSurvivesTargetAndAnalyzerSessionChanges) {
             EXPECT_EQ(hir->globals[0].storage.alignment, 64U);
             const auto module = mir::lower(*hir);
             ASSERT_TRUE(module) << module.error();
-            EXPECT_EQ(module->globals[1].initializer.bits(), 0U);
+            EXPECT_EQ(
+                std::get<IntegerValue>(module->globals[1].initializer).bits(),
+                0U);
             EXPECT_EQ(module->globals[1].storage.section, ".bss.zero");
             const auto ir =
                 codegen::LLVMCodegen::emit_for_target(*module, *target);
@@ -458,5 +461,166 @@ TEST(GlobalStorage, QuotedMetadataDoesNotIntroduceStringExpressions) {
         const auto module = parser.parse_module();
         EXPECT_TRUE(diagnostics.has_error());
     }
+}
+TEST(GlobalArrays, TargetInitializersAndElementAddressesSurviveSessionReset) {
+    PointerInput input("global mut data: [usize; 2] = [~0usize, 7usize]; "
+                       "let p = &data[1]; let result = data[1];");
+    for (const auto* triple : {"riscv32-unknown-elf", "riscv64-unknown-elf",
+                               "riscv32-unknown-elf"}) {
+        const auto target = codegen::TargetLayout::create({.triple = triple});
+        ASSERT_TRUE(target);
+        sema::TypeChecker checker(input.diagnostics, target->pointer_bits());
+        ASSERT_TRUE(checker.check(*input.syntax));
+        stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
+        for (int session = 0; session < 2; ++session) {
+            const auto hir = analyzer.analyze(*input.syntax);
+            ASSERT_FALSE(input.diagnostics.has_error());
+            const auto& values = std::get<std::vector<IntegerValue>>(
+                hir->globals[0].initializer);
+            ASSERT_EQ(values.size(), 2U);
+            EXPECT_EQ(values[0].type(),
+                      (IntegerType{target->pointer_bits(), false, true}));
+            EXPECT_EQ(values[0].decimal(), target->pointer_bits() == 32
+                                               ? "4294967295"
+                                               : "18446744073709551615");
+            EXPECT_EQ(hir->bindings[0].stage, hir::Stage::Runtime);
+            EXPECT_FALSE(hir->bindings[0].value->constant);
+            EXPECT_EQ(hir->result->stage, hir::Stage::Runtime);
+            const auto module = mir::lower(*hir);
+            ASSERT_TRUE(module) << module.error();
+            const auto ir =
+                codegen::LLVMCodegen::emit_for_target(*module, *target);
+            ASSERT_TRUE(ir) << ir.error();
+            EXPECT_EQ(ir->find("alloca"), std::string::npos);
+            EXPECT_EQ(ir->find("extractvalue"), std::string::npos);
+        }
+    }
+}
+
+TEST(GlobalArrays, VerifierRejectsMalformedInitializers) {
+    PointerInput input("global mut data: [u32; 2] = [0, 0];");
+    sema::TypeChecker checker(input.diagnostics, 64);
+    ASSERT_TRUE(checker.check(*input.syntax));
+    stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
+    const auto hir = analyzer.analyze(*input.syntax);
+    const auto good = mir::lower(*hir);
+    ASSERT_TRUE(good);
+    for (int case_id = 0; case_id < 8; ++case_id) {
+        auto bad = *good;
+        auto& global = bad.globals[0];
+        switch (case_id) {
+        case 0:
+            global.initializer = IntegerValue::create({32}, 0).value();
+            break;
+        case 1:
+            global.initializer = std::vector<bool>{false, false};
+            break;
+        case 2:
+            std::get<std::vector<IntegerValue>>(global.initializer).pop_back();
+            break;
+        case 3:
+            std::get<std::vector<IntegerValue>>(global.initializer)[1] =
+                IntegerValue::create({16}, 0).value();
+            break;
+        case 4:
+            global.type.length = 0;
+            break;
+        case 5:
+            global.type.element_kind = mir::Type::Bool;
+            break;
+        case 6:
+            global.storage.section = ".bss.test";
+            std::get<std::vector<IntegerValue>>(global.initializer)[1] =
+                IntegerValue::create({32}, 1).value();
+            break;
+        case 7:
+            global.type.integer_type.is_usize = true;
+            break;
+        }
+        EXPECT_FALSE(mir::verify(bad)) << case_id;
+        EXPECT_FALSE(codegen::LLVMCodegen::emit(bad)) << case_id;
+    }
+}
+
+TEST(GlobalArrays, VerifierChecksAddressTypeIndexAndDominance) {
+    PointerInput input(
+        "global const data: [u32; 2] = [1, 2]; global const scalar: u32 = 1; "
+        "export fn address(i: u32) -> *const u32 { &data[i] }");
+    sema::TypeChecker checker(input.diagnostics, 64);
+    ASSERT_TRUE(checker.check(*input.syntax));
+    stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
+    const auto hir = analyzer.analyze(*input.syntax);
+    const auto good = mir::lower(*hir);
+    ASSERT_TRUE(good);
+    for (int case_id = 0; case_id < 6; ++case_id) {
+        auto bad = *good;
+        auto& function = bad.functions[0];
+        auto& instructions = function.blocks[0].instructions;
+        auto address = std::ranges::find_if(instructions, [](const auto&
+                                                                 instruction) {
+            return std::holds_alternative<mir::GlobalElementAddressOperation>(
+                instruction.operation);
+        });
+        ASSERT_NE(address, instructions.end());
+        auto& operation =
+            std::get<mir::GlobalElementAddressOperation>(address->operation);
+        switch (case_id) {
+        case 0:
+            operation.name = "missing";
+            break;
+        case 1:
+            operation.name = "pagos.global.scalar";
+            break;
+        case 2:
+            operation.index = 999;
+            break;
+        case 3:
+            address->type.pointer_mutable = true;
+            function.result_type.pointer_mutable = true;
+            break;
+        case 4:
+            instructions[0].type = mir::Type::Bool;
+            instructions[0].operation = mir::ConstantOperation{true};
+            break;
+        case 5:
+            std::iter_swap(instructions.begin(), address);
+            break;
+        }
+        const auto result = mir::verify(bad);
+        ASSERT_FALSE(result) << case_id;
+        if (case_id == 5)
+            EXPECT_NE(result.error().find("does not dominate"),
+                      std::string::npos);
+        else
+            EXPECT_EQ(result.error(), "invalid MIR global element address");
+    }
+}
+
+TEST(GlobalArrays,
+     UnusedInitializersStillConsumeTargetSizedConstructionBudget) {
+    for (unsigned bits : {32U, 64U}) {
+        PointerInput input(
+            "global const table: [usize; 4] = [for i in 0..4 { i as usize }];");
+        sema::TypeChecker checker(input.diagnostics, bits);
+        ASSERT_TRUE(checker.check(*input.syntax));
+        stage::AnalysisLimits limits;
+        limits.array_bytes = 16;
+        stage::StageAnalyzer analyzer(input.diagnostics, checker.types(),
+                                      limits);
+        const auto hir = analyzer.analyze(*input.syntax);
+        EXPECT_EQ(input.diagnostics.has_error(), bits == 64);
+        if (bits == 32) {
+            EXPECT_FALSE(hir->emit_entry);
+            EXPECT_EQ(hir->globals.size(), 1U);
+        }
+    }
+}
+
+TEST(GlobalArrays, ObjectSizesRespectSignedTargetOffsets) {
+    EXPECT_TRUE(GlobalStorage::fits_target(8, 2147483647U, 32));
+    EXPECT_FALSE(GlobalStorage::fits_target(8, 2147483648U, 32));
+    EXPECT_FALSE(GlobalStorage::fits_target(64, 268435456U, 32));
+    EXPECT_TRUE(GlobalStorage::fits_target(64, 268435456U, 64));
+    EXPECT_FALSE(GlobalStorage::fits_target(8, 1, 0));
 }
 } // namespace

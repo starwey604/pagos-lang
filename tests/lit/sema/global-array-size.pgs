@@ -1,0 +1,3 @@
+// RUN: not %pagosc --target=riscv32-unknown-elf check %s 2>&1 | %FileCheck %s
+global mut too_large: [u64; 268435456] = [1u64];
+// CHECK: error[E1013]: global storage exceeds target object size limit

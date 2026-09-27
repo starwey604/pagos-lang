@@ -48,6 +48,7 @@ struct Expr {
         VolatileLoad,
         VolatileStore,
         GlobalAddress,
+        GlobalElementAddress,
         Binary,
         If,
         Sequence, // Ordered evaluations followed by the result value.
@@ -110,7 +111,7 @@ struct Module {
         std::string name;
         sema::Type type;
         bool writable{};
-        IntegerValue initializer;
+        Constant initializer;
         GlobalStorage storage;
     };
     std::vector<Global> globals;

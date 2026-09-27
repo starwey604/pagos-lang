@@ -1,0 +1,9 @@
+// RUN: %run_residual %s 33 0 3 7
+// RUN: %run_optimized %s 33 0 3 7
+// RUN: %run_residual %s trap 2
+// RUN: %run_optimized %s trap 2
+global mut buffer: [u32; 2] = [10, 20];
+*&buffer[external_input()] = external_input();
+let old = buffer[0];
+*&buffer[0] = external_input();
+let result = old + old + buffer[0] + buffer[1];
