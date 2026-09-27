@@ -21,6 +21,7 @@
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Triple.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <expected>
 #include <functional>
@@ -49,18 +50,25 @@ class Generator {
         if (auto valid = mir::verify(mir_module); !valid) {
             return std::unexpected("invalid MIR: " + valid.error());
         }
-        // Declare the complete signature table first: body order must not
-        // determine whether nested/forward calls can resolve their callee.
         for (const auto& global : mir_module.globals) {
+            if (!global.storage.section.empty() &&
+                !module_->getTargetTriple().isOSBinFormatELF())
+                return std::unexpected(
+                    "explicit global sections require an ELF target");
             auto* type = llvm_type(global.type);
             auto* value =
                 llvm::ConstantInt::get(type, global.initializer.bits());
             auto* storage = new llvm::GlobalVariable(
                 *module_, type, !global.writable,
                 llvm::GlobalValue::InternalLinkage, value, global.name);
-            storage->setAlignment(
-                module_->getDataLayout().getABITypeAlign(type));
+            storage->setAlignment(llvm::Align(std::max(
+                module_->getDataLayout().getABITypeAlign(type).value(),
+                static_cast<std::uint64_t>(global.storage.alignment))));
+            if (!global.storage.section.empty())
+                storage->setSection(global.storage.section);
         }
+        // Declare the complete signature table first: body order must not
+        // determine whether nested/forward calls can resolve their callee.
         for (const auto& function : mir_module.functions) {
             if (function.c_abi && !c_abi_supported_)
                 return std::unexpected("minimal C ABI is unsupported for this "

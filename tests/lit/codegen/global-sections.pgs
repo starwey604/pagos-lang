@@ -1,0 +1,28 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR
+// RUN: %run_sections %s
+fn initial() -> u32 { 37 }
+global const rom: u32 section(".rodata.config") align(32) = 17;
+global const twin: u32 align(64) section(".rodata.config") = 17;
+global mut seed: u32 section(".data.state") align(64) = initial();
+global mut zero_data: u32 section(".data.zero") align(16) = 0;
+global mut count: u32 section(".bss.state") align(128) = 0;
+global mut natural: u64 section(".data.natural") align(1) = ~0u64;
+global mut page: u8 section(".bss.page") align(4096) = 0u8;
+export fn rom_address() -> *const u32 { &rom }
+export fn twin_address() -> *const u32 { &twin }
+export fn seed_address() -> *mut u32 { &seed }
+export fn count_address() -> *mut u32 { &count }
+export fn zero_address() -> *mut u32 { &zero_data }
+export fn natural_address() -> *mut u64 { &natural }
+export fn page_address() -> *mut u8 { &page }
+export fn step() -> u32 { *&count = count + 1; seed + count }
+// HIR: global const rom: u32 section(".rodata.config") align(32) = 17
+// HIR: global const twin: u32 section(".rodata.config") align(64) = 17
+// MIR: global mut @pagos.global.count: u32 section(".bss.state") align(128) = 0
+// IR: @pagos.global.rom = internal constant i32 17, section ".rodata.config", align 32
+// IR: @pagos.global.seed = internal global i32 37, section ".data.state", align 64
+// IR: @pagos.global.zero_data = internal global i32 0, section ".data.zero", align 16
+// IR: @pagos.global.count = internal global i32 0, section ".bss.state", align 128
+// IR: @pagos.global.natural = internal global i64 -1, section ".data.natural", align 8

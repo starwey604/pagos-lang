@@ -30,7 +30,8 @@ class Lowerer {
                 {.name = "pagos.global." + global.name,
                  .type = type_of(global.type),
                  .writable = global.writable,
-                 .initializer = global.initializer});
+                 .initializer = global.initializer,
+                 .storage = global.storage});
         for (const auto& record : hir_module.records) {
             Type type{Type::Record};
             type.record_name = record.name;

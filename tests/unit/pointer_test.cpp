@@ -348,4 +348,115 @@ TEST(GlobalStorage, InitializersRejectRuntimeWorkEvenWithAStaticResult) {
     ASSERT_TRUE(input.diagnostics.has_error());
     EXPECT_EQ(input.diagnostics.diagnostics().back().code, "E2010");
 }
+
+TEST(GlobalStorage, PlacementSurvivesTargetAndAnalyzerSessionChanges) {
+    PointerInput input(
+        "global mut size: usize align(64) section(\".data.size\") = ~0usize; "
+        "global mut zero: u32 section(\".bss.zero\") = 7 - 7; "
+        "global const small: u8 align(32) = 1u8;");
+    for (const auto* triple : {"riscv32-unknown-elf", "riscv64-unknown-elf",
+                               "riscv32-unknown-elf"}) {
+        const auto target = codegen::TargetLayout::create({.triple = triple});
+        ASSERT_TRUE(target);
+        sema::TypeChecker checker(input.diagnostics, target->pointer_bits());
+        ASSERT_TRUE(checker.check(*input.syntax));
+        stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
+        for (int session = 0; session < 2; ++session) {
+            const auto hir = analyzer.analyze(*input.syntax);
+            ASSERT_FALSE(input.diagnostics.has_error());
+            ASSERT_EQ(hir->globals.size(), 3U);
+            EXPECT_EQ(hir->globals[0].storage.section, ".data.size");
+            EXPECT_EQ(hir->globals[0].storage.alignment, 64U);
+            const auto module = mir::lower(*hir);
+            ASSERT_TRUE(module) << module.error();
+            EXPECT_EQ(module->globals[1].initializer.bits(), 0U);
+            EXPECT_EQ(module->globals[1].storage.section, ".bss.zero");
+            const auto ir =
+                codegen::LLVMCodegen::emit_for_target(*module, *target);
+            ASSERT_TRUE(ir) << ir.error();
+            EXPECT_NE(ir->find("section \".data.size\", align 64"),
+                      std::string::npos);
+            EXPECT_NE(ir->find("internal constant i8 1, align 32"),
+                      std::string::npos);
+        }
+    }
+}
+
+TEST(GlobalStorage, VerifierRejectsInvalidPlacementBeforeLLVM) {
+    PointerInput input("global mut data: u32 section(\".data.state\") = 7;");
+    sema::TypeChecker checker(input.diagnostics, 64);
+    ASSERT_TRUE(checker.check(*input.syntax));
+    stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
+    const auto hir = analyzer.analyze(*input.syntax);
+    const auto good = mir::lower(*hir);
+    ASSERT_TRUE(good);
+    for (const auto& storage : {
+             GlobalStorage{.section = ".rodata.bad"},
+             GlobalStorage{.section = ".bss.nonzero"},
+             GlobalStorage{.section = ".data."},
+             GlobalStorage{.section = ".text.bad"},
+             GlobalStorage{.section = ".data.rel.ro.state"},
+             GlobalStorage{.section = ".bss.rel.ro"},
+             GlobalStorage{.section = ".data.a\nb"},
+             GlobalStorage{.section = std::string(".data.a\0b", 9)},
+             GlobalStorage{.alignment = 3},
+             GlobalStorage{.alignment = 8192},
+         }) {
+        auto bad = *good;
+        bad.globals[0].storage = storage;
+        const auto valid = mir::verify(bad);
+        ASSERT_FALSE(valid);
+        EXPECT_EQ(valid.error(), "invalid MIR global storage attributes");
+        const auto ir = codegen::LLVMCodegen::emit(bad);
+        ASSERT_FALSE(ir);
+        EXPECT_EQ(ir.error(),
+                  "invalid MIR: invalid MIR global storage attributes");
+    }
+}
+
+TEST(GlobalStorage, ParserRejectsInvalidOrRepeatedAttributes) {
+    for (const auto* attribute : {
+             "align(0)",
+             "align(3)",
+             "align(8192)",
+             "align(4294967296)",
+             "align(99999999999999999999999)",
+             "align(4u32)",
+             "align(-1)",
+             "align(1 + 1)",
+             "align(value)",
+             "align(4) align(8)",
+             "section(\".data.a\") section(\".data.b\")",
+             "section(\"\")",
+             "section(name)",
+             "section(\".data.a\"",
+             "unknown(4)",
+         }) {
+        SCOPED_TRACE(attribute);
+        const auto source = source::SourceFile::from_text(
+            "attributes.pgs",
+            std::string("global mut data: u32 ") + attribute + " = 0;");
+        source::DiagnosticEngine diagnostics(source);
+        syntax::Lexer lexer(source, diagnostics);
+        const auto tokens = lexer.tokenize();
+        syntax::Parser parser(tokens, diagnostics);
+        const auto module = parser.parse_module();
+        EXPECT_TRUE(diagnostics.has_error());
+    }
+}
+
+TEST(GlobalStorage, QuotedMetadataDoesNotIntroduceStringExpressions) {
+    for (const auto* text :
+         {"let text = \"hello\";",
+          "global mut data: u32 section(\"unterminated",
+          "global mut data: u32 section(\"line\nbreak\") = 0;"}) {
+        const auto source = source::SourceFile::from_text("quoted.pgs", text);
+        source::DiagnosticEngine diagnostics(source);
+        syntax::Lexer lexer(source, diagnostics);
+        const auto tokens = lexer.tokenize();
+        syntax::Parser parser(tokens, diagnostics);
+        const auto module = parser.parse_module();
+        EXPECT_TRUE(diagnostics.has_error());
+    }
+}
 } // namespace

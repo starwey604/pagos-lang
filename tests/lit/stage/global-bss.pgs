@@ -1,0 +1,8 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+fn initial() -> u32 { 7 }
+global mut nonzero: u32 section(".bss.bad") = initial();
+global mut dynamic: u32 section(".bss.runtime") align(64) = external_input();
+// CHECK: error[E2011]: BSS storage requires a zero initializer
+// CHECK: error[E2010]: global initializer must be pure Static
+// CHECK: external_input()
+// CHECK: global initializer dynamic

@@ -247,10 +247,15 @@ ExprPtr with_trace_step(const ExprPtr& expression, std::string step) {
 }
 
 void print(const Module& module, std::ostream& output) {
-    for (const auto& global : module.globals)
+    for (const auto& global : module.globals) {
         output << "global " << (global.writable ? "mut " : "const ")
-               << global.name << ": " << sema::type_name(global.type) << " = "
-               << global.initializer.decimal() << '\n';
+               << global.name << ": " << sema::type_name(global.type);
+        if (!global.storage.section.empty())
+            output << " section(\"" << global.storage.section << "\")";
+        if (global.storage.alignment != 0)
+            output << " align(" << global.storage.alignment << ')';
+        output << " = " << global.initializer.decimal() << '\n';
+    }
     for (const auto& function : module.residual_functions) {
         if (function->c_abi) {
             output << (function->declaration ? "extern C fn " : "export C fn ")

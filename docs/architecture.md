@@ -473,7 +473,14 @@ duplicate/colliding names, initializer/target type mismatches and permission
 escalation. Global-only modules are valid without a synthetic entry function.
 
 LLVM creates internal global variables before function bodies, using target ABI
-alignment and default section selection. Address identity is significant: the
+alignment and default section selection unless explicitly requested otherwise.
+Shared `GlobalStorage` metadata passes through syntax, HIR and MIR without LLVM
+types. Sema and MIR validate section class/mutability and alignment; staging and
+MIR reject nonzero BSS contents. LLVM emits explicit ELF data subsections and
+the maximum of requested and ABI alignment. Object/link-image checks verify
+the actual section flags, zero-fill kind and symbol placement; linker scripts
+retain responsibility for memory regions and startup ranges. Metadata does not
+imply retention or a fixed address. Address identity is significant: the
 frontend does not mark these objects `unnamed_addr`. Ordinary object relocations
 and the external linker resolve references; initialization uses loader/startup
 data, not generated Runtime constructors. The QEMU example shares existing

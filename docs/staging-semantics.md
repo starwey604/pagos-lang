@@ -338,6 +338,9 @@ helper result. Storage qualifiers `global const`/`global mut` are independent
 of binding time. A global-name read is Runtime, and global addresses remain
 symbolic Runtime values until relocation/linking. No global read is memoized
 as its initializer, and taking an address never exposes compiler-host storage.
+Section/alignment metadata does not change staging or trigger Runtime work.
+A `.bss.*` object's pure Static initializer must additionally evaluate to zero;
+even an unused invalid declaration is rejected.
 
 `build.fs` and `build.env` calls record exact dependencies for incremental and
 content-addressed builds. Network access should be disabled by default. External

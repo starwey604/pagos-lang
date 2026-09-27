@@ -843,6 +843,9 @@ std::expected<void, std::string> verify(const Module& module) {
             !global.type.matches_pointer_width(module.pointer_bits) ||
             global.initializer.type() != global.type.integer_type)
             return std::unexpected("invalid MIR global initializer or type");
+        if (!global.storage.valid(global.writable) ||
+            (global.storage.requires_zero() && global.initializer.bits() != 0))
+            return std::unexpected("invalid MIR global storage attributes");
     }
     for (const auto& function : module.functions) {
         if (function.name.empty() || function.name == "pagos_external_input" ||
@@ -911,10 +914,15 @@ std::expected<void, std::string> verify(const Module& module) {
 void print(const Module& module, std::ostream& output) {
     if (module.pointer_bits != 0)
         output << "target pointer_bits = " << module.pointer_bits << '\n';
-    for (const auto& global : module.globals)
+    for (const auto& global : module.globals) {
         output << "global " << (global.writable ? "mut @" : "const @")
-               << global.name << ": " << type_name(global.type) << " = "
-               << global.initializer.decimal() << '\n';
+               << global.name << ": " << type_name(global.type);
+        if (!global.storage.section.empty())
+            output << " section(\"" << global.storage.section << "\")";
+        if (global.storage.alignment != 0)
+            output << " align(" << global.storage.alignment << ')';
+        output << " = " << global.initializer.decimal() << '\n';
+    }
     for (const auto& function : module.functions) {
         output << (function.declaration ? "extern C func @"
                    : function.c_abi     ? "export C func @"

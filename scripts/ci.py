@@ -59,7 +59,8 @@ def main():
                  str(ROOT / "tests/lit/Inputs/c_abi.c"),
                  str(ROOT / "tests/lit/Inputs/pointers.c"),
                  str(ROOT / "tests/lit/Inputs/volatile.c"),
-                 str(ROOT / "tests/lit/Inputs/globals.c")])
+                 str(ROOT / "tests/lit/Inputs/globals.c"),
+                 str(ROOT / "tests/lit/Inputs/sections.c")])
             for folder in ("lib", "tools"):
                 for source in sorted((ROOT / folder).rglob("*.cpp")):
                     run(["clang-tidy", "--quiet", "--warnings-as-errors=*",

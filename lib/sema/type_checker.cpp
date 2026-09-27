@@ -31,6 +31,12 @@ bool TypeChecker::check(syntax::Module& module) {
     collect_records(module);
     collect_functions(module);
     for (const auto& global : module.globals) {
+        if (!global.storage.valid(global.writable))
+            diagnostics_.error(
+                "E1014", "invalid global storage attributes", global.name_span,
+                "use .rodata.NAME for const, .data.NAME or .bss.NAME for mut; "
+                "names use ASCII letters, digits, underscores and dots; "
+                "RELRO section prefixes are reserved");
         if (types_.pointer_bits != 32 && types_.pointer_bits != 64)
             diagnostics_.error("E1013",
                                "global storage requires a target pointer width",

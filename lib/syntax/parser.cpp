@@ -131,8 +131,65 @@ std::optional<Module::Global> Parser::parse_global() {
     if (!name || !consume(TokenKind::Colon, "expected `:` after global name"))
         return std::nullopt;
     auto type = parse_type();
-    if (!type ||
-        !consume(TokenKind::Equal, "expected `=` before global initializer"))
+    if (!type)
+        return std::nullopt;
+    GlobalStorage storage;
+    bool saw_section = false;
+    bool saw_alignment = false;
+    while (check(TokenKind::Identifier)) {
+        const auto attribute = current();
+        ++index_;
+        const bool section = attribute.lexeme == "section";
+        if (!section && attribute.lexeme != "align") {
+            diagnostics_.error("E1002", "unknown global storage attribute",
+                               attribute.span);
+            return std::nullopt;
+        }
+        bool& seen = section ? saw_section : saw_alignment;
+        if (seen) {
+            diagnostics_.error("E1002", "duplicate global storage attribute",
+                               attribute.span);
+            return std::nullopt;
+        }
+        seen = true;
+        if (!consume(TokenKind::LeftParen,
+                     "expected `(` after storage attribute"))
+            return std::nullopt;
+        if (section) {
+            const auto* text =
+                consume(TokenKind::QuotedText, "expected quoted section name");
+            if (!text)
+                return std::nullopt;
+            storage.section = text->lexeme.substr(1, text->lexeme.size() - 2);
+            if (storage.section.empty()) {
+                diagnostics_.error("E1002", "section name must not be empty",
+                                   text->span);
+                return std::nullopt;
+            }
+        } else {
+            const auto* value = consume(TokenKind::Integer,
+                                        "expected decimal alignment literal");
+            if (!value)
+                return std::nullopt;
+            const auto* end = value->lexeme.data() + value->lexeme.size();
+            const auto parsed = std::from_chars(
+                value->lexeme.data(),
+                value->lexeme.data() + value->lexeme.size(), storage.alignment);
+            if (parsed.ec != std::errc{} || parsed.ptr != end ||
+                !GlobalStorage::valid_alignment(storage.alignment)) {
+                diagnostics_.error(
+                    "E1014",
+                    "alignment must be an unsuffixed power of two "
+                    "from 1 through 4096 bytes",
+                    value->span);
+                return std::nullopt;
+            }
+        }
+        if (!consume(TokenKind::RightParen,
+                     "expected `)` after storage attribute"))
+            return std::nullopt;
+    }
+    if (!consume(TokenKind::Equal, "expected `=` before global initializer"))
         return std::nullopt;
     auto initializer = parse_expression();
     if (!initializer ||
@@ -142,7 +199,8 @@ std::optional<Module::Global> Parser::parse_global() {
                           .name_span = name->span,
                           .type = *type,
                           .writable = writable,
-                          .initializer = std::move(initializer)};
+                          .initializer = std::move(initializer),
+                          .storage = std::move(storage)};
 }
 
 std::optional<Type> Parser::parse_type() {

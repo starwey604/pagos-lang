@@ -1,0 +1,13 @@
+// RUN: not %pagosc --target=x86_64-apple-darwin emit-llvm %s 2>&1 | %FileCheck %s
+// RUN: not %pagosc --target=x86_64-pc-windows-msvc emit-obj %s -o %t.o 2>&1 | %FileCheck %s
+// RUN: %pagosc --target=riscv64-unknown-elf emit-obj %s -o %t.rv64.o
+// RUN: llvm-readobj --sections --symbols %t.rv64.o | %FileCheck %s --check-prefix=ELF
+global mut word: usize section(".data.state") align(64) = ~0usize;
+// CHECK: explicit global sections require an ELF target
+// ELF: Name: .data.state
+// ELF: Type: SHT_PROGBITS
+// ELF: AddressAlignment: 64
+// ELF: Name: pagos.global.word
+// ELF: Size: 8
+// ELF: Binding: Local
+// ELF: Section: .data.state

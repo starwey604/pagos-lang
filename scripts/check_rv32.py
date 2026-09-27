@@ -7,6 +7,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 
+from elf_storage import verify_storage
+
 ROOT = Path(__file__).resolve().parents[1]
 PLATFORM = ROOT / "platforms/qemu-rv32-virt"
 ISA = ["-march=rv32imac", "-mabi=ilp32"]
@@ -53,6 +55,14 @@ def main():
                 subprocess.run(["clang", "--target=riscv32-unknown-elf", *ISA,
                                 "-O2", "-c", "-x", "ir", "-", "-o",
                                 objects[name + "-opt"]], input=ir, check=True)
+                if name == "mmio":
+                    placement = {
+                        "boot_seed": (".data.boot", 64, True, False),
+                        "boot_count": (".bss.boot", 128, True, True),
+                        "poll_limit": (".rodata.uart", 32, False, False),
+                    }
+                    for key in (name, name + "-opt"):
+                        verify_storage(objects[key], placement)
         for compiler in ("clang", "riscv64-elf-gcc"):
             cases = [
                 ("success", None, 0),
@@ -94,6 +104,12 @@ def main():
                     command += [str(PLATFORM / "smoke.c")]
                 command += [str(runtime), "-o", elf]
                 subprocess.run(command, check=True)
+                if define == "WITH_PAGOS_MMIO":
+                    verify_storage(elf, {
+                        "boot_seed": (".data", 64, True, False),
+                        "boot_count": (".bss", 128, True, True),
+                        "poll_limit": (".rodata", 32, False, False),
+                    })
                 qemu = ["qemu-system-riscv32", "-machine", "virt", "-cpu", CPU,
                         "-accel", "tcg", "-smp", "1", "-m", "16M", "-bios", "none",
                         "-kernel", elf, "-display", "none", "-monitor", "none",

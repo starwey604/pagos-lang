@@ -194,6 +194,10 @@ storage remains Runtime. The [global example](tests/lit/codegen/globals.pgs)
 tests C access and independent modules. The QEMU UART example also owns its boot
 state and detects skipped `.data` copying or `.bss` clearing. See the
 [storage rules](docs/grammar.md#global-integer-storage-milestone-3).
+Optional `section(".data.boot")` and `align(64)` attributes now control named
+ELF data subsections and minimum object alignment. The
+[placement example](tests/lit/codegen/global-sections.pgs) checks actual ELF
+flags and alignment; final memory regions remain a linker-script decision.
 
 ## Development
 

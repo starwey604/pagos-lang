@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pagos/global_storage.h"
 #include "pagos/integer.h"
 
 #include "pagos/source/span.h"
@@ -270,6 +271,7 @@ struct Module {
         Type type;
         bool writable{};
         IntegerValue initializer;
+        GlobalStorage storage;
     };
     std::vector<Function> functions;
     unsigned pointer_bits{}; // Zero only for target-independent hand-built MIR.

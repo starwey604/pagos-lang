@@ -13,6 +13,13 @@ config.test_exec_root = config.pagos_test_exec_root
 config.substitutions.append(("%pagosc", config.pagosc))
 config.substitutions.append(("%FileCheck", config.filecheck))
 config.substitutions.append((
+    "%run_sections",
+    " ".join(shlex.quote(value) for value in [
+        config.python, os.path.join(config.pagos_test_source_root, "Inputs", "run_sections.py"),
+        config.pagosc, config.test_clang,
+    ]),
+))
+config.substitutions.append((
     "%run_globals",
     " ".join(shlex.quote(value) for value in [
         config.python, os.path.join(config.pagos_test_source_root, "Inputs", "run_globals.py"),

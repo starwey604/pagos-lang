@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pagos/global_storage.h"
 #include "pagos/sema/type.h"
 
 #include "pagos/source/span.h"
@@ -110,6 +111,7 @@ struct Module {
         sema::Type type;
         bool writable{};
         IntegerValue initializer;
+        GlobalStorage storage;
     };
     std::vector<Global> globals;
     struct RecordType {

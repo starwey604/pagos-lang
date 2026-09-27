@@ -97,6 +97,10 @@ without linking the C smoke harness. Startup/linker support remains shared.
 Eight further startup-fault cases omit data copying or BSS clearing for the
 Pagos-owned globals, under both emission paths and both toolchains. Volatile
 boot-state reads prevent constant folding from hiding incorrect initialization.
+The globals use named data subsections with explicit alignment. Shared
+`scripts/elf_storage.py` checks object and linked-image section membership,
+flags, storage kind and symbol alignment before execution; no new tools are
+required beyond LLVM `llvm-readobj`.
 The total with `--pagosc` is 34 cases. `scripts/ci.py --rv32` includes all of them.
 The matching target libgcc is linked explicitly; do not substitute host compiler-rt.
 
@@ -192,6 +196,14 @@ compiled Pagos modules to check private-object identity and C pointer access.
 No new dependency is required. Initializers must be pure Static; global reads
 and `&name` are Runtime. See the
 [global storage contract](grammar.md#global-integer-storage-milestone-3).
+
+`tests/lit/codegen/global-sections.pgs` additionally checks named ELF data
+subsections and explicit alignment on x86-64 and RV32, using direct objects and
+optimized IR. Its native C harness checks initial contents, distinct readonly
+objects, actual pointer alignment and persistent writes. RV64 global-only object
+emission is tested separately; this does not expand the supported C ABI.
+`align` is a minimum request, and `section` does not retain unused objects.
+See [placement rules](grammar.md#data-subsections-and-alignment).
 
 Bound compile-time work with options placed anywhere before or after the
 command:

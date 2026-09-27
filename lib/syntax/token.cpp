@@ -18,6 +18,8 @@ std::string_view token_kind_name(TokenKind kind) noexcept {
         return "identifier";
     case TokenKind::Integer:
         return "integer";
+    case TokenKind::QuotedText:
+        return "quoted metadata text";
     case TokenKind::KwFn:
         return "`fn`";
     case TokenKind::KwExtern:

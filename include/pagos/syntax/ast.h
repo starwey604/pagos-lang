@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pagos/global_storage.h"
 #include "pagos/source/span.h"
 
 #include <cstdint>
@@ -357,6 +358,7 @@ struct Module {
         Type type;
         bool writable{};
         std::unique_ptr<Expr> initializer;
+        GlobalStorage storage;
     };
     std::vector<Global> globals;
     struct Record {

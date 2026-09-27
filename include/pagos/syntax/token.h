@@ -10,6 +10,7 @@ enum class TokenKind {
     End,
     Identifier,
     Integer,
+    QuotedText,
     KwFn,
     KwExtern,
     KwExport,

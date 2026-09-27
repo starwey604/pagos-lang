@@ -1,6 +1,6 @@
 # Core Grammar Sketch
 
-Status: normative syntax baseline, including M3 integers, pointers, volatile and C ABI.
+Status: normative syntax baseline, including M3 storage, pointers, volatile and C ABI.
 Later milestones should not silently change accepted programs.
 
 ## Scope
@@ -27,7 +27,9 @@ The grammar uses EBNF: `{ x }` repeats `x`, `[ x ]` makes `x` optional, and
 ```ebnf
 source          = { global | record | function | statement } EOF ;
 global          = "global" ( "const" | "mut" ) identifier ":" integer-type
-                  "=" expression ";" ;
+                  { storage-attribute } "=" expression ";" ;
+storage-attribute = "section" "(" quoted-section-name ")"
+                  | "align" "(" decimal-alignment ")" ;
 record          = "record" identifier "{" record-fields [ "," ] "}" ;
 record-fields   = identifier ":" scalar-type
                   { "," identifier ":" scalar-type } ;
@@ -294,8 +296,49 @@ ordinary defaults place readonly data in `.rodata`, nonzero writable data in
 `.data` and zero writable data in `.bss`. Optimization may remove unobservable
 storage or fold provably immutable reads; it must preserve observable address
 identity and memory effects. The loader/startup must establish initial contents
-before any Pagos function runs. Custom sections, fixed-address placement, TLS,
-external globals, dynamic initialization and allocation remain deferred.
+before any Pagos function runs. Named data subsections and explicit alignment
+are described below. Fixed-address placement, TLS, external globals, dynamic
+initialization and allocation remain deferred.
+
+### Data subsections and alignment
+
+```pagos
+global const limit: u32 section(".rodata.config") align(32) = 100;
+global mut seed: u32 section(".data.boot") align(64) = 37;
+global mut count: u32 section(".bss.boot") align(128) = 0;
+```
+
+Optional `section(...)` and `align(...)` attributes follow the declared type,
+before `=`. Either order is accepted, each at most once. They are contextual
+names, not new reserved keywords. Quoted text is only section metadata, not a
+string expression; escapes, newlines and interpolation are unsupported.
+
+Explicit sections currently require ELF output and a nonempty suffix after
+`.rodata.` for `const`, or `.data.` / `.bss.` for `mut`. Names contain only ASCII
+letters, digits, `_` and `.`. Other section classes, including `.text` and
+`.noinit`, are rejected (`E1014`). The `.data.rel.ro*` and `.bss.rel.ro*` prefixes
+are reserved: common ELF linkers give them read-only-after-relocation semantics.
+A `.bss.*` initializer must evaluate to zero
+(`E2011` otherwise); `.data.*` allows zero as well as nonzero data and still
+emits initialized storage. Initializers retain the pure Static requirement.
+Omitting `section` preserves the backend's ordinary default placement.
+
+`align(N)` requests a minimum object alignment in bytes. `N` is an unsuffixed
+decimal literal without separators, a power of two from 1 through 4096. It is
+not an expression or a type alignment change. Effective alignment is the larger
+of the target ABI alignment and the request; `align(1)` cannot under-align an
+integer. The 4096-byte ceiling is a current language limit, not an LLVM limit.
+
+These are input-section names, not fixed addresses or memory-region names.
+The linker script determines final output sections and addresses, must preserve
+object permissions/alignment, and startup must copy/clear the corresponding
+regions. The compiler cannot validate an arbitrary external linker script.
+The RV32 script already collects
+`.rodata.*`, `.data.*` and `.bss.*`; the UART example now exercises all three.
+Placement does not imply retention against optimization or linker garbage
+collection, declaration order, adjacency, MMIO, atomicity or synchronization.
+Arbitrary sections, retained/uninitialized storage and retention attributes
+remain separate future work.
 
 ## Volatile Access and MMIO (Milestone 3)
 

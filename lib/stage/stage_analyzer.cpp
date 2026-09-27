@@ -431,11 +431,18 @@ StageAnalyzer::analyze(const syntax::Module& module) {
                  .dependency_path = std::move(path)});
             continue;
         }
-        result->globals.push_back(
-            {.name = global.name,
-             .type = types_.resolve(global.type),
-             .writable = global.writable,
-             .initializer = std::get<IntegerValue>(*initializer->constant)});
+        const auto value = std::get<IntegerValue>(*initializer->constant);
+        if (global.storage.requires_zero() && value.bits() != 0) {
+            diagnostics_.error("E2011",
+                               "BSS storage requires a zero initializer",
+                               global.initializer->span);
+            continue;
+        }
+        result->globals.push_back({.name = global.name,
+                                   .type = types_.resolve(global.type),
+                                   .writable = global.writable,
+                                   .initializer = value,
+                                   .storage = global.storage});
     }
     result->emit_entry =
         !module.statements.empty() ||

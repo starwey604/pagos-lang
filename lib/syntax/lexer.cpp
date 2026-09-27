@@ -141,6 +141,19 @@ std::vector<Token> Lexer::tokenize() {
 
         advance();
         switch (character) {
+        case '"': {
+            while (!at_end() && peek() != '"' && peek() != '\n' &&
+                   peek() != '\r')
+                advance();
+            if (at_end() || peek() != '"') {
+                diagnostics_.error("E1001", "unterminated quoted metadata text",
+                                   {.begin = begin, .end = offset_});
+            } else {
+                advance();
+                add(tokens, TokenKind::QuotedText, begin, offset_);
+            }
+            break;
+        }
         case '[':
             add(tokens, TokenKind::LeftBracket, begin, offset_);
             break;
