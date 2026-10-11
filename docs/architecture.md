@@ -175,6 +175,13 @@ into a shared immutable graph attached to the HIR module; query scratch and
 call contexts belong to each query. Existing RuntimeTrace diagnostics remain
 in place while the new representation is validated.
 
+Explicit Runtime boundaries, selections, member projections and conservative
+recursive completion now submit semantic events at their Stage decision points.
+The snapshot owns sparse `StageDecision` entries independently of graph storage
+rules. Inline instantiation and local contract substitution preserve these
+entries while rebinding dependencies. Missing events for migrated HIR kinds are
+consistency errors; the Recorder does not reconstruct their Stage reasons.
+
 ### 6. Compile-time VM and partial evaluator
 
 The first implementation should use a tree/bytecode interpreter rather than

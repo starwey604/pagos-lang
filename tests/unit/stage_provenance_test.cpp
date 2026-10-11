@@ -1,3 +1,4 @@
+#include "../../lib/stage/provenance_recorder.h"
 #include "pagos/mir/lowering.h"
 #include "pagos/sema/type_checker.h"
 #include "pagos/stage/provenance_analysis.h"
@@ -48,6 +49,225 @@ QueryResult query(const hir::Module& module, std::string_view name,
                   QueryKind kind = QueryKind::Value) {
     return module.provenance->graph().query(root(*module.provenance, name).node,
                                             kind);
+}
+
+const stage::StageDecision& decision(const stage::ProvenanceAnalysis& analysis,
+                                     std::string_view name) {
+    auto node = root(analysis, name).node;
+    while (true) {
+        if (const auto* result = analysis.decision(node))
+            return *result;
+        const auto edges = analysis.graph().edges(node);
+        const auto value = std::ranges::find_if(edges, [](const auto& edge) {
+            return edge.relation == Relation::Data ||
+                   edge.relation == Relation::Contract;
+        });
+        if (value == edges.end())
+            throw std::logic_error("missing decision: " + std::string(name));
+        node = value->target;
+    }
+}
+
+TEST(StageDecision, DistinguishesExplicitBoundaryFromExternalInput) {
+    Input input("runtime let boundary = 7; let input = external_input(); "
+                "let alias = boundary;");
+    stage::StageAnalyzer analyzer(input.diagnostics, input.checker.types());
+    const auto module = analyzer.analyze(*input.module);
+    ASSERT_FALSE(input.diagnostics.has_error());
+    const auto& boundary = decision(*module->provenance, "alias");
+    EXPECT_EQ(boundary.rule, stage::StageRule::RuntimeBoundary);
+    EXPECT_EQ(boundary.result, hir::Stage::Runtime);
+    EXPECT_EQ(boundary.node, query(*module, "boundary").sources[0].node);
+    const auto source = query(*module, "input").sources[0].node;
+    EXPECT_EQ(module->provenance->graph().node(source).rule, Rule::Origin);
+    EXPECT_EQ(module->provenance->decision(source), nullptr);
+    EXPECT_EQ(module->provenance->decision({}), nullptr);
+}
+
+TEST(StageDecision, RuntimeSelectionRetainsControlAndRejectsEqualBranchDemand) {
+    Input input("let flag = external_input() != 0; "
+                "let different = if flag { 1 } else { 2 }; "
+                "comptime let equal = if flag { 7 } else { 7 };");
+    stage::StageAnalyzer analyzer(input.diagnostics, input.checker.types());
+    const auto module = analyzer.analyze(*input.module);
+    ASSERT_EQ(input.diagnostics.size(), 1U);
+    EXPECT_EQ(input.diagnostics.diagnostics()[0].code, "E2001");
+    for (const auto* name : {"different", "equal"}) {
+        const auto& result = decision(*module->provenance, name);
+        EXPECT_EQ(result.rule, stage::StageRule::RuntimeSelection);
+        EXPECT_EQ(result.result, hir::Stage::Runtime);
+        const auto edges = module->provenance->graph().edges(result.node);
+        ASSERT_EQ(edges.size(), 3U);
+        EXPECT_EQ(edges[0].relation, Relation::Control);
+        EXPECT_EQ(module->provenance->graph().query(edges[0].target).sources,
+                  query(*module, "flag").sources);
+    }
+}
+
+TEST(StageDecision,
+     ShortCircuitDistinguishesRuntimeControlFromSelectedOperand) {
+    Input input("let flag = external_input() != 0; "
+                "let selected = true && flag; let controlled = flag && true; "
+                "comptime let skipped = false && (external_input() != 0);");
+    stage::StageAnalyzer analyzer(input.diagnostics, input.checker.types());
+    const auto module = analyzer.analyze(*input.module);
+    ASSERT_FALSE(input.diagnostics.has_error());
+    EXPECT_EQ(decision(*module->provenance, "selected").rule,
+              stage::StageRule::OperandPropagation);
+    EXPECT_EQ(decision(*module->provenance, "controlled").rule,
+              stage::StageRule::RuntimeSelection);
+    EXPECT_TRUE(query(*module, "skipped").sources.empty());
+    EXPECT_TRUE(query(*module, "skipped", QueryKind::Effects).sources.empty());
+}
+
+TEST(StageDecision, ProjectionRecordsSelectedMemberAndOpaqueOrDynamicCases) {
+    Input input("record Config { base: u32, baud: u32 } "
+                "let input = external_input(); let config = Config(base: 7, "
+                "baud: input); "
+                "comptime let base = config.base; let baud = config.baud; "
+                "comptime let pure = Config(base: 9, baud: 3).base; "
+                "runtime let hidden = config; let opaque = hidden.base; "
+                "let array = [7, input]; comptime let fixed = array[0]; "
+                "let member = array[1]; let indexed = array[input]; "
+                "let branch = if input == 0 { config } else { config }; "
+                "let blocked = branch.base;");
+    stage::StageAnalyzer analyzer(input.diagnostics, input.checker.types());
+    const auto module = analyzer.analyze(*input.module);
+    ASSERT_FALSE(input.diagnostics.has_error());
+    for (const auto* name : {"base", "pure", "fixed"}) {
+        const auto& result = decision(*module->provenance, name);
+        EXPECT_EQ(result.rule, stage::StageRule::MemberProjection);
+        EXPECT_EQ(result.result, hir::Stage::Comptime);
+        EXPECT_EQ(result.reason, stage::StageReason::KnownMember);
+        EXPECT_EQ(result.member, 0U);
+        EXPECT_TRUE(query(*module, name).sources.empty());
+    }
+    for (const auto* name : {"baud", "member"}) {
+        const auto& result = decision(*module->provenance, name);
+        EXPECT_EQ(result.reason, stage::StageReason::RuntimeMember);
+        EXPECT_EQ(result.member, 1U);
+        EXPECT_EQ(query(*module, name).sources,
+                  query(*module, "input").sources);
+    }
+    for (const auto* name : {"opaque", "blocked"})
+        EXPECT_EQ(decision(*module->provenance, name).reason,
+                  stage::StageReason::OpaqueAggregate);
+    const auto& indexed = decision(*module->provenance, "indexed");
+    EXPECT_EQ(indexed.reason, stage::StageReason::RuntimeIndex);
+    EXPECT_FALSE(indexed.member);
+    EXPECT_EQ(query(*module, "base", QueryKind::Effects).sources.size(), 1U);
+    EXPECT_EQ(query(*module, "indexed", QueryKind::Effects).sources.size(), 2U);
+    EXPECT_TRUE(mir::lower(*module));
+}
+
+TEST(StageDecision, InlineNestedKnownProjectionRebindsWorkAndRetainsRules) {
+    Input input(
+        "fn base(x: u32) -> u32 { let array = [7, x]; array[0] } "
+        "fn nested(x: u32) -> u32 { base(x) } "
+        "let a = external_input(); let b = external_input(); "
+        "comptime let first = nested(a); comptime let second = nested(b);");
+    stage::StageAnalyzer analyzer(input.diagnostics, input.checker.types());
+    const auto module = analyzer.analyze(*input.module);
+    ASSERT_FALSE(input.diagnostics.has_error());
+    const auto& first = decision(*module->provenance, "first");
+    const auto& second = decision(*module->provenance, "second");
+    EXPECT_EQ(first.rule, stage::StageRule::MemberProjection);
+    EXPECT_EQ(second.rule, first.rule);
+    EXPECT_NE(first.node, second.node);
+    EXPECT_EQ(second.result, hir::Stage::Comptime);
+    EXPECT_TRUE(query(*module, "second").sources.empty());
+    EXPECT_EQ(query(*module, "first", QueryKind::Effects).sources,
+              query(*module, "a", QueryKind::Effects).sources);
+    EXPECT_EQ(query(*module, "second", QueryKind::Effects).sources,
+              query(*module, "b", QueryKind::Effects).sources);
+    EXPECT_TRUE(mir::lower(*module));
+}
+
+TEST(StageDecision, CachedSelectionUsesOneRuleAndEachCallsActualSource) {
+    Input input("fn choose(x: u32) -> u32 { if x == 0 { 1 } else { 2 } } "
+                "let a = external_input(); let b = external_input(); "
+                "let first = choose(a); let second = choose(b);");
+    stage::StageAnalyzer analyzer(input.diagnostics, input.checker.types());
+    const auto module = analyzer.analyze(*input.module);
+    ASSERT_FALSE(input.diagnostics.has_error());
+    EXPECT_EQ(analyzer.stats().residual_cache_hits, 1U);
+    std::optional<NodeId> shared;
+    for (const auto* name : {"first", "second"}) {
+        const auto witness = module->provenance->graph().query(
+            root(*module->provenance, name).node, QueryKind::Value, true);
+        bool found = false;
+        for (const auto& state : witness.witness) {
+            const auto* item = module->provenance->decision(state.node);
+            if (!item || item->rule != stage::StageRule::RuntimeSelection)
+                continue;
+            if (shared) {
+                EXPECT_EQ(item->node, *shared);
+            }
+            shared = item->node;
+            found = true;
+        }
+        EXPECT_TRUE(found);
+    }
+    EXPECT_EQ(query(*module, "second").sources[0].site,
+              query(*module, "b").sources[0].site);
+}
+
+TEST(StageDecision,
+     LocalFailedContractRetainsDecisionAfterArgumentSubstitution) {
+    Input input(
+        "fn require(x: u32) -> u32 { "
+        "comptime let selected = if x == 0 { 7 } else { 7 }; selected } "
+        "let input = external_input(); let result = require(input);");
+    stage::StageAnalyzer analyzer(input.diagnostics, input.checker.types());
+    const auto module = analyzer.analyze(*input.module);
+    ASSERT_TRUE(input.diagnostics.has_error());
+    const auto& result = decision(*module->provenance, "selected");
+    EXPECT_EQ(result.rule, stage::StageRule::RuntimeSelection);
+    EXPECT_EQ(result.result, hir::Stage::Runtime);
+    EXPECT_EQ(query(*module, "selected").sources,
+              query(*module, "input").sources);
+}
+
+TEST(StageDecision,
+     SnapshotOwnsDecisionMetadataAfterRepeatedAnalysisAndDestruction) {
+    std::shared_ptr<const stage::ProvenanceAnalysis> snapshot;
+    NodeId node;
+    {
+        Input input("let array = [7, external_input()]; comptime let selected "
+                    "= array[0];");
+        stage::StageAnalyzer analyzer(input.diagnostics, input.checker.types());
+        auto module = analyzer.analyze(*input.module);
+        snapshot = module->provenance;
+        node = decision(*snapshot, "selected").node;
+        module.reset();
+        const auto again = analyzer.analyze(*input.module);
+        ASSERT_FALSE(input.diagnostics.has_error());
+        EXPECT_EQ(again->provenance->decisions().size(),
+                  snapshot->decisions().size());
+    }
+    ASSERT_NE(snapshot->decision(node), nullptr);
+    EXPECT_EQ(snapshot->decision(node)->reason,
+              stage::StageReason::KnownMember);
+    EXPECT_TRUE(
+        std::ranges::is_sorted(snapshot->decisions(), {}, [](const auto& item) {
+            return item.node.value;
+        }));
+    EXPECT_TRUE(snapshot->graph()
+                    .query(root(*snapshot, "selected").node)
+                    .sources.empty());
+}
+
+TEST(StageDecision, MissingMigratedEventCannotBeReconstructedFromHir) {
+    stage::ProvenanceRecorder recorder;
+    auto value = std::make_shared<hir::Expr>();
+    value->kind = hir::Expr::Kind::If;
+    value->stage = hir::Stage::Runtime;
+    value->operands = {hir::make_constant(true, sema::TypeKind::Bool, {}),
+                       hir::make_constant(7U, sema::TypeKind::Integer, {}),
+                       hir::make_constant(7U, sema::TypeKind::Integer, {})};
+    hir::Module module;
+    module.result = value;
+    EXPECT_THROW((void)recorder.finish(module), std::logic_error);
 }
 
 TEST(StageProvenance, CollectsBothDataAndControlOriginsOnContractFailure) {
@@ -202,6 +422,10 @@ TEST(StageProvenance, MarksRecursiveExpansionPartial) {
     EXPECT_TRUE(result.recursive_call_cut);
     EXPECT_FALSE(result.sources.empty());
     EXPECT_FALSE(query(*module, "result", QueryKind::Effects).complete);
+    EXPECT_FALSE(std::ranges::any_of(
+        module->provenance->decisions(), [](const auto& item) {
+            return item.rule == stage::StageRule::ConservativeFallback;
+        }));
 }
 
 TEST(StageProvenance, ExplainsConservativeRecursiveCompletionOfKnownValues) {
@@ -214,6 +438,11 @@ TEST(StageProvenance, ExplainsConservativeRecursiveCompletionOfKnownValues) {
     EXPECT_EQ(root(*module->provenance, "result").stage, hir::Stage::Runtime);
     const auto result = query(*module, "result");
     ASSERT_EQ(result.sources.size(), 1U);
+    const auto* reason = module->provenance->decision(result.sources[0].node);
+    ASSERT_NE(reason, nullptr);
+    EXPECT_EQ(reason->result, hir::Stage::Runtime);
+    EXPECT_EQ(reason->rule, stage::StageRule::ConservativeFallback);
+    EXPECT_EQ(reason->reason, stage::StageReason::RecursiveCompletion);
     EXPECT_EQ(module->provenance->site(result.sources[0].site).label,
               "recursive completion known");
     EXPECT_FALSE(query(*module, "result", QueryKind::Effects).complete);
@@ -259,6 +488,7 @@ TEST(StageProvenance, TreatsCAbiCallsAsOpaqueButKeepsArgumentEffects) {
     ASSERT_EQ(result.sources.size(), 1U);
     EXPECT_EQ(module->provenance->graph().node(result.sources[0].node).rule,
               Rule::RuntimeBoundary);
+    EXPECT_EQ(module->provenance->decision(result.sources[0].node), nullptr);
     EXPECT_EQ(query(*module, "result", QueryKind::Effects).sources.size(), 2U);
 }
 

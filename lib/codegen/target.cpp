@@ -89,9 +89,13 @@ TargetLayout::create(TargetConfig config) {
         }
         if (!seen.insert(name).second)
             return std::unexpected("duplicate target feature: " + name);
-        if (std::ranges::none_of(
-                metadata->getAllProcessorFeatures(),
-                [&](const auto& item) { return name == item.Key; }))
+        if (std::ranges::none_of(metadata->getAllProcessorFeatures(),
+                                 [&](const auto& item) {
+                                     if constexpr (requires { item.key(); })
+                                         return name == item.key();
+                                     else
+                                         return name == item.Key;
+                                 }))
             return std::unexpected("unsupported target feature: " + name);
     }
     if (!config.features.empty() && config.features.back() == ',') {

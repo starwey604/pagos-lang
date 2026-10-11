@@ -8,6 +8,42 @@ Comptime 求值、Stage 推断或残留程序生成。
 程序之间的对应关系。当前继续使用追加式存储和原有 `RuntimeTrace` 诊断；
 没有增加分支收敛规则、磁盘缓存或编译任务调度器。
 
+## 决策点提供语义依据
+
+[Stage Evidence P0](stage-evidence-p0.md)将四类核心依据迁移到 Analyzer
+实际作出判断的位置：显式 Runtime 边界、分支选择、成员投影和递归完成性。
+Recorder 消费明确的语义事件，不再通过 HIR 的 `RuntimeBoundary`、`If`、
+`Field` 或 `Index` 种类猜测这些规则。缺少对应事件会报告内部一致性错误。
+普通严格运算、效果和返回控制的结构记录继续沿用现有实现。
+
+快照增加 `decisions()` 和 `decision(NodeId)`。稀疏的 `StageDecision` 保存
+结果 Stage、`StageRule`、源码区间、`StageReason` 和可选成员序号。
+依赖仍由图边保存；未迁移运算和结构包装没有决策条目。
+绑定根经 `Use`、`RequireComptime` 或 `Sequence` 到达实际决策节点，查询
+见证也可以携带该节点及调用上下文。所有数据由快照拥有，不保留 HIR 指针。
+
+| 语义规则 | 依据 |
+| --- | --- |
+| `RuntimeBoundary` | 用户显式隐藏初始化值的 Comptime 知识 |
+| `RuntimeSelection` | Runtime 条件选择结果，包括相同常量的两条分支 |
+| `OperandPropagation` | 已知条件的逻辑短路结果依赖被选中的 Runtime 操作数 |
+| `MemberProjection` | 已知成员、Runtime 成员、不透明聚合或 Runtime 索引 |
+| `ConservativeFallback` | 递归工作后的已知尾结果不能证明调用完成 |
+
+投影的实际成员由 Analyzer 提供，Recorder 不再调用图层的投影透明性判断。
+已知成员即使来自纯 Comptime 聚合，也保留一个简短决策摘要；没有重建完整
+求值历史。聚合初始化、索引求值和边界检查仍与值依赖分别记录。
+
+递归完成性事件由 Analyzer 在函数定义完成时提交，`finish` 只发布已有摘要。
+保守判定的图终端暂沿用 `Rule::RuntimeBoundary`，但其语义条目是
+`ConservativeFallback / RecursiveCompletion`。C ABI 边界和外部来源继续用
+原有图规则，不能仅凭图终端种类把它们与显式边界或保守判定混为一谈。
+查询预算与递归展开的 `partial` 标记只表示解释覆盖，不产生 Stage 决策。
+
+内联实例化替换符号参数并复制相应证据和决策，保留 DAG 身份和各次调用的
+工作身份；局部契约的实参替换同步复制改变路径上的决策。残留函数摘要继续
+共享符号依据，查询时绑定当前调用的参数。默认 CLI 输出和旧诊断格式保持不变。
+
 ## Builder 与 FrozenGraph
 
 [图接口](../include/pagos/stage/provenance_graph.h)将构建和读取分开：
@@ -168,7 +204,7 @@ Stage 错误时，命令先展示已经记录的根，再输出原有诊断，�
 [真实 Stage 测试](../tests/unit/stage_provenance_test.cpp)及
 [命令行示例](../tests/lit/stage/provenance-multiple-sources.pgs)。
 
-本次验证包含 14 项真实 Stage 测试、11 项图测试和 5 个新增 lit 用例。
+初次接入验证包含 14 项真实 Stage 测试、11 项图测试和 5 个新增 lit 用例。
 Debug 完整回归通过 171 项 CTest，其中 lit 运行 378 个用例。GCC、Release 与
 ASan/UBSan 配置通过更新后的 Provenance 专项及 CLI 用例；独立基准工具的
 84 组参数组合也通过 ASan/UBSan 检查。格式、clang-tidy、文档链接、Python

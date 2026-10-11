@@ -1,0 +1,23 @@
+// RUN: %pagosc explain-provenance %s | %FileCheck %s
+// RUN: %run_residual %s 19 0 10 20
+// RUN: %run_residual %s 18 1 10 20
+// RUN: %run_optimized %s 19 0 10 20
+// RUN: %run_optimized %s 18 1 10 20
+
+fn base(x: u32) -> u32 {
+    let values = [7, x];
+    values[0]
+}
+fn nested(x: u32) -> u32 { base(x) }
+
+runtime let flag = external_input() != 0;
+let selected = if flag { external_input() + 1 } else { external_input() + 2 };
+comptime let fixed = nested(external_input());
+let result = selected + fixed;
+
+// CHECK-LABEL: binding selected: Runtime
+// CHECK-NEXT:   value sources: 3 (complete)
+// CHECK-LABEL: binding fixed: Comptime
+// CHECK-NEXT:   contract: Comptime
+// CHECK-NEXT:   value sources: 0 (complete)
+// CHECK-NEXT:   residual effects: 1 (complete)

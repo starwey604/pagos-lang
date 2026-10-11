@@ -12,7 +12,7 @@ end-to-end `.pgs` fixtures in phase-specific directories under `tests/lit/`.
 ## Build, Test, and Development Commands
 
 ```sh
-cmake --preset debug          # configure Clang, LLVM 22, and tests
+cmake --preset debug          # configure Clang, LLVM 22/23, and tests
 cmake --build --preset debug  # build libraries, pagosc, and unit tests
 ctest --preset debug          # run GoogleTest and lit/FileCheck tests
 python3 scripts/check_docs.py # validate Markdown and local links

@@ -109,7 +109,7 @@ class StageAnalyzer {
     [[nodiscard]] hir::ExprPtr make_residual_call(
         const std::shared_ptr<const hir::ResidualFunction>& callee,
         const std::vector<hir::ExprPtr>& arguments, source::Span span);
-    [[nodiscard]] static hir::ExprPtr instantiate_inline(
+    [[nodiscard]] hir::ExprPtr instantiate_inline(
         const hir::ExprPtr& body,
         const std::unordered_map<const hir::Expr*, hir::ExprPtr>& arguments,
         const TraceArguments& traces);

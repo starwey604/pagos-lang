@@ -1,0 +1,7 @@
+record Config { base: u32, baud: u32 }
+fn base(value: u32) -> u32 {
+    let config = Config(base: value, baud: external_input());
+    config.base
+}
+comptime let table = [for i in 0..1024 { base(i) }];
+let result = table[external_input()];

@@ -18,9 +18,17 @@ using namespace provenance;
 
 ProvenanceAnalysis::ProvenanceAnalysis(FrozenGraph graph,
                                        std::vector<ProvenanceSite> sites,
-                                       std::vector<ProvenanceRoot> roots)
+                                       std::vector<ProvenanceRoot> roots,
+                                       std::vector<StageDecision> decisions)
     : graph_(std::move(graph)), sites_(std::move(sites)),
-      roots_(std::move(roots)) {}
+      roots_(std::move(roots)), decisions_(std::move(decisions)) {}
+
+const StageDecision* ProvenanceAnalysis::decision(NodeId node) const noexcept {
+    const auto found = std::ranges::lower_bound(
+        decisions_, node.value, {},
+        [](const auto& item) { return item.node.value; });
+    return found != decisions_.end() && found->node == node ? &*found : nullptr;
+}
 
 const ProvenanceSite& ProvenanceAnalysis::site(SiteId id) const {
     return sites_.at(id);
@@ -39,15 +47,71 @@ struct ProvenanceRecorder::Impl {
     struct Summary {
         std::weak_ptr<const hir::ResidualFunction> definition;
         SummaryId id;
+        NodeId completion;
     };
     Builder builder;
     std::vector<ProvenanceSite> sites{ProvenanceSite{}};
     std::vector<ProvenanceRoot> roots;
+    std::vector<StageDecision> decisions;
     std::unordered_map<const hir::Expr*, Memo> memo;
     std::unordered_map<const hir::Expr*, Parameter> parameters;
     std::vector<Summary> summaries;
     std::unordered_map<const hir::ResidualFunction*, std::size_t> summary_ids;
     std::vector<std::unordered_map<std::uint32_t, NodeId>> active_arguments;
+
+    void record(const hir::ExprPtr& value, NodeId node, StageRule rule,
+                StageReason reason = StageReason::None,
+                std::optional<std::uint32_t> member = {}) {
+        if (known(value).value != 0)
+            throw std::logic_error("stage decision already recorded");
+        memo[value.get()] = {value, node};
+        decisions.push_back(
+            {node, value->stage, rule, value->span, reason, member});
+    }
+
+    NodeId copy_node(NodeId original, std::span<const Edge> edges) {
+        const auto node = builder.node(original);
+        const auto copy =
+            builder.add(node.rule, node.site, edges, node.payload, node.owner);
+        const auto found = std::ranges::lower_bound(
+            decisions, original.value, {},
+            [](const auto& item) { return item.node.value; });
+        if (found != decisions.end() && found->node == original) {
+            auto decision = *found;
+            decision.node = copy;
+            decisions.push_back(decision);
+        }
+        return copy;
+    }
+
+    // Direct graph edges are acyclic; recursive summaries are referenced by ID.
+    NodeId substitute(NodeId root,
+                      std::unordered_map<std::uint32_t, NodeId>& replacements,
+                      bool clone) {
+        std::vector<std::pair<NodeId, bool>> pending{{root, false}};
+        while (!pending.empty()) {
+            const auto [id, ready] = pending.back();
+            pending.pop_back();
+            if (replacements.contains(id.value))
+                continue;
+            if (!ready) {
+                pending.emplace_back(id, true);
+                for (const auto& edge : builder.edges(id))
+                    pending.emplace_back(edge.target, false);
+            } else {
+                llvm::SmallVector<Edge, 4> edges;
+                bool changed = clone;
+                for (auto edge : builder.edges(id)) {
+                    const auto target = replacements.at(edge.target.value);
+                    changed |= target != edge.target;
+                    edge.target = target;
+                    edges.push_back(edge);
+                }
+                replacements[id.value] = changed ? copy_node(id, edges) : id;
+            }
+        }
+        return replacements.at(root.value);
+    }
 
     SiteId site(source::Span span, std::string label) {
         if (sites.size() >= std::numeric_limits<std::uint32_t>::max())
@@ -76,7 +140,7 @@ struct ProvenanceRecorder::Impl {
             return summaries[found->second].id;
         const auto id = builder.reserve_summary();
         summary_ids[definition.get()] = summaries.size();
-        summaries.push_back({definition, id});
+        summaries.push_back({definition, id, {}});
         for (std::size_t index = 0; index < definition->parameters.size();
              ++index) {
             const auto& parameter = definition->parameters[index];
@@ -182,9 +246,10 @@ struct ProvenanceRecorder::Impl {
         case Return:
             return builder.add(Rule::Use, location, edges);
         case RuntimeBoundary:
-            for (auto& edge : edges)
-                edge.relation = Relation::Initializer;
-            return builder.add(Rule::RuntimeBoundary, location, edges);
+        case If:
+        case Field:
+        case Index:
+            throw std::logic_error("missing semantic stage decision");
         case ExternalInput:
         case Load:
         case VolatileLoad:
@@ -229,9 +294,6 @@ struct ProvenanceRecorder::Impl {
                 arguments.push_back(edge.target);
             return builder.call(summary(callee), arguments, location);
         }
-        case If:
-            edges.front().relation = Relation::Control;
-            return builder.add(Rule::Select, location, edges);
         case Sequence:
             for (std::size_t index = 0; index + 1 < edges.size(); ++index)
                 edges[index].relation = Relation::Effect;
@@ -239,23 +301,6 @@ struct ProvenanceRecorder::Impl {
         case Array:
         case Record:
             return builder.add(Rule::Aggregate, location, edges);
-        case Field:
-            return builder.project(edges.front().target, value->field_index,
-                                   location);
-        case Index: {
-            const auto& index = value->operands[1];
-            if (index->stage == hir::Stage::Comptime) {
-                const auto member = static_cast<std::uint32_t>(
-                    std::get<IntegerValue>(*index->constant).bits());
-                const auto selected =
-                    builder.project(edges[0].target, member, location);
-                edges[0].target = selected;
-            }
-            if (index->stage == hir::Stage::Runtime)
-                edges.push_back({effect(location, "checked array index"),
-                                 Relation::Effect});
-            return builder.add(Rule::Strict, location, edges);
-        }
         case ReturnScope:
             return_control(value, edges);
             return builder.add(Rule::Select, location, edges);
@@ -323,33 +368,7 @@ struct ProvenanceRecorder::Impl {
                 replacements[parameter] = argument;
         if (replacements.empty())
             return root;
-        std::vector<std::pair<NodeId, bool>> pending{{root, false}};
-        while (!pending.empty()) {
-            const auto [id, ready] = pending.back();
-            pending.pop_back();
-            if (replacements.contains(id.value))
-                continue;
-            if (!ready) {
-                pending.emplace_back(id, true);
-                for (const auto& edge : builder.edges(id))
-                    pending.emplace_back(edge.target, false);
-            } else {
-                const auto node = builder.node(id);
-                llvm::SmallVector<Edge, 4> edges;
-                bool changed = false;
-                for (auto edge : builder.edges(id)) {
-                    const auto target = replacements.at(edge.target.value);
-                    changed |= target != edge.target;
-                    edge.target = target;
-                    edges.push_back(edge);
-                }
-                replacements[id.value] =
-                    changed ? builder.add(node.rule, node.site, edges,
-                                          node.payload, node.owner)
-                            : id;
-            }
-        }
-        return replacements.at(root.value);
+        return substitute(root, replacements, false);
     }
 };
 
@@ -400,23 +419,104 @@ void ProvenanceRecorder::enter_call(
 
 void ProvenanceRecorder::leave_call() { impl_->active_arguments.pop_back(); }
 
+void ProvenanceRecorder::runtime_boundary(const hir::ExprPtr& value,
+                                          const hir::ExprPtr& initializer) {
+    const auto root = impl_->builder.add(
+        Rule::RuntimeBoundary, impl_->site(value->span, impl_->label(value)),
+        std::array{Edge{impl_->evidence(initializer), Relation::Initializer}});
+    impl_->record(value, root, StageRule::RuntimeBoundary);
+}
+
+void ProvenanceRecorder::selection(const hir::ExprPtr& value, StageRule rule,
+                                   const hir::ExprPtr& condition,
+                                   const hir::ExprPtr& then_value,
+                                   const hir::ExprPtr& else_value) {
+    const auto root = impl_->builder.add(
+        Rule::Select, impl_->site(value->span, "if selection"),
+        std::array{Edge{impl_->evidence(condition), Relation::Control},
+                   Edge{impl_->evidence(then_value)},
+                   Edge{impl_->evidence(else_value)}});
+    impl_->record(value, root, rule);
+}
+
 void ProvenanceRecorder::projection(const hir::ExprPtr& value,
                                     const hir::ExprPtr& aggregate,
-                                    std::uint32_t member,
+                                    StageReason reason,
+                                    std::optional<std::uint32_t> member,
+                                    const hir::ExprPtr& selected,
                                     const hir::ExprPtr& index) {
-    if (aggregate->stage == hir::Stage::Comptime &&
-        !hir::has_residual_work(aggregate) &&
-        (!index || !hir::has_residual_work(index)))
-        return;
-    const auto selected = impl_->builder.project(
-        impl_->evidence(aggregate), member,
-        impl_->site(value->span, "known member projection"));
-    NodeId root = selected;
+    const auto location = impl_->site(value->span, "member projection");
+    llvm::SmallVector<Edge, 4> edges;
+    if (reason == StageReason::KnownMember ||
+        reason == StageReason::RuntimeMember) {
+        const auto source = selected
+                                ? impl_->evidence(selected)
+                                : impl_->builder.add(Rule::Literal, location);
+        edges.push_back({source});
+        edges.push_back({impl_->evidence(aggregate), Relation::Initializer});
+    } else {
+        edges.push_back({impl_->evidence(aggregate)});
+    }
     if (index)
-        root = impl_->builder.add(
-            Rule::Strict, impl_->site(value->span, "known array index"),
-            std::array{Edge{selected}, Edge{impl_->evidence(index)}});
-    impl_->memo[value.get()] = {value, root};
+        edges.push_back({impl_->evidence(index)});
+    if (reason == StageReason::RuntimeIndex)
+        edges.push_back(
+            {impl_->effect(location, "checked array index"), Relation::Effect});
+    const auto root = impl_->builder.add(Rule::Projection, location, edges,
+                                         member.value_or(0));
+    impl_->record(value, root, StageRule::MemberProjection, reason, member);
+}
+
+void ProvenanceRecorder::conservative_completion(
+    const std::shared_ptr<const hir::ResidualFunction>& callee) {
+    (void)impl_->summary(callee);
+    const auto body = impl_->evidence(callee->body);
+    const auto root = impl_->builder.add(
+        Rule::RuntimeBoundary,
+        impl_->site(callee->body->span, "recursive completion " + callee->name),
+        std::array{Edge{body, Relation::Initializer}});
+    impl_->decisions.push_back({root,
+                                hir::Stage::Runtime,
+                                StageRule::ConservativeFallback,
+                                callee->body->span,
+                                StageReason::RecursiveCompletion,
+                                {}});
+    impl_->summaries[impl_->summary_ids.at(callee.get())].completion = root;
+}
+
+void ProvenanceRecorder::instantiate_inline(
+    const hir::ExprPtr& body,
+    const std::unordered_map<const hir::Expr*, hir::ExprPtr>& arguments,
+    const std::unordered_map<const hir::Expr*, hir::ExprPtr>& instances) {
+    // Plain folded results have no migrated decision or residual identity.
+    const auto existing = impl_->known(body);
+    if (body->kind == hir::Expr::Kind::Constant &&
+        (existing.value == 0 ||
+         impl_->builder.node(existing).rule == Rule::Literal))
+        return;
+    const auto root = impl_->evidence(body);
+    std::unordered_map<std::uint32_t, NodeId> replacements;
+    for (const auto& [parameter, argument] : arguments) {
+        const auto found = impl_->memo.find(parameter);
+        if (found != impl_->memo.end() &&
+            found->second.expression.lock().get() == parameter) {
+            const auto node = found->second.node;
+            replacements[node.value] = impl_->evidence(argument);
+        }
+    }
+    (void)impl_->substitute(root, replacements, true);
+    for (const auto& [original, copy] : instances) {
+        if (arguments.contains(original))
+            continue;
+        const auto found = impl_->memo.find(original);
+        if (found == impl_->memo.end() ||
+            found->second.expression.lock().get() != original)
+            continue;
+        if (const auto replacement =
+                replacements.find(found->second.node.value);
+            replacement != replacements.end())
+            impl_->memo[copy.get()] = {copy, replacement->second};
+    }
 }
 
 void ProvenanceRecorder::loop_index(const hir::ExprPtr& index,
@@ -442,23 +542,18 @@ ProvenanceRecorder::finish(const hir::Module& module) {
     for (std::size_t index = 0; index < impl_->summaries.size(); ++index) {
         const auto summary = impl_->summaries[index];
         const auto definition = summary.definition.lock();
-        auto root = definition && definition->body
-                        ? impl_->evidence(definition->body)
-                        : impl_->builder.add(
-                              Rule::Incomplete,
-                              impl_->site({}, "aborted function analysis"));
-        if (definition && definition->recursive && definition->body &&
-            definition->body->stage == hir::Stage::Comptime)
-            root = impl_->builder.add(
-                Rule::RuntimeBoundary,
-                impl_->site(definition->body->span,
-                            "recursive completion " + definition->name),
-                std::array{Edge{root, Relation::Initializer}});
+        const auto root =
+            summary.completion.value != 0 ? summary.completion
+            : definition && definition->body
+                ? impl_->evidence(definition->body)
+                : impl_->builder.add(
+                      Rule::Incomplete,
+                      impl_->site({}, "aborted function analysis"));
         impl_->builder.define_summary(summary.id, root);
     }
     return std::shared_ptr<const ProvenanceAnalysis>(new ProvenanceAnalysis(
         std::move(impl_->builder).freeze(), std::move(impl_->sites),
-        std::move(impl_->roots)));
+        std::move(impl_->roots), std::move(impl_->decisions)));
 }
 
 void explain_provenance(const ProvenanceAnalysis& analysis,

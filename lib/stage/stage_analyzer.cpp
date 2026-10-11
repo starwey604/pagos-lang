@@ -26,6 +26,7 @@ hir::RuntimeTrace first_trace(const hir::ExprPtr& left,
 struct AggregateProjection {
     std::optional<hir::Constant> constant;
     std::optional<hir::RuntimeTrace> trace;
+    hir::ExprPtr member;
 };
 
 std::optional<AggregateProjection>
@@ -44,7 +45,8 @@ project_aggregate_member(hir::ExprPtr array, std::uint32_t offset,
                    array->kind == hir::Expr::Kind::Record) {
             const auto& element = array->operands.at(offset);
             if (element->stage == hir::Stage::Comptime) {
-                return AggregateProjection{.constant = element->constant};
+                return AggregateProjection{.constant = element->constant,
+                                           .member = element};
             }
             auto trace = element->trace;
             trace->path.push_back(field.empty() ? "array element " +
@@ -53,7 +55,8 @@ project_aggregate_member(hir::ExprPtr array, std::uint32_t offset,
             for (auto use = uses.rbegin(); use != uses.rend(); ++use) {
                 trace->path.push_back(*use);
             }
-            return AggregateProjection{.trace = std::move(trace)};
+            return AggregateProjection{.trace = std::move(trace),
+                                       .member = element};
         } else {
             break;
         }
@@ -367,7 +370,9 @@ hir::ExprPtr StageAnalyzer::instantiate_inline(
         instances.emplace(value.get(), copy);
         return copy;
     };
-    return instantiate(body);
+    auto result = instantiate(body);
+    provenance_->instantiate_inline(body, arguments, instances);
+    return result;
 }
 
 std::unique_ptr<hir::Module>
@@ -700,6 +705,7 @@ hir::ExprPtr StageAnalyzer::analyze_binding(const syntax::BindingStmt& binding,
             .origin_name = binding.name,
             .path = {binding.name},
         };
+        provenance_->runtime_boundary(runtime, value);
         value = runtime;
     } else if (value->stage == hir::Stage::Runtime) {
         value = hir::with_trace_step(value, binding.name);
@@ -890,6 +896,7 @@ hir::ExprPtr StageAnalyzer::analyze_field(const syntax::FieldExpr& expression) {
     const auto offset = static_cast<std::uint32_t>(found - fields.begin());
     std::optional<hir::Constant> constant;
     std::optional<hir::RuntimeTrace> trace;
+    hir::ExprPtr selected;
     if (record->stage == hir::Stage::Comptime) {
         constant = from_scalar(
             std::get<RecordConstant>(*record->constant).fields.at(offset));
@@ -897,11 +904,13 @@ hir::ExprPtr StageAnalyzer::analyze_field(const syntax::FieldExpr& expression) {
                    project_aggregate_member(record, offset, expression.name)) {
         constant = projected->constant;
         trace = projected->trace;
+        selected = projected->member;
     }
     if (constant) {
         auto value = hir::make_constant(std::move(*constant),
                                         type_of(expression), expression.span);
-        provenance_->projection(value, record, offset);
+        provenance_->projection(value, record, StageReason::KnownMember, offset,
+                                selected);
         return has_residual_work(record)
                    ? make_sequence({record}, value, expression.span)
                    : value;
@@ -915,6 +924,10 @@ hir::ExprPtr StageAnalyzer::analyze_field(const syntax::FieldExpr& expression) {
                       expression.span, {record}, std::move(*trace)));
     result->field_index = offset;
     result->variable_name = expression.name;
+    provenance_->projection(result, record,
+                            selected ? StageReason::RuntimeMember
+                                     : StageReason::OpaqueAggregate,
+                            offset, selected);
     return result;
 }
 
@@ -1201,6 +1214,8 @@ hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
         return make_sequence({array}, index, expression.span);
     }
     std::optional<hir::RuntimeTrace> selected_trace;
+    hir::ExprPtr selected_member;
+    std::optional<std::uint32_t> member;
     if (index->stage == hir::Stage::Comptime) {
         const auto offset = static_cast<std::uint32_t>(
             std::get<IntegerValue>(*index->constant).bits());
@@ -1211,6 +1226,7 @@ hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
                                    std::to_string(array->type.length));
             return nullptr;
         }
+        member = offset;
         std::optional<hir::Constant> value;
         if (array->stage == hir::Stage::Comptime) {
             if (array->type.element_type() == sema::TypeKind::Bool) {
@@ -1223,6 +1239,7 @@ hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
         } else if (auto selected = project_aggregate_member(array, offset)) {
             value = std::move(selected->constant);
             selected_trace = std::move(selected->trace);
+            selected_member = selected->member;
         }
         if (value) {
             std::vector<hir::ExprPtr> effects;
@@ -1234,15 +1251,23 @@ hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
             }
             auto selected = hir::make_constant(
                 std::move(*value), type_of(expression), expression.span);
-            provenance_->projection(selected, array, offset, index);
+            provenance_->projection(selected, array, StageReason::KnownMember,
+                                    offset, selected_member, index);
             return make_sequence(std::move(effects), selected, expression.span);
         }
     }
     auto trace =
         selected_trace ? std::move(*selected_trace) : first_trace(array, index);
     trace.path.push_back("array index");
-    return make_runtime(hir::Expr::Kind::Index, type_of(expression),
-                        expression.span, {array, index}, std::move(trace));
+    auto result =
+        make_runtime(hir::Expr::Kind::Index, type_of(expression),
+                     expression.span, {array, index}, std::move(trace));
+    provenance_->projection(result, array,
+                            !member           ? StageReason::RuntimeIndex
+                            : selected_member ? StageReason::RuntimeMember
+                                              : StageReason::OpaqueAggregate,
+                            member, selected_member, index);
+    return result;
 }
 
 hir::ExprPtr
@@ -1443,9 +1468,15 @@ StageAnalyzer::analyze_binary(const syntax::BinaryExpr& expression) {
             expression.operation == LogicalAnd ? fallback : right;
         const auto trace =
             left->trace ? left->trace.value() : right->trace.value();
-        return make_runtime(hir::Expr::Kind::If, sema::TypeKind::Bool,
-                            expression.span, {left, then_value, else_value},
-                            trace);
+        auto result = make_runtime(hir::Expr::Kind::If, sema::TypeKind::Bool,
+                                   expression.span,
+                                   {left, then_value, else_value}, trace);
+        provenance_->selection(result,
+                               left->stage == hir::Stage::Runtime
+                                   ? StageRule::RuntimeSelection
+                                   : StageRule::OperandPropagation,
+                               left, then_value, else_value);
+        return result;
     }
 
     return make_runtime(hir::Expr::Kind::Binary, type_of(expression),
@@ -1745,6 +1776,9 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
             entry->reserved = false;
             auto definition = entry->definition;
             definition->body = std::move(result);
+            if (definition->recursive &&
+                definition->body->stage == hir::Stage::Comptime)
+                provenance_->conservative_completion(definition);
             residual_cache_.emplace(std::move(*residual_key), definition);
             residual_functions_.push_back(definition);
             ++stats_.residual_specializations;
@@ -1797,9 +1831,12 @@ hir::ExprPtr StageAnalyzer::analyze_if(const syntax::IfExpr& expression) {
     } else if (else_value->falls_through) {
         type = else_value->type;
     }
-    return make_runtime(hir::Expr::Kind::If, type, expression.span,
-                        {condition, then_value, else_value},
-                        condition->trace.value());
+    auto result = make_runtime(hir::Expr::Kind::If, type, expression.span,
+                               {condition, then_value, else_value},
+                               condition->trace.value());
+    provenance_->selection(result, StageRule::RuntimeSelection, condition,
+                           then_value, else_value);
+    return result;
 }
 
 void StageAnalyzer::define(const std::string& name, hir::ExprPtr value) {

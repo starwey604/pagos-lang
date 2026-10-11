@@ -1,3 +1,4 @@
+import inspect
 import os
 import shlex
 
@@ -5,7 +6,10 @@ import lit.formats
 
 
 config.name = "Pagos"
-config.test_format = lit.formats.ShTest(execute_external=True)
+shell_options = {"execute_external": True}
+if "force_execute_external" in inspect.signature(lit.formats.ShTest).parameters:
+    shell_options["force_execute_external"] = True
+config.test_format = lit.formats.ShTest(**shell_options)
 config.suffixes = [".pgs"]
 config.excludes = ["Inputs"]
 config.test_source_root = config.pagos_test_source_root

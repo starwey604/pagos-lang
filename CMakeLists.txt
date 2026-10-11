@@ -12,9 +12,9 @@ option(PAGOS_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
 option(PAGOS_USE_LLVM_DYLIB "Prefer the monolithic LLVM shared library" ON)
 
 find_package(LLVM REQUIRED CONFIG)
-if(NOT LLVM_VERSION_MAJOR EQUAL 22)
+if(NOT LLVM_VERSION_MAJOR EQUAL 22 AND NOT LLVM_VERSION_MAJOR EQUAL 23)
     message(FATAL_ERROR
-        "Pagos currently requires LLVM 22.x; found ${LLVM_PACKAGE_VERSION}")
+        "Pagos currently requires LLVM 22.x or 23.x; found ${LLVM_PACKAGE_VERSION}")
 endif()
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION} in ${LLVM_DIR}")

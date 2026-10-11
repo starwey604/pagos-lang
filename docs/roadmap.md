@@ -105,6 +105,12 @@ an explicit update to
 the semantics, examples, and execution tests. This work introduces no new stage
 keywords or business-code stage reflection.
 
+The [Stage Evidence P0 iteration](stage-evidence-p0.md) moves evidence
+production to the semantic decision points for explicit Runtime boundaries,
+selection, member projection, and conservative recursive completion. It keeps
+current language behavior and graph queries, with snapshot rule queries and tests for
+wrappers, inline instances, cached summaries, and snapshot ownership.
+
 ## Milestone 3: Bare-metal systems slice
 
 The [M3 preparation baseline](m3-preparation.md) is complete as of 2026-09-26.

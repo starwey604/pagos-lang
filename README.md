@@ -97,6 +97,8 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
   experiments and historical measurements
 - [Provenance analysis](docs/provenance-analysis.md): task-owned builders,
   immutable snapshots, real stage evidence, and `explain-provenance`
+- [Stage Evidence P0](docs/stage-evidence-p0.md): semantic reasons recorded at
+  Stage decision points, implementation boundaries, and validation
 - [Semantic examples](docs/semantic-examples.md): executable-design cases with
   expected stages, residual work, and errors
 - [Diagnostic conventions](docs/diagnostics.md): stable structure for stage and
@@ -223,7 +225,7 @@ record-by-value C calls remain deferred.
 
 ## Development
 
-Configure, build, and test the default Clang 22 development preset:
+Configure, build, and test the default Clang development preset (LLVM 22 or 23):
 
 ```sh
 cmake --preset debug

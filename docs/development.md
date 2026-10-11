@@ -2,30 +2,31 @@
 
 ## Toolchain Contract
 
-The Milestone 1 reference compiler is built as C++26. Supported development
-configurations use Clang 22 or GCC 16 with LLVM 22.x. Code may use C++26
-features implemented by both compilers; avoid relying on a single compiler's
+The Milestone 1 reference compiler is built as C++26. The pinned CI baseline
+uses Clang 22 or GCC 16 with LLVM 22.1.8. Local development also supports
+Clang 23 with LLVM 23.x. Code may use C++26 features implemented by both
+compiler families; avoid relying on a single compiler's
 experimental extension.
 
 Required tools and libraries are:
 
 - CMake 3.30 or newer and Ninja;
-- LLVM 22 development headers, libraries, tools, and CMake configuration;
+- LLVM 22 or 23 development headers, libraries, tools, and CMake configuration;
 - GoogleTest for C++ unit tests;
 - Python 3, LLVM `lit`, and `FileCheck` for language-level golden tests;
-- Clang 22 and a host C linker/runtime for executing generated LLVM IR;
+- Clang 22 or 23 and a host C linker/runtime for executing generated LLVM IR;
 - `clang-format` and `clang-tidy` for local quality checks.
 
 LLVM packages differ across distributions. CMake loads `LLVMConfig.cmake`,
-checks `LLVM_VERSION_MAJOR`, and prefers the monolithic `LLVM` target when the
-package enables `LLVM_LINK_LLVM_DYLIB`. Component libraries are the fallback.
+accepts major versions 22 and 23, and prefers the monolithic `LLVM` target when
+the package enables `LLVM_LINK_LLVM_DYLIB`. Component libraries are the fallback.
 Override discovery with `-DLLVM_DIR=/path/to/lib/cmake/llvm` when necessary.
 
 ## Dependency Policy
 
 Use system packages for the compiler toolchain, LLVM, LLD, and QEMU. Do not
 download or build these implicitly during normal CMake configuration. Keep
-LLVM on the supported major version. Existing LLVM and GoogleTest discovery
+LLVM on a supported major version. Existing LLVM and GoogleTest discovery
 continues to use `find_package`; no source fallback is currently required.
 
 For future source dependencies, use CMake `FetchContent`, not Git submodules.
@@ -57,6 +58,17 @@ The default preset uses Clang and produces `build/debug/pagosc`:
 cmake --preset debug
 cmake --build --preset debug
 ```
+
+If multiple LLVM installations are present, select the system SDK explicitly:
+
+```sh
+cmake --preset debug -DLLVM_DIR="$(llvm-config --cmakedir)"
+```
+
+This also works with LLVM 23 on rolling distributions without downgrading
+system packages. The selected SDK must include the X86, RISCV, and ARM backends;
+a GPU-only SDK such as ROCm's LLVM may not satisfy that requirement. CMake
+retains the selected path in the build cache.
 
 Use `gcc-debug` for the second supported host compiler, `release` for optimized
 builds, and `asan` for AddressSanitizer plus UndefinedBehaviorSanitizer.
@@ -334,7 +346,7 @@ python3 scripts/benchmark.py --output build/benchmarks/baseline.json
 ```
 
 The Linux measurement script uses Python and GNU `/usr/bin/time`. It measures
-five bounded workloads across `check`, `emit-mir`, and `emit-llvm`, with two
+six bounded workloads across `check`, `emit-mir`, and `emit-llvm`, with two
 warmups and seven samples each. JSON records median/range, per-process peak
 RSS, output sizes, stage counters, input/binary hashes, budgets, machine, and
 tool versions. Wall time includes process startup and the measurement wrapper;
@@ -365,6 +377,9 @@ the complete test suite, benchmark-source checks, quality checks, and the
 RV32 probe. Repeat with `--preset gcc-debug`, `asan`, and `release` for the
 full matrix. Logs and tool versions remain under `build/ci-logs/`; temporary
 build trees are removed on success or failure. Leak checks remain enabled.
+
+The CI script deliberately requires the pinned LLVM 22.1.8 baseline. For local
+LLVM 23 development, use the direct CMake, CTest, and quality commands instead.
 
 The compiler workflow runs debug/quality/RV32 on PRs and the full matrix on
 push, weekly schedule, or manual dispatch. Its Dockerfile fixes an amd64 base

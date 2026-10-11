@@ -17,6 +17,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 CASES = ["tests/lit/stage/crc32.pgs", "benchmarks/cache-hits.pgs",
          "benchmarks/specializations.pgs", "benchmarks/aggregate.pgs",
+         "benchmarks/member-projections.pgs",
          "tests/lit/mir/nested-range-loop.pgs"]
 LIMITS = ["--max-fuel=1000000", "--max-specializations=8192",
           "--max-recursion-depth=64", "--max-array-elements=65536",
