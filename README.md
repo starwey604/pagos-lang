@@ -93,6 +93,8 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
 - [Stage Model RFC](docs/stage-model-rfc.md): an example-led proposal for stage
   contracts, behavior preservation, explanations, and limited convergence;
   provenance implementation choices remain future research
+- [Provenance prototype](docs/provenance-prototype.md): representation and query
+  experiments, measurements, and the next compiler integration steps
 - [Semantic examples](docs/semantic-examples.md): executable-design cases with
   expected stages, residual work, and errors
 - [Diagnostic conventions](docs/diagnostics.md): stable structure for stage and

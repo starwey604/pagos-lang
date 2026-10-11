@@ -21,6 +21,11 @@ target_link_libraries(pagos_unit_tests
 include(GoogleTest)
 gtest_discover_tests(pagos_unit_tests DISCOVERY_MODE PRE_TEST)
 
+add_executable(pagos_provenance_tests unit/provenance_test.cpp)
+target_link_libraries(pagos_provenance_tests
+    PRIVATE Pagos::provenance_prototype GTest::gtest_main pagos_project_options)
+gtest_discover_tests(pagos_provenance_tests DISCOVERY_MODE PRE_TEST)
+
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 find_program(PAGOS_LIT NAMES lit llvm-lit HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
 find_program(PAGOS_FILECHECK NAMES FileCheck

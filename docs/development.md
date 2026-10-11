@@ -347,6 +347,11 @@ This helps distinguish machine-wide fluctuations from implementation changes.
 
 ### Regression commands
 
+The independent provenance lab compares trace paths, an append-only ID graph,
+and selective evidence interning. See the
+[prototype experiment](provenance-prototype.md) for build commands, query
+coverage, reproducible measurements, and current limitations.
+
 `python3 scripts/ci.py --preset debug --quality --rv32` runs a clean build,
 the complete test suite, benchmark-source checks, quality checks, and the
 RV32 probe. Repeat with `--preset gcc-debug`, `asan`, and `release` for the

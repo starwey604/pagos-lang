@@ -101,6 +101,18 @@ add_library(Pagos::hir ALIAS pagos_hir)
 target_include_directories(pagos_hir PUBLIC include)
 target_link_libraries(pagos_hir PUBLIC Pagos::source Pagos::values pagos_project_options)
 
+# Experimental representation/query lab. The compiler does not link this target.
+add_library(pagos_provenance_prototype lib/stage/provenance_prototype.cpp)
+add_library(Pagos::provenance_prototype ALIAS pagos_provenance_prototype)
+target_include_directories(pagos_provenance_prototype PUBLIC include)
+target_include_directories(pagos_provenance_prototype SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
+target_link_libraries(pagos_provenance_prototype
+    PUBLIC pagos_project_options PRIVATE Pagos::values)
+
+add_executable(pagos_provenance_bench tools/provenance_bench/main.cpp)
+target_link_libraries(pagos_provenance_bench
+    PRIVATE Pagos::provenance_prototype Pagos::hir pagos_project_options)
+
 add_library(pagos_vm lib/vm/evaluator.cpp)
 add_library(Pagos::vm ALIAS pagos_vm)
 target_include_directories(pagos_vm PUBLIC include)
