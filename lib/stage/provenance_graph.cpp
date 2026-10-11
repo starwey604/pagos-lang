@@ -1,4 +1,4 @@
-#include "pagos/stage/provenance_prototype.h"
+#include "pagos/stage/provenance_graph.h"
 
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SmallVector.h>
@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace pagos::stage::prototype {
+namespace pagos::stage::provenance {
 namespace {
 
 std::uint32_t checked_id(std::size_t value) {
@@ -47,35 +47,84 @@ std::uint64_t state_key(QueryState state) {
 
 } // namespace
 
-struct Store::Impl {
-    explicit Impl(Storage mode) : storage(mode) {}
-    Storage storage;
+struct GraphData {
     std::vector<Node> nodes{Node{}};
     std::vector<Edge> edges;
     std::vector<NodeId> summaries{NodeId{}};
-    llvm::DenseMap<std::uint64_t, NodeId> intern;
-    std::vector<NodeId> collision_next;
     std::size_t intern_hits{};
 };
 
-Store::Store(Storage storage) : impl_(std::make_unique<Impl>(storage)) {}
-Store::~Store() = default;
-Store::Store(Store&&) noexcept = default;
-Store& Store::operator=(Store&&) noexcept = default;
+struct Builder::Impl {
+    explicit Impl(Storage mode) : storage(mode) {}
+    Storage storage;
+    std::unique_ptr<GraphData> graph{std::make_unique<GraphData>()};
+    llvm::DenseMap<std::uint64_t, NodeId> intern;
+    std::vector<NodeId> collision_next;
+};
 
-const Node& Store::node(NodeId id) const {
+Builder::Builder(Storage storage) : impl_(std::make_unique<Impl>(storage)) {}
+Builder::~Builder() = default;
+Builder::Builder(Builder&&) noexcept = default;
+Builder& Builder::operator=(Builder&&) noexcept = default;
+
+Builder::Impl& Builder::state() {
+    if (!impl_)
+        throw std::logic_error("provenance Builder already consumed");
+    return *impl_;
+}
+const Builder::Impl& Builder::state() const {
+    if (!impl_)
+        throw std::logic_error("provenance Builder already consumed");
+    return *impl_;
+}
+
+FrozenGraph::FrozenGraph(std::shared_ptr<const GraphData> data)
+    : data_(std::move(data)) {}
+
+FrozenGraph Builder::freeze() && {
+    for (std::size_t index = 1; index < state().graph->summaries.size();
+         ++index)
+        if (state().graph->summaries[index].value == 0)
+            throw std::logic_error("unpublished provenance summary");
+    std::shared_ptr<const GraphData> data(std::move(state().graph));
+    impl_.reset(); // Discard the construction-only interning index.
+    return FrozenGraph(std::move(data));
+}
+
+const Node& FrozenGraph::node(NodeId id) const {
     if (id.value == 0)
         throw std::out_of_range("invalid provenance node");
-    return impl_->nodes.at(id.value);
+    return data_->nodes.at(id.value);
 }
-
-std::span<const Edge> Store::edges(NodeId id) const {
+std::span<const Edge> FrozenGraph::edges(NodeId id) const {
     const auto& value = node(id);
-    return std::span(impl_->edges).subspan(value.edge_begin, value.edge_count);
+    return std::span(data_->edges).subspan(value.edge_begin, value.edge_count);
+}
+StoreStats FrozenGraph::stats() const {
+    return {.nodes = data_->nodes.size() - 1,
+            .edges = data_->edges.size(),
+            .summaries = data_->summaries.size() - 1,
+            .intern_hits = data_->intern_hits,
+            .node_capacity_bytes = data_->nodes.capacity() * sizeof(Node),
+            .edge_capacity_bytes = data_->edges.capacity() * sizeof(Edge),
+            .summary_capacity_bytes =
+                data_->summaries.capacity() * sizeof(NodeId)};
 }
 
-NodeId Store::add(Rule rule, SiteId site, std::span<const Edge> inputs,
-                  std::uint32_t payload, SummaryId owner, Sharing sharing) {
+const Node& Builder::node(NodeId id) const {
+    if (id.value == 0)
+        throw std::out_of_range("invalid provenance node");
+    return state().graph->nodes.at(id.value);
+}
+
+std::span<const Edge> Builder::edges(NodeId id) const {
+    const auto& value = node(id);
+    return std::span(state().graph->edges)
+        .subspan(value.edge_begin, value.edge_count);
+}
+
+NodeId Builder::add(Rule rule, SiteId site, std::span<const Edge> inputs,
+                    std::uint32_t payload, SummaryId owner, Sharing sharing) {
     for (const auto& edge : inputs)
         (void)node(edge.target);
     const Node candidate{.rule = rule,
@@ -83,65 +132,66 @@ NodeId Store::add(Rule rule, SiteId site, std::span<const Edge> inputs,
                          .edge_count = checked_id(inputs.size()),
                          .payload = payload,
                          .owner = owner};
-    const bool intern = impl_->storage == Storage::SelectiveIntern &&
+    const bool intern = state().storage == Storage::SelectiveIntern &&
                         sharing == Sharing::Eligible && may_share(rule);
     const auto hash = intern ? key(candidate, inputs) : 0;
     NodeId first;
     if (intern) {
-        first = impl_->intern.lookup(hash);
+        first = state().intern.lookup(hash);
         for (auto current = first; current.value != 0;
-             current = impl_->collision_next.at(current.value)) {
+             current = state().collision_next.at(current.value)) {
             const auto& previous = node(current);
             if (previous.rule == rule && previous.site == site &&
                 previous.payload == payload && previous.owner == owner &&
                 std::ranges::equal(edges(current), inputs)) {
-                ++impl_->intern_hits;
+                ++state().graph->intern_hits;
                 return current;
             }
         }
     }
-    const auto id = NodeId{checked_id(impl_->nodes.size())};
-    const auto offset = checked_id(impl_->edges.size());
-    (void)checked_id(impl_->edges.size() + inputs.size());
-    // Copy before vector growth, so passing a span from this Store is safe.
+    const auto id = NodeId{checked_id(state().graph->nodes.size())};
+    const auto offset = checked_id(state().graph->edges.size());
+    (void)checked_id(state().graph->edges.size() + inputs.size());
+    // Copy before vector growth, so a span from this Builder is safe.
     const llvm::SmallVector<Edge, 4> copied(inputs.begin(), inputs.end());
-    impl_->edges.insert(impl_->edges.end(), copied.begin(), copied.end());
+    state().graph->edges.insert(state().graph->edges.end(), copied.begin(),
+                                copied.end());
     auto stored = candidate;
     stored.edge_begin = offset;
-    impl_->nodes.push_back(stored);
+    state().graph->nodes.push_back(stored);
     if (intern) {
-        impl_->collision_next.resize(impl_->nodes.size());
-        impl_->collision_next[id.value] = first;
-        impl_->intern[hash] = id;
+        state().collision_next.resize(state().graph->nodes.size());
+        state().collision_next[id.value] = first;
+        state().intern[hash] = id;
     }
     return id;
 }
 
-SummaryId Store::reserve_summary() {
-    const auto id = SummaryId{checked_id(impl_->summaries.size())};
-    impl_->summaries.push_back({});
+SummaryId Builder::reserve_summary() {
+    const auto id = SummaryId{checked_id(state().graph->summaries.size())};
+    state().graph->summaries.push_back({});
     return id;
 }
 
-void Store::define_summary(SummaryId summary, NodeId root) {
+void Builder::define_summary(SummaryId summary, NodeId root) {
     (void)node(root);
     if (summary.value == 0)
         throw std::out_of_range("invalid provenance summary");
-    auto& target = impl_->summaries.at(summary.value);
+    auto& target = state().graph->summaries.at(summary.value);
     if (target.value != 0)
         throw std::logic_error("provenance summary already published");
     target = root;
 }
 
-NodeId Store::parameter(SummaryId owner, std::uint32_t slot, SiteId site) {
-    if (owner.value == 0 || owner.value >= impl_->summaries.size())
+NodeId Builder::parameter(SummaryId owner, std::uint32_t slot, SiteId site) {
+    if (owner.value == 0 || owner.value >= state().graph->summaries.size())
         throw std::out_of_range("invalid provenance parameter scope");
     return add(Rule::Parameter, site, {}, slot, owner, Sharing::Eligible);
 }
 
-NodeId Store::call(SummaryId summary, std::span<const NodeId> arguments,
-                   SiteId site) {
-    if (summary.value == 0 || summary.value >= impl_->summaries.size())
+NodeId Builder::call(SummaryId summary, std::span<const NodeId> arguments,
+                     SiteId site) {
+    if (summary.value == 0 || summary.value >= state().graph->summaries.size())
         throw std::out_of_range("invalid provenance callee");
     llvm::SmallVector<Edge, 4> inputs;
     inputs.reserve(arguments.size());
@@ -150,13 +200,13 @@ NodeId Store::call(SummaryId summary, std::span<const NodeId> arguments,
     return add(Rule::Call, site, inputs, summary.value);
 }
 
-NodeId Store::summary_ref(SummaryId summary, SiteId site) {
-    if (summary.value == 0 || summary.value >= impl_->summaries.size())
+NodeId Builder::summary_ref(SummaryId summary, SiteId site) {
+    if (summary.value == 0 || summary.value >= state().graph->summaries.size())
         throw std::out_of_range("invalid provenance summary reference");
     return add(Rule::SummaryRef, site, {}, summary.value);
 }
 
-NodeId Store::project(NodeId aggregate, std::uint32_t member, SiteId site) {
+NodeId Builder::project(NodeId aggregate, std::uint32_t member, SiteId site) {
     auto base = aggregate;
     while (node(base).rule == Rule::Use || node(base).rule == Rule::Sequence) {
         NodeId value;
@@ -187,22 +237,24 @@ NodeId Store::project(NodeId aggregate, std::uint32_t member, SiteId site) {
     return add(Rule::Projection, site, inputs, member);
 }
 
-StoreStats Store::stats() const {
-    return {.nodes = impl_->nodes.size() - 1,
-            .edges = impl_->edges.size(),
-            .summaries = impl_->summaries.size() - 1,
-            .intern_hits = impl_->intern_hits,
-            .node_capacity_bytes = impl_->nodes.capacity() * sizeof(Node),
-            .edge_capacity_bytes = impl_->edges.capacity() * sizeof(Edge),
-            .summary_capacity_bytes =
-                impl_->summaries.capacity() * sizeof(NodeId),
-            .intern_capacity_bytes =
-                impl_->intern.getMemorySize() +
-                impl_->collision_next.capacity() * sizeof(NodeId)};
+StoreStats Builder::stats() const {
+    return {
+        .nodes = state().graph->nodes.size() - 1,
+        .edges = state().graph->edges.size(),
+        .summaries = state().graph->summaries.size() - 1,
+        .intern_hits = state().graph->intern_hits,
+        .node_capacity_bytes = state().graph->nodes.capacity() * sizeof(Node),
+        .edge_capacity_bytes = state().graph->edges.capacity() * sizeof(Edge),
+        .summary_capacity_bytes =
+            state().graph->summaries.capacity() * sizeof(NodeId),
+        .intern_capacity_bytes =
+            state().intern.getMemorySize() +
+            state().collision_next.capacity() * sizeof(NodeId)};
 }
 
-QueryResult Store::query(NodeId root, QueryKind kind, bool shortest_witness,
-                         std::size_t state_limit) const {
+QueryResult FrozenGraph::query(NodeId root, QueryKind kind,
+                               bool shortest_witness,
+                               std::size_t state_limit) const {
     (void)node(root);
     struct Visit {
         QueryState state;
@@ -230,6 +282,8 @@ QueryResult Store::query(NodeId root, QueryKind kind, bool shortest_witness,
         const auto state = queue[cursor].state;
         const auto& current = node(state.node);
         ++result.visited_states;
+        if (current.rule == Rule::Incomplete)
+            result.complete = false;
         const bool source = kind == QueryKind::Value
                                 ? current.rule == Rule::Origin ||
                                       current.rule == Rule::RuntimeBoundary
@@ -266,7 +320,7 @@ QueryResult Store::query(NodeId root, QueryKind kind, bool shortest_witness,
             continue;
         }
         if (current.rule == Rule::Call || current.rule == Rule::SummaryRef) {
-            const auto target = impl_->summaries.at(current.payload);
+            const auto target = data_->summaries.at(current.payload);
             if (target.value == 0) {
                 result.complete = false;
                 continue;
@@ -328,4 +382,4 @@ QueryResult Store::query(NodeId root, QueryKind kind, bool shortest_witness,
     return result;
 }
 
-} // namespace pagos::stage::prototype
+} // namespace pagos::stage::provenance

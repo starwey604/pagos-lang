@@ -1,0 +1,15 @@
+// RUN: not %pagosc explain-provenance %s 2>&1 | %FileCheck %s
+let revision = external_input();
+let baud = external_input();
+let clock = if revision == 1 { 80 } else { 40 };
+let divisor = clock / baud;
+comptime let config = divisor;
+// CHECK-LABEL: binding config: Runtime
+// CHECK-NEXT:   contract: Comptime
+// CHECK-NEXT:   value sources: 2 (complete)
+// CHECK-NEXT:     external_input @{{[0-9]+}}:{{[0-9]+}}
+// CHECK-NEXT:     external_input @{{[0-9]+}}:{{[0-9]+}}
+// CHECK-NEXT:   residual effects: 3 (complete)
+// CHECK:     checked arithmetic @
+// CHECK: error[E2001]:
+// CHECK: dependency path: external_input -> revision

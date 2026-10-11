@@ -1,6 +1,7 @@
 #include "pagos/stage/stage_analyzer.h"
 
 #include "pagos/vm/evaluator.h"
+#include "provenance_recorder.h"
 
 #include <algorithm>
 #include <bit>
@@ -83,6 +84,13 @@ std::optional<hir::RuntimeTrace> return_dependency(const hir::ExprPtr& value) {
 }
 
 } // namespace
+
+StageAnalyzer::StageAnalyzer(source::DiagnosticEngine& diagnostics,
+                             const sema::TypeTable& types,
+                             AnalysisLimits limits)
+    : diagnostics_(diagnostics), types_(types), limits_(limits) {}
+
+StageAnalyzer::~StageAnalyzer() = default;
 
 std::size_t StageAnalyzer::SpecializationKeyHash::operator()(
     const SpecializationKey& key) const noexcept {
@@ -364,6 +372,7 @@ hir::ExprPtr StageAnalyzer::instantiate_inline(
 
 std::unique_ptr<hir::Module>
 StageAnalyzer::analyze(const syntax::Module& module) {
+    provenance_ = std::make_unique<ProvenanceRecorder>();
     stats_ = {};
     functions_.clear();
     records_.clear();
@@ -409,6 +418,7 @@ StageAnalyzer::analyze(const syntax::Module& module) {
         const auto initializer = analyze_expression(*global.initializer);
         if (!initializer)
             continue;
+        provenance_->storage(global, initializer);
         if (!hir::is_cacheable_result(initializer)) {
             const auto find_trace = [](this auto&& self,
                                        const hir::ExprPtr& value)
@@ -475,6 +485,8 @@ StageAnalyzer::analyze(const syntax::Module& module) {
     }
     analyze_exports(module);
     result->residual_functions = std::move(residual_functions_);
+    result->provenance = provenance_->finish(*result);
+    provenance_.reset();
     return result;
 }
 
@@ -634,6 +646,7 @@ StageAnalyzer::analyze_for(const syntax::ForStmt& loop_statement) {
     index->span = loop_statement.variable_span;
     index->trace = trace;
     index->variable_name = loop_statement.variable;
+    provenance_->loop_index(index, begin, end);
 
     scopes_.emplace_back();
     define(loop_statement.variable, index);
@@ -692,6 +705,7 @@ hir::ExprPtr StageAnalyzer::analyze_binding(const syntax::BindingStmt& binding,
         value = hir::with_trace_step(value, binding.name);
     }
 
+    provenance_->binding(binding, value, output_module != nullptr);
     if (binding.binding_kind == syntax::BindingKind::Comptime &&
         value->stage == hir::Stage::Runtime && value->trace) {
         report_comptime_failure(binding, *value->trace);
@@ -887,6 +901,7 @@ hir::ExprPtr StageAnalyzer::analyze_field(const syntax::FieldExpr& expression) {
     if (constant) {
         auto value = hir::make_constant(std::move(*constant),
                                         type_of(expression), expression.span);
+        provenance_->projection(value, record, offset);
         return has_residual_work(record)
                    ? make_sequence({record}, value, expression.span)
                    : value;
@@ -1217,11 +1232,10 @@ hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
             if (has_residual_work(index)) {
                 effects.push_back(index);
             }
-            return make_sequence(std::move(effects),
-                                 hir::make_constant(std::move(*value),
-                                                    type_of(expression),
-                                                    expression.span),
-                                 expression.span);
+            auto selected = hir::make_constant(
+                std::move(*value), type_of(expression), expression.span);
+            provenance_->projection(selected, array, offset, index);
+            return make_sequence(std::move(effects), selected, expression.span);
         }
     }
     auto trace =
@@ -1688,8 +1702,12 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
         if (recursive_expansion)
             can_analyze = reserve_residual(*entry, expression.span);
     }
+    if (entry)
+        provenance_->enter_call(entry->definition, substitutions);
     auto result = can_analyze ? analyze_function_body(function, expression.span)
                               : nullptr;
+    if (entry)
+        provenance_->leave_call();
     call_stack_.pop_back();
     scopes_.pop_back();
     if (entry) {

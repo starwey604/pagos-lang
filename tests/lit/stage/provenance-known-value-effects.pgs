@@ -1,0 +1,17 @@
+// RUN: %pagosc explain-provenance %s | %FileCheck %s --check-prefix=GRAPH
+// RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=LLVM
+fn set(p: *mut u32) -> u32 { volatile *p = 42; 7 }
+runtime let dynamic = 20;
+let arithmetic = dynamic + 10;
+comptime let result = set(4096usize as *mut u32);
+// GRAPH-LABEL: binding arithmetic: Runtime
+// GRAPH-NEXT:   value sources: 1 (complete)
+// GRAPH-NEXT:     dynamic @{{[0-9]+}}:{{[0-9]+}}
+// GRAPH-NEXT:   residual effects: 0 (complete)
+// GRAPH-LABEL: binding result: Comptime
+// GRAPH-NEXT:   contract: Comptime
+// GRAPH-NEXT:   value sources: 0 (complete)
+// GRAPH-NEXT:   residual effects: 1 (complete)
+// GRAPH-NEXT:     volatile store @{{[0-9]+}}:{{[0-9]+}}
+// LLVM: store volatile i32 42,
+// LLVM: ret i32 7

@@ -1,0 +1,16 @@
+// RUN: %pagosc explain-provenance %s | %FileCheck %s
+// RUN: %run_residual %s 5 3 100
+fn increment(x: u32) -> u32 { x + 1 }
+fn choose(a: u32, b: u32) -> u32 { increment(a) }
+let a = external_input();
+let unused = external_input();
+let first = choose(a, unused);
+let second = choose(first, unused);
+// CHECK-LABEL: binding first: Runtime
+// CHECK-NEXT:   value sources: 1 (complete)
+// CHECK-NEXT:     external_input @{{[0-9]+}}:{{[0-9]+}}
+// CHECK-NEXT:   residual effects: 2 (complete)
+// CHECK-LABEL: binding second: Runtime
+// CHECK-NEXT:   value sources: 1 (complete)
+// CHECK-NEXT:     external_input @{{[0-9]+}}:{{[0-9]+}}
+// CHECK-NEXT:   residual effects: 2 (complete)

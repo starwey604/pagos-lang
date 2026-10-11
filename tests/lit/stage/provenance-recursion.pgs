@@ -1,0 +1,10 @@
+// RUN: %pagosc explain-provenance %s | %FileCheck %s
+// RUN: %run_residual %s 0 3
+fn count(n: u32) -> u32 {
+    if n == 0 { 0 } else { count(n - 1) }
+}
+let result = count(external_input());
+// CHECK-LABEL: binding result: Runtime
+// CHECK-NEXT:   value sources: 1 (partial)
+// CHECK-NEXT:     external_input @{{[0-9]+}}:{{[0-9]+}}
+// CHECK-NEXT:   residual effects: 1 (partial)

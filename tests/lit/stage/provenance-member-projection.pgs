@@ -1,0 +1,17 @@
+// RUN: %pagosc explain-provenance %s | %FileCheck %s
+// RUN: %run_residual %s 7 10 20
+// RUN: %run_optimized %s 7 10 20
+record Config { base: u32, a: u32, b: u32 }
+let config = Config(base: 7, a: external_input(), b: external_input());
+let alias = config;
+comptime let base = alias.base;
+let values = [7, config.a, config.b];
+comptime let result = values[0];
+// CHECK-LABEL: binding base: Comptime
+// CHECK-NEXT:   contract: Comptime
+// CHECK-NEXT:   value sources: 0 (complete)
+// CHECK-NEXT:   residual effects: 2 (complete)
+// CHECK-LABEL: binding result: Comptime
+// CHECK-NEXT:   contract: Comptime
+// CHECK-NEXT:   value sources: 0 (complete)
+// CHECK-NEXT:   residual effects: 2 (complete)

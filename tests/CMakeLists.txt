@@ -13,6 +13,7 @@ add_executable(pagos_unit_tests
     unit/mir_test.cpp
     unit/parser_test.cpp
     unit/stage_test.cpp
+    unit/stage_provenance_test.cpp
     unit/source_manager_test.cpp)
 target_link_libraries(pagos_unit_tests
     PRIVATE Pagos::syntax Pagos::vm Pagos::mir Pagos::stage Pagos::codegen GTest::gtest_main
@@ -23,7 +24,7 @@ gtest_discover_tests(pagos_unit_tests DISCOVERY_MODE PRE_TEST)
 
 add_executable(pagos_provenance_tests unit/provenance_test.cpp)
 target_link_libraries(pagos_provenance_tests
-    PRIVATE Pagos::provenance_prototype GTest::gtest_main pagos_project_options)
+    PRIVATE Pagos::provenance GTest::gtest_main pagos_project_options)
 gtest_discover_tests(pagos_provenance_tests DISCOVERY_MODE PRE_TEST)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)

@@ -168,6 +168,13 @@ origin and every failed `comptime` requirement can show a thaw path.
 This phase determines which regions are executable by the compile-time VM and
 which require symbolic/residual values.
 
+The current analyzer additionally builds a
+[Provenance snapshot](provenance-analysis.md). A task-owned Builder records
+evidence without feeding queries back into staging. Freezing transfers storage
+into a shared immutable graph attached to the HIR module; query scratch and
+call contexts belong to each query. Existing RuntimeTrace diagnostics remain
+in place while the new representation is validated.
+
 ### 6. Compile-time VM and partial evaluator
 
 The first implementation should use a tree/bytecode interpreter rather than

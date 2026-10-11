@@ -70,8 +70,8 @@ def main():
     cache = (binary.parent / "CMakeCache.txt").read_text()
     if "CMAKE_BUILD_TYPE:STRING=Release" not in cache:
         parser.error("use a Release CMake build")
-    sources = ["include/pagos/stage/provenance_prototype.h",
-               "lib/stage/provenance_prototype.cpp",
+    sources = ["include/pagos/stage/provenance_graph.h",
+               "lib/stage/provenance_graph.cpp",
                "tools/provenance_bench/main.cpp",
                "scripts/benchmark_provenance.py"]
     report = {
@@ -97,7 +97,8 @@ def main():
             "exclude process startup; GNU time RSS includes build and query. "
             "paths retains one source, not a complete source set. batch is "
             "independent cold witness queries for all workload bindings. "
-            "store capacity excludes allocator overhead and query temporaries. "
+            "Build includes freeze; store capacity is sampled before freeze "
+            "and excludes allocator overhead and query temporaries. "
             "C++ allocation counters exclude LLVM DenseMap's direct malloc "
             "and count requested cumulative bytes, not live memory."),
         "results": [],

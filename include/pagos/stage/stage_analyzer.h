@@ -17,6 +17,8 @@
 
 namespace pagos::stage {
 
+class ProvenanceRecorder;
+
 struct AnalysisLimits {
     std::size_t fuel{1'000'000};
     std::size_t recursion_depth{128};
@@ -46,8 +48,8 @@ struct AnalysisStats {
 class StageAnalyzer {
   public:
     StageAnalyzer(source::DiagnosticEngine& diagnostics,
-                  const sema::TypeTable& types, AnalysisLimits limits = {})
-        : diagnostics_(diagnostics), types_(types), limits_(limits) {}
+                  const sema::TypeTable& types, AnalysisLimits limits = {});
+    ~StageAnalyzer();
 
     [[nodiscard]] std::unique_ptr<hir::Module>
     analyze(const syntax::Module& module);
@@ -190,6 +192,7 @@ class StageAnalyzer {
     bool fuel_exhausted_{};
     bool construction_budget_exhausted_{};
     bool residual_budget_exhausted_{};
+    std::unique_ptr<ProvenanceRecorder> provenance_;
 };
 
 } // namespace pagos::stage

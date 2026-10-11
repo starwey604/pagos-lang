@@ -6,10 +6,9 @@
 #include <span>
 #include <vector>
 
-namespace pagos::stage::prototype {
+namespace pagos::stage::provenance {
 
-// IDs belong to one Store. Zero is invalid; callers must not persist IDs across
-// stores or reuse them as stable source identities across revisions.
+// IDs belong to one graph. Zero is invalid; they are not cross-revision keys.
 struct NodeId {
     std::uint32_t value{};
     bool operator==(const NodeId&) const = default;
@@ -35,6 +34,7 @@ enum class Rule : std::uint8_t {
     SummaryRef,
     Effect,
     Sequence,
+    Incomplete, // An aborted analysis or deliberately unavailable summary.
 };
 enum class Relation : std::uint8_t {
     Data,
@@ -102,14 +102,36 @@ struct QueryResult {
     bool recursive_call_cut{};
 };
 
-class Store {
+struct GraphData;
+
+// Cheap copies share immutable storage. Publishing a graph still requires the
+// caller's normal thread synchronization and lifetime management.
+class FrozenGraph {
   public:
-    explicit Store(Storage storage = Storage::Append);
-    ~Store();
-    Store(Store&&) noexcept;
-    Store& operator=(Store&&) noexcept;
-    Store(const Store&) = delete;
-    Store& operator=(const Store&) = delete;
+    [[nodiscard]] const Node& node(NodeId id) const;
+    [[nodiscard]] std::span<const Edge> edges(NodeId id) const;
+    [[nodiscard]] StoreStats stats() const;
+    [[nodiscard]] QueryResult query(NodeId root,
+                                    QueryKind kind = QueryKind::Value,
+                                    bool shortest_witness = false,
+                                    std::size_t state_limit = 1'000'000) const;
+
+  private:
+    friend class Builder;
+    explicit FrozenGraph(std::shared_ptr<const GraphData> data);
+    std::shared_ptr<const GraphData> data_;
+};
+
+// One task owns a Builder. Construction is not synchronized. Freeze validates
+// all summary publications and transfers storage, consuming the Builder.
+class Builder {
+  public:
+    explicit Builder(Storage storage = Storage::Append);
+    ~Builder();
+    Builder(Builder&&) noexcept;
+    Builder& operator=(Builder&&) noexcept;
+    Builder(const Builder&) = delete;
+    Builder& operator=(const Builder&) = delete;
 
     NodeId add(Rule rule, SiteId site, std::span<const Edge> edges = {},
                std::uint32_t payload = 0, SummaryId owner = {},
@@ -126,18 +148,13 @@ class Store {
     [[nodiscard]] const Node& node(NodeId id) const;
     [[nodiscard]] std::span<const Edge> edges(NodeId id) const;
     [[nodiscard]] StoreStats stats() const;
-
-    // A bounded traversal; hitting a limit never silently claims completeness.
-    // Calls instantiate contexts lazily. A recursive Call is explicitly cut;
-    // SummaryRef cycles use visited-state detection without unfolding frames.
-    [[nodiscard]] QueryResult query(NodeId root,
-                                    QueryKind kind = QueryKind::Value,
-                                    bool shortest_witness = false,
-                                    std::size_t state_limit = 1'000'000) const;
+    [[nodiscard]] FrozenGraph freeze() &&;
 
   private:
     struct Impl;
+    [[nodiscard]] Impl& state();
+    [[nodiscard]] const Impl& state() const;
     std::unique_ptr<Impl> impl_;
 };
 
-} // namespace pagos::stage::prototype
+} // namespace pagos::stage::provenance

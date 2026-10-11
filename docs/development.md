@@ -152,6 +152,7 @@ been validated; the monolithic path is the supported, tested baseline.
 build/debug/pagosc check source.pgs
 build/debug/pagosc emit-hir source.pgs
 build/debug/pagosc explain-stage source.pgs
+build/debug/pagosc explain-provenance source.pgs
 build/debug/pagosc emit-mir source.pgs
 build/debug/pagosc emit-llvm source.pgs
 build/debug/pagosc emit-obj source.pgs -o source.o
@@ -351,6 +352,13 @@ The independent provenance lab compares trace paths, an append-only ID graph,
 and selective evidence interning. See the
 [prototype experiment](provenance-prototype.md) for build commands, query
 coverage, reproducible measurements, and current limitations.
+
+The compiler also records a frozen evidence snapshot during Stage analysis.
+`explain-provenance` queries all recorded value sources and residual work for
+top-level bindings, local Comptime contracts, and storage initializers. It can
+show partial analysis alongside staging errors. See
+[Provenance analysis](provenance-analysis.md) for ownership, call contexts,
+byte-offset locations, query budgets, and recursive coverage limits.
 
 `python3 scripts/ci.py --preset debug --quality --rv32` runs a clean build,
 the complete test suite, benchmark-source checks, quality checks, and the

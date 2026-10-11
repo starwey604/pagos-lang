@@ -1,5 +1,5 @@
 #include "pagos/hir/hir.h"
-#include "pagos/stage/provenance_prototype.h"
+#include "pagos/stage/provenance_graph.h"
 
 #include <algorithm>
 #include <array>
@@ -45,7 +45,7 @@ void operator delete[](void* memory, std::size_t) noexcept {
 }
 
 namespace {
-using namespace pagos::stage::prototype;
+using namespace pagos::stage::provenance;
 using Clock = std::chrono::steady_clock;
 
 struct Observation {
@@ -85,7 +85,7 @@ class Graph {
     }
     Observation observe(NodeId root, bool witness) const {
         const auto result =
-            store_.query(root, QueryKind::Value, witness, 10'000'000);
+            graph_->query(root, QueryKind::Value, witness, 10'000'000);
         std::uint64_t checksum = 0;
         for (const auto& source : result.sources)
             checksum += source.site;
@@ -97,10 +97,16 @@ class Graph {
                 .checksum = checksum,
                 .complete = result.complete};
     }
-    StoreStats stats() const { return store_.stats(); }
+    void freeze() {
+        construction_stats_ = store_.stats();
+        graph_ = std::move(store_).freeze();
+    }
+    StoreStats stats() const { return construction_stats_; }
 
   private:
-    Store store_;
+    Builder store_;
+    std::optional<FrozenGraph> graph_;
+    StoreStats construction_stats_;
 };
 
 // Representation baseline, not another StageAnalyzer. This uses the real
@@ -188,6 +194,7 @@ class Paths {
             found == members_.end() ? aggregate : found->second.at(member);
         return add(Rule::Projection, site, std::array{Edge{selected}});
     }
+    void freeze() {}
     Observation observe(NodeId root, bool witness) const {
         const auto& trace = traces_.at(root.value);
         const bool source = trace && !trace->parameter_id;
@@ -395,6 +402,7 @@ template <typename Model> void run(Model& model, const Options& options) {
     const auto initial_allocations = allocation_counters;
     const auto begin = Clock::now();
     const auto workload = build(model, options.workload, options.size);
+    model.freeze();
     const auto built = Clock::now();
     const auto built_allocations = allocation_counters;
     Observation last;

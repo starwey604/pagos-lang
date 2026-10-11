@@ -17,6 +17,10 @@
 #include <variant>
 #include <vector>
 
+namespace pagos::stage {
+class ProvenanceAnalysis;
+}
+
 namespace pagos::hir {
 
 enum class Stage { Comptime, Runtime };
@@ -108,6 +112,9 @@ struct FunctionSummary {
 };
 
 struct Module {
+    // Optional analysis sidecar; it does not participate in lowering or
+    // staging.
+    std::shared_ptr<const stage::ProvenanceAnalysis> provenance;
     struct Global {
         std::string name;
         sema::Type type;

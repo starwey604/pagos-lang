@@ -5,6 +5,7 @@
 #include "pagos/sema/type_checker.h"
 #include "pagos/source/diagnostic.h"
 #include "pagos/source/source_manager.h"
+#include "pagos/stage/provenance_analysis.h"
 #include "pagos/stage/stage_analyzer.h"
 #include "pagos/syntax/lexer.h"
 #include "pagos/syntax/parser.h"
@@ -29,7 +30,8 @@ enum class Command {
     EmitMir,
     EmitLlvm,
     EmitObject,
-    ExplainStage
+    ExplainStage,
+    ExplainProvenance
 };
 
 struct Options {
@@ -49,7 +51,8 @@ void print_usage() {
                  "[--max-array-elements=N] [--max-array-bytes=N] "
                  "[--max-aggregate-members=N] [--max-aggregate-bytes=N] "
                  "[--target=TRIPLE] [--cpu=CPU] [--features=FEATURES] "
-                 "<check|emit-hir|emit-mir|emit-llvm|emit-obj|explain-stage> "
+                 "<check|emit-hir|emit-mir|emit-llvm|emit-obj|explain-stage|"
+                 "explain-provenance> "
                  "<source.pgs> [-o output.o]");
 }
 
@@ -70,6 +73,9 @@ std::optional<Command> parse_command(std::string_view name) {
         return Command::EmitObject;
     if (name == "explain-stage") {
         return Command::ExplainStage;
+    }
+    if (name == "explain-provenance") {
+        return Command::ExplainProvenance;
     }
     return std::nullopt;
 }
@@ -293,6 +299,9 @@ int main(int argument_count, char** arguments) {
         diagnostics, type_checker.types(), options->limits);
     auto hir_module = stage_analyzer.analyze(*syntax_module);
     if (diagnostics.has_error()) {
+        if (options->command == Command::ExplainProvenance)
+            pagos::stage::explain_provenance(*hir_module->provenance,
+                                             std::cout);
         diagnostics.render(std::cerr);
         return 1;
     }
@@ -302,6 +311,9 @@ int main(int argument_count, char** arguments) {
         return 0;
     case Command::EmitHir:
         pagos::hir::print(*hir_module, std::cout);
+        return 0;
+    case Command::ExplainProvenance:
+        pagos::stage::explain_provenance(*hir_module->provenance, std::cout);
         return 0;
     case Command::ExplainStage:
         pagos::hir::explain_stages(*hir_module, std::cout);

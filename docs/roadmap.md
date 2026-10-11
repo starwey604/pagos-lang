@@ -97,9 +97,11 @@ the typed board configuration experiment: stage contracts, behavior
 preservation, explainable results and residual work, and proposed limited
 convergence. The current staging rules remain the implementation baseline.
 
-Provenance representation, query algorithms, and their compilation costs need
-separate research before implementation. Structured explanations should first
-preserve existing stage results; convergence then needs an explicit update to
+The [Provenance analysis](provenance-analysis.md) now publishes immutable
+evidence built by each Stage analysis and supports all-source/effect queries.
+Real compilation costs, recursive fixed points, and cache boundaries need
+further measurement. It preserves existing stage results; convergence needs
+an explicit update to
 the semantics, examples, and execution tests. This work introduces no new stage
 keywords or business-code stage reflection.
 
