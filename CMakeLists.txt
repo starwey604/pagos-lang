@@ -101,6 +101,13 @@ add_library(Pagos::hir ALIAS pagos_hir)
 target_include_directories(pagos_hir PUBLIC include)
 target_link_libraries(pagos_hir PUBLIC Pagos::source Pagos::values pagos_project_options)
 
+# Versioned, target-independent cache protocols; LLVM Support stays private.
+add_library(pagos_cache lib/cache/codec.cpp lib/cache/key.cpp lib/cache/store.cpp)
+add_library(Pagos::cache ALIAS pagos_cache)
+target_include_directories(pagos_cache PUBLIC include)
+target_include_directories(pagos_cache SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
+target_link_libraries(pagos_cache PUBLIC Pagos::values pagos_project_options)
+
 # Compact provenance storage; construction and immutable queries are separate.
 add_library(pagos_provenance lib/stage/provenance_graph.cpp)
 add_library(Pagos::provenance ALIAS pagos_provenance)
@@ -125,11 +132,11 @@ target_link_libraries(pagos_sema
     PUBLIC Pagos::syntax Pagos::values pagos_project_options)
 
 add_library(pagos_stage lib/stage/stage_analyzer.cpp
-    lib/stage/provenance_analysis.cpp)
+    lib/stage/provenance_analysis.cpp lib/stage/cache_identity.cpp)
 add_library(Pagos::stage ALIAS pagos_stage)
 target_include_directories(pagos_stage PUBLIC include)
 target_link_libraries(pagos_stage
-    PUBLIC Pagos::sema Pagos::hir Pagos::vm Pagos::provenance pagos_project_options)
+    PUBLIC Pagos::sema Pagos::hir Pagos::vm Pagos::provenance Pagos::cache pagos_project_options)
 target_include_directories(pagos_stage SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
 
 add_library(pagos_mir
@@ -172,6 +179,31 @@ add_executable(pagosc tools/pagosc/main.cpp)
 target_link_libraries(pagosc
     PRIVATE Pagos::syntax Pagos::sema Pagos::stage Pagos::mir Pagos::codegen
             pagos_project_options)
+
+# Conservative compatibility identity: source/configuration changes regenerate
+# it, including dirty source changes. No timestamps or session addresses.
+file(GLOB_RECURSE PAGOS_IDENTITY_SOURCES CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/include/pagos/*.h"
+    "${CMAKE_SOURCE_DIR}/lib/*.h" "${CMAKE_SOURCE_DIR}/lib/*.cpp"
+    "${CMAKE_SOURCE_DIR}/tools/pagosc/*.cpp"
+    "${CMAKE_SOURCE_DIR}/tools/pagosc/*.h.in")
+list(SORT PAGOS_IDENTITY_SOURCES)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    ${PAGOS_IDENTITY_SOURCES})
+set(PAGOS_IDENTITY_INPUT
+    "${PROJECT_VERSION}|${CMAKE_CXX_COMPILER_ID}|${CMAKE_CXX_COMPILER_VERSION}|${CMAKE_CXX_COMPILER_TARGET}|${CMAKE_SYSROOT}|${LLVM_PACKAGE_VERSION}|${CMAKE_BUILD_TYPE}|${CMAKE_CXX_FLAGS}|${PAGOS_ENABLE_SANITIZERS}|${PAGOS_USE_LLVM_DYLIB}")
+string(TOUPPER "${CMAKE_BUILD_TYPE}" PAGOS_IDENTITY_CONFIGURATION)
+string(APPEND PAGOS_IDENTITY_INPUT "|${CMAKE_CXX_FLAGS_${PAGOS_IDENTITY_CONFIGURATION}}")
+foreach(PAGOS_IDENTITY_SOURCE IN LISTS PAGOS_IDENTITY_SOURCES)
+    file(SHA256 "${PAGOS_IDENTITY_SOURCE}" PAGOS_SOURCE_DIGEST)
+    file(RELATIVE_PATH PAGOS_SOURCE_NAME "${CMAKE_SOURCE_DIR}" "${PAGOS_IDENTITY_SOURCE}")
+    string(APPEND PAGOS_IDENTITY_INPUT "|${PAGOS_SOURCE_NAME}:${PAGOS_SOURCE_DIGEST}")
+endforeach()
+file(SHA256 "${CMAKE_SOURCE_DIR}/CMakeLists.txt" PAGOS_CMAKE_DIGEST)
+string(APPEND PAGOS_IDENTITY_INPUT "|${PAGOS_CMAKE_DIGEST}")
+string(SHA256 PAGOS_CACHE_BUILD_ID "${PAGOS_IDENTITY_INPUT}")
+configure_file(tools/pagosc/build_identity.h.in generated/build_identity.h @ONLY)
+target_include_directories(pagosc PRIVATE "${CMAKE_BINARY_DIR}/generated")
 
 include(CTest)
 if(BUILD_TESTING)

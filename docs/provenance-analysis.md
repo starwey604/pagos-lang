@@ -198,6 +198,15 @@ Stage 错误时，命令先展示已经记录的根，再输出原有诊断，�
 产物；图块缓存、失效判断及磁盘读取成本需要单独实验，当前图 ID 不承诺跨
 轮稳定。
 
+[Cache Architecture RFC](cache-architecture-rfc.md)进一步规划统一缓存底座，
+将查询失效依赖与 Stage Provenance 分开，并定义精简证据、当前调用重新
+绑定及未来冷热分块的边界。现有 FrozenGraph 的连续池和稳定视图契约保持
+原状；真正卸载需要另行设计块句柄及读取生命周期。
+[实施计划](cache-implementation-plan.md)的 C3a 先验证模块级分段二进制
+快照与独立源码位置映射。它不等于完整增量分析或已经实现证据卸载。
+[C1a](cache-identity-c1a.md)已有 checked-AST 语义指纹和 SourceAnchor
+编解码/当前位置映射；当前 Provenance 图尚未使用它们持久化 NodeId 或位置。
+
 回归测试覆盖冻结与消费、并发只读查询、快照生命周期、多来源、缓存复用、
 成员精度、副作用、局部契约、返回控制和递归部分覆盖。见
 [图单元测试](../tests/unit/provenance_test.cpp)、

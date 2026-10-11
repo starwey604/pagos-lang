@@ -99,6 +99,16 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
   immutable snapshots, real stage evidence, and `explain-provenance`
 - [Stage Evidence P0](docs/stage-evidence-p0.md): semantic reasons recorded at
   Stage decision points, implementation boundaries, and validation
+- [Cache Architecture RFC](docs/cache-architecture-rfc.md): proposed semantic
+  query boundaries, stable keys, dependency validation, budget preservation,
+  and staged experiments for persistent results and evidence
+- [Cache implementation plan](docs/cache-implementation-plan.md): six
+  iterations from stable keys and filesystem storage to reusable Comptime
+  results, binary provenance snapshots, and residual templates
+- [Cache identity C1a](docs/cache-identity-c1a.md): implemented canonical codecs,
+  stable definition fingerprints, source anchors, and cross-process validation
+- [Cache store C1b](docs/cache-store-c1b.md): filesystem manifests, immutable CAS,
+  atomic publication, conflict handling, and process recovery tests
 - [Semantic examples](docs/semantic-examples.md): executable-design cases with
   expected stages, residual work, and errors
 - [Diagnostic conventions](docs/diagnostics.md): stable structure for stage and

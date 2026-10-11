@@ -441,6 +441,23 @@ Specialization caches currently reset per analysis; any future cross-session
 cache containing target-dependent facts must include target configuration
 in its identity. These boundaries precede adding a richer effect model.
 
+The [Cache Architecture RFC](cache-architecture-rfc.md) proposes a shared
+semantic-query cache protocol, with separate incremental dependencies and
+Stage evidence. Its first experiment targets pure Comptime specialization
+results, including closed array generators, while preserving argument work
+and the existing session-local budget rules. Stable identities, resource
+recipes, and serialization precede residual-template persistence. Filesystem
+manifests, a CAS, and sectioned binary evidence snapshots are the default;
+an embedded database is optional and requires measured metadata bottlenecks.
+The [implementation plan](cache-implementation-plan.md) splits the first
+stages into six iterations. [C1a](cache-identity-c1a.md) implements canonical
+bool/integer/scalar-array codecs, stable checked-AST fingerprints and source
+anchors. The driver supplies a resolved target and compiler compatibility
+identity in an immutable `QueryContext`. Analyzer evaluation still uses its
+existing caches. [C1b](cache-store-c1b.md) adds a filesystem manifest index and
+immutable CAS, with atomic publication, bounded validation, conflict markers,
+and crash/concurrency tests. Persistent evaluation reuse remains C2 work.
+
 ### Raw target memory
 
 Pointer types carry an integer or nominal record pointee, read/write permission

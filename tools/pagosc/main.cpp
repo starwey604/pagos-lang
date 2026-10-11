@@ -1,3 +1,4 @@
+#include "build_identity.h"
 #include "pagos/codegen/llvm_codegen.h"
 #include "pagos/hir/hir.h"
 #include "pagos/mir/lowering.h"
@@ -295,8 +296,35 @@ int main(int argument_count, char** arguments) {
         return 1;
     }
 
+    // Explicit module identity and resolved target for future Stage queries.
+    // Outside the working directory, use the source's parent as its workspace.
+    std::optional<pagos::cache::QueryContext> query_context;
+    std::error_code path_error;
+    const auto source_path =
+        std::filesystem::absolute(options->source_path, path_error)
+            .lexically_normal();
+    if (!path_error) {
+        auto workspace = std::filesystem::current_path(path_error);
+        if (!path_error) {
+            auto relative = source_path.lexically_relative(workspace);
+            if (relative.empty() || *relative.begin() == "..") {
+                workspace = source_path.parent_path();
+                relative = source_path.filename();
+            }
+            const auto& config = target->config();
+            query_context = pagos::cache::QueryContext{
+                .module = {workspace.generic_string(),
+                           relative.generic_string()},
+                .target = {config.triple, config.cpu, config.features,
+                           target->data_layout(), target->pointer_bits(),
+                           target->little_endian()},
+                .compiler_build = pagos_cache_build_id,
+                .semantic_options = "pagos.staging.v1"};
+        }
+    }
     pagos::stage::StageAnalyzer stage_analyzer(
-        diagnostics, type_checker.types(), options->limits);
+        diagnostics, type_checker.types(), options->limits,
+        std::move(query_context));
     auto hir_module = stage_analyzer.analyze(*syntax_module);
     if (diagnostics.has_error()) {
         if (options->command == Command::ExplainProvenance)

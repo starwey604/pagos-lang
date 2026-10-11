@@ -111,6 +111,20 @@ selection, member projection, and conservative recursive completion. It keeps
 current language behavior and graph queries, with snapshot rule queries and tests for
 wrappers, inline instances, cached summaries, and snapshot ownership.
 
+Before expanding P1 Comptime explanations, the
+[Cache Architecture RFC](cache-architecture-rfc.md) defines the proposed
+boundaries for persistent results, dependencies, evidence, and logical budgets.
+Its C1-C4 sequence starts with stable keys and independent codecs, then a pure
+Comptime disk-cache experiment, followed by residual templates/evidence and
+incremental queries. The [implementation plan](cache-implementation-plan.md)
+splits C1-C3 into stable keys, filesystem/CAS storage, pure scalar reuse, array
+generation reuse, module evidence snapshots, and residual templates. mmap,
+compression, and database indexes require later measurements.
+[C1a](cache-identity-c1a.md) is complete: canonical codecs, checked-AST identities,
+source anchors, and driver-supplied query context. [C1b](cache-store-c1b.md)
+is complete: filesystem manifests, a CAS, atomic publication and recovery.
+C2a pure scalar reuse is next; evaluation reuse and snapshots remain planned.
+
 ## Milestone 3: Bare-metal systems slice
 
 The [M3 preparation baseline](m3-preparation.md) is complete as of 2026-09-26.
@@ -221,6 +235,11 @@ Acceptance criteria:
 - maintenance cost is compared honestly with the original configuration.
 
 ## Milestone 5: Reproducible build model
+
+The proposed [semantic cache protocol](cache-architecture-rfc.md) supplies
+shared storage and dependency infrastructure. Build actions remain separate
+from semantic queries and Stage evidence; capability inputs must record exact
+dependencies before their results can be persisted.
 
 Add:
 

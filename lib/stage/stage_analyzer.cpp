@@ -90,8 +90,10 @@ std::optional<hir::RuntimeTrace> return_dependency(const hir::ExprPtr& value) {
 
 StageAnalyzer::StageAnalyzer(source::DiagnosticEngine& diagnostics,
                              const sema::TypeTable& types,
-                             AnalysisLimits limits)
-    : diagnostics_(diagnostics), types_(types), limits_(limits) {}
+                             AnalysisLimits limits,
+                             std::optional<cache::QueryContext> query_context)
+    : diagnostics_(diagnostics), types_(types), limits_(limits),
+      query_context_(std::move(query_context)) {}
 
 StageAnalyzer::~StageAnalyzer() = default;
 

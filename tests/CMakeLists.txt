@@ -27,7 +27,28 @@ target_link_libraries(pagos_provenance_tests
     PRIVATE Pagos::provenance GTest::gtest_main pagos_project_options)
 gtest_discover_tests(pagos_provenance_tests DISCOVERY_MODE PRE_TEST)
 
+add_executable(pagos_cache_tests
+    unit/cache_codec_test.cpp unit/cache_key_test.cpp unit/cache_store_test.cpp)
+target_link_libraries(pagos_cache_tests
+    PRIVATE Pagos::stage GTest::gtest_main pagos_project_options)
+gtest_discover_tests(pagos_cache_tests DISCOVERY_MODE PRE_TEST)
+
+add_executable(pagos_cache_identity_probe cache_identity_probe.cpp)
+target_link_libraries(pagos_cache_identity_probe
+    PRIVATE Pagos::stage Pagos::codegen pagos_project_options)
+
+add_executable(pagos_cache_store_probe cache_store_probe.cpp)
+target_link_libraries(pagos_cache_store_probe
+    PRIVATE Pagos::cache pagos_project_options)
+
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME pagos-cache-identity-process
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/cache_identity_process.py
+            $<TARGET_FILE:pagos_cache_identity_probe>)
+add_test(NAME pagos-cache-store-process
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/cache_store_process.py
+            $<TARGET_FILE:pagos_cache_store_probe>)
+set_tests_properties(pagos-cache-store-process PROPERTIES TIMEOUT 60)
 find_program(PAGOS_LIT NAMES lit llvm-lit HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
 find_program(PAGOS_FILECHECK NAMES FileCheck
     HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)

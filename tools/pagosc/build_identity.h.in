@@ -1,0 +1,3 @@
+#pragma once
+
+inline constexpr char pagos_cache_build_id[] = "@PAGOS_CACHE_BUILD_ID@";

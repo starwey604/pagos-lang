@@ -2,6 +2,7 @@
 
 #include <array>
 
+#include "pagos/cache/key.h"
 #include "pagos/hir/hir.h"
 #include "pagos/sema/type_checker.h"
 #include "pagos/source/diagnostic.h"
@@ -47,13 +48,18 @@ struct AnalysisStats {
 
 class StageAnalyzer {
   public:
-    StageAnalyzer(source::DiagnosticEngine& diagnostics,
-                  const sema::TypeTable& types, AnalysisLimits limits = {});
+    StageAnalyzer(
+        source::DiagnosticEngine& diagnostics, const sema::TypeTable& types,
+        AnalysisLimits limits = {},
+        std::optional<cache::QueryContext> query_context = std::nullopt);
     ~StageAnalyzer();
 
     [[nodiscard]] std::unique_ptr<hir::Module>
     analyze(const syntax::Module& module);
     [[nodiscard]] const AnalysisStats& stats() const noexcept { return stats_; }
+    [[nodiscard]] const cache::QueryContext* query_context() const noexcept {
+        return query_context_ ? &*query_context_ : nullptr;
+    }
 
   private:
     struct BlockResult {
@@ -166,6 +172,7 @@ class StageAnalyzer {
     std::unordered_map<std::string, const syntax::Module::Record*> records_;
     const sema::TypeTable& types_;
     AnalysisLimits limits_;
+    const std::optional<cache::QueryContext> query_context_;
     AnalysisStats stats_;
     std::unordered_map<std::string, const syntax::Function*> functions_;
     std::vector<Scope> scopes_;
