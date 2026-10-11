@@ -21,8 +21,8 @@ export fn discarded(p: *const u32) -> u32 {
     7
 }
 export fn inline_effect(p: *mut u32) -> u32 {
-    static let a = set(p);
-    static let b = set(p);
+    comptime let a = set(p);
+    comptime let b = set(p);
     a + b
 }
 export fn loop(p: *mut u32, count: u32) -> u32 {

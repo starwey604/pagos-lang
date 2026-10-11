@@ -93,9 +93,10 @@ TEST(CAbi, CallsAreRuntimeEvenWhenExportedBodyIsConstant) {
 }
 
 TEST(CAbi, FailedExportDoesNotHideIndependentErrorsOrCountAsCompleted) {
-    BoundaryInput input("export fn bad(x: u32) -> u32 { static let a = x; 1 } "
-                        "export fn other() -> u32 { 1 / 0 } "
-                        "export fn good() -> u32 { 7 }");
+    BoundaryInput input(
+        "export fn bad(x: u32) -> u32 { comptime let a = x; 1 } "
+        "export fn other() -> u32 { 1 / 0 } "
+        "export fn good() -> u32 { 7 }");
     stage::StageAnalyzer analyzer(input.diagnostics, input.checker.types());
     const auto hir = analyzer.analyze(*input.syntax);
     EXPECT_EQ(input.diagnostics.size(), 2U);

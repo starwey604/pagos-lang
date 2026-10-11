@@ -34,13 +34,13 @@ bool TypeChecker::check(syntax::Module& module) {
     for (const auto& global : module.globals) {
         if (!global.storage.valid(global.writable))
             diagnostics_.error(
-                "E1014", "invalid global storage attributes", global.name_span,
+                "E1014", "invalid static storage attributes", global.name_span,
                 "use .rodata.NAME for const, .data.NAME or .bss.NAME for mut; "
                 "names use ASCII letters, digits, underscores and dots; "
                 "RELRO section prefixes are reserved");
         if (types_.pointer_bits != 32 && types_.pointer_bits != 64)
             diagnostics_.error("E1013",
-                               "global storage requires a target pointer width",
+                               "static storage requires a target pointer width",
                                global.name_span);
         if (!globals_.emplace(global.name, &global).second ||
             functions_.contains(global.name) ||
@@ -48,7 +48,7 @@ bool TypeChecker::check(syntax::Module& module) {
             global.name == "pagos_main" ||
             global.name == "pagos_external_input")
             diagnostics_.error("E1004",
-                               "duplicate or reserved global name `" +
+                               "duplicate or reserved static storage name `" +
                                    global.name + "`",
                                global.name_span);
         const auto type = types_.resolve(global.type);
@@ -64,7 +64,7 @@ bool TypeChecker::check(syntax::Module& module) {
             !integer_record)
             diagnostics_.error(
                 "E1013",
-                "global storage requires an integer, integer array, or "
+                "static storage requires an integer, integer array, or "
                 "integer-field record type",
                 global.name_span);
         if (type.is_array() &&
@@ -72,7 +72,7 @@ bool TypeChecker::check(syntax::Module& module) {
             !GlobalStorage::fits_target(type.integer_type.width, type.length,
                                         types_.pointer_bits))
             diagnostics_.error(
-                "E1013", "global storage exceeds target object size limit",
+                "E1013", "static storage exceeds target object size limit",
                 global.name_span);
         validate_type(type, global.name_span);
     }
@@ -80,7 +80,7 @@ bool TypeChecker::check(syntax::Module& module) {
         const auto actual = check_expression(*global.initializer);
         if (!compatible(types_.resolve(global.type), actual))
             type_mismatch(global.initializer->span, types_.resolve(global.type),
-                          actual, "global initializer");
+                          actual, "static storage initializer");
     }
     for (auto& function : module.functions) {
         if (function->linkage != syntax::Function::Linkage::Internal) {
@@ -390,13 +390,15 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression,
                 type = types_.resolve(global->second->type);
                 if (type.is_array() && global_storage_base != TypeKind::Array)
                     diagnostics_.error(
-                        "E1015", "global arrays require element indexing",
+                        "E1015",
+                        "static storage arrays require element indexing",
                         expression.span,
                         "use name[index] or &name[index]; whole-array values "
                         "and addresses are not supported");
                 if (type.is_record() && global_storage_base != TypeKind::Record)
                     diagnostics_.error(
-                        "E1015", "global records require field selection",
+                        "E1015",
+                        "static storage records require field selection",
                         expression.span,
                         "use name.field or &name.field; whole-record values "
                         "and addresses are not supported");
@@ -427,7 +429,7 @@ sema::Type TypeChecker::check_expression(syntax::Expr& expression,
                 diagnostics_.error(
                     "E1013",
                     "address-taking requires an unshadowed "
-                    "global name, array element, or record field",
+                    "static storage name, array element, or record field",
                     unary.span);
             else if (!operand_type.is_array()) {
                 // Whole-array addresses remain unsupported. Record names

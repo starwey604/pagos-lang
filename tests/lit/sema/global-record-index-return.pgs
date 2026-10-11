@@ -1,8 +1,8 @@
 // RUN: not %pagosc check %s 2>&1 | %FileCheck %s
 record R { value: u32 }
-global mut state: R = R(value: 0);
+static mut state: R = R(value: 0);
 fn invalid() -> u32 {
     state[if true { return 7; } else { return 8; }];
     0
 }
-// CHECK: error[E1015]: global records require field selection
+// CHECK: error[E1015]: static storage records require field selection

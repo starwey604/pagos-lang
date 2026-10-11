@@ -1,0 +1,5 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+let comptime = 7;
+// CHECK: error[E1002]: expected binding name
+// CHECK: :2:5
+// CHECK: found `comptime`

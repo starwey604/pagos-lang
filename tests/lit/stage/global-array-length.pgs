@@ -1,5 +1,5 @@
 // RUN: not %pagosc check %s 2>&1 | %FileCheck %s
 fn length() -> u32 { 3 }
-global const table: [u32; 2] = [for i in 0..length() { i }];
-// CHECK: error[E1008]: type mismatch in global initializer
+static const table: [u32; 2] = [for i in 0..length() { i }];
+// CHECK: error[E1008]: type mismatch in static storage initializer
 // CHECK: expected `[u32; 2]`, found `[u32; 3]`

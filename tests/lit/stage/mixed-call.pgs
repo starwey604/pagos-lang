@@ -10,7 +10,7 @@ runtime let input = external_input();
 let output = scale(factor, input);
 
 // HIR: fn scale(u32, u32) -> u32
-// HIR: binding factor: u32 [Static] = 4
+// HIR: binding factor: u32 [Comptime] = 4
 // HIR: binding input: u32 [Runtime] = runtime(external_input())
 // HIR: binding output: u32 [Runtime] = sequence(runtime(external_input()), call scale(runtime(external_input())) {mul(4, parameter(scale.value))})
 

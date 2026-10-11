@@ -5,6 +5,6 @@ fn choose(flag: bool) -> Config {
     Config(value: 11)
 }
 runtime let flag = external_input() != 0;
-static let result = choose(flag).value;
+comptime let result = choose(flag).value;
 // CHECK: error[E2001]
 // CHECK: dependency path: flag -> choose.flag -> return control -> field access value -> result

@@ -149,8 +149,8 @@ class StageAnalyzer {
                                              hir::ExprPtr value,
                                              source::Span span) const;
     [[nodiscard]] hir::ExprPtr resolve_return(const hir::ExprPtr& value) const;
-    void report_static_failure(const syntax::BindingStmt& binding,
-                               const hir::RuntimeTrace& trace);
+    void report_comptime_failure(const syntax::BindingStmt& binding,
+                                 const hir::RuntimeTrace& trace);
     bool check_resolved_type(const sema::Type& expected,
                              const hir::ExprPtr& value, source::Span span,
                              const std::string& context);

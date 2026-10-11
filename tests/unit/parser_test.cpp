@@ -7,6 +7,74 @@
 
 namespace {
 
+TEST(Parser, RecoversFromMalformedDeclarationsAtNewKeywords) {
+    using namespace pagos::syntax;
+    const auto source = pagos::source::SourceFile::from_text(
+        "recovery.pgs", "static const broken: u32 = ; "
+                        "comptime let answer = 7; "
+                        "comptime let missing = ; "
+                        "static mut count: u32 = 0; "
+                        "runtime let selected = 7;");
+    pagos::source::DiagnosticEngine diagnostics(source);
+    Lexer lexer(source, diagnostics);
+    const auto tokens = lexer.tokenize();
+    Parser parser(tokens, diagnostics);
+    const auto module = parser.parse_module();
+
+    ASSERT_TRUE(diagnostics.has_error());
+    ASSERT_EQ(module->globals.size(), 1U);
+    EXPECT_EQ(module->globals[0].name, "count");
+    EXPECT_TRUE(module->globals[0].writable);
+    ASSERT_EQ(module->statements.size(), 2U);
+    const auto& answer =
+        static_cast<const BindingStmt&>(*module->statements[0]);
+    EXPECT_EQ(answer.name, "answer");
+    EXPECT_EQ(answer.binding_kind, BindingKind::Comptime);
+    const auto& selected =
+        static_cast<const BindingStmt&>(*module->statements[1]);
+    EXPECT_EQ(selected.name, "selected");
+    EXPECT_EQ(selected.binding_kind, BindingKind::Runtime);
+}
+
+TEST(Parser, RejectsBlockStorageAndRecoversToFollowingBindings) {
+    using namespace pagos::syntax;
+    for (const auto* qualifier : {"const", "mut"}) {
+        SCOPED_TRACE(qualifier);
+        const auto source = pagos::source::SourceFile::from_text(
+            "local-storage.pgs",
+            std::string("fn f() -> u32 { static ") + qualifier +
+                " invalid: u32 = 0; comptime let answer = 7; answer } "
+                "fn g() -> u32 { if true { static " +
+                qualifier +
+                " invalid: u32 = 0; let value = 9; value } else { 0 } } "
+                "static const valid: u32 = 11;");
+        pagos::source::DiagnosticEngine diagnostics(source);
+        Lexer lexer(source, diagnostics);
+        const auto tokens = lexer.tokenize();
+        Parser parser(tokens, diagnostics);
+        const auto module = parser.parse_module();
+
+        ASSERT_TRUE(diagnostics.has_error());
+        ASSERT_EQ(module->globals.size(), 1U);
+        EXPECT_EQ(module->globals[0].name, "valid");
+        ASSERT_EQ(module->functions.size(), 2U);
+        const auto& body = *module->functions[0]->body;
+        ASSERT_EQ(body.statements.size(), 1U);
+        const auto& answer =
+            static_cast<const BindingStmt&>(*body.statements[0]);
+        EXPECT_EQ(answer.name, "answer");
+        EXPECT_EQ(answer.binding_kind, BindingKind::Comptime);
+        ASSERT_NE(body.tail, nullptr);
+        const auto& conditional =
+            static_cast<const IfExpr&>(*module->functions[1]->body->tail);
+        ASSERT_EQ(conditional.then_block->statements.size(), 1U);
+        const auto& value = static_cast<const BindingStmt&>(
+            *conditional.then_block->statements[0]);
+        EXPECT_EQ(value.name, "value");
+        ASSERT_NE(conditional.then_block->tail, nullptr);
+    }
+}
+
 TEST(Parser, UsizeSpellingStaysUnresolvedInAnnotationsAndLiterals) {
     using namespace pagos::syntax;
     const auto source = pagos::source::SourceFile::from_text(

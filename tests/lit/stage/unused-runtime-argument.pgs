@@ -10,4 +10,4 @@ first(5, external_input());
 let result = first(5, input);
 
 // CHECK: binding input: u32 [Runtime]
-// CHECK: binding result: u32 [Static] = sequence(runtime(external_input()), 5)
+// CHECK: binding result: u32 [Comptime] = sequence(runtime(external_input()), 5)

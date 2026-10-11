@@ -54,14 +54,14 @@ class Generator {
             if (!global.storage.section.empty() &&
                 !module_->getTargetTriple().isOSBinFormatELF())
                 return std::unexpected(
-                    "explicit global sections require an ELF target");
+                    "explicit static storage sections require an ELF target");
             auto* type = llvm_type(global.type);
             const auto bytes =
                 module_->getDataLayout().getTypeAllocSize(type).getFixedValue();
             if (!GlobalStorage::fits_target_size(bytes,
                                                  mir_module.pointer_bits))
                 return std::unexpected(
-                    "global storage exceeds target object size limit");
+                    "static storage exceeds target object size limit");
             auto* value =
                 global.type.is_record()
                     ? emit_record_constant(

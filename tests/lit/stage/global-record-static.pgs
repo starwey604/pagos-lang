@@ -1,10 +1,10 @@
 // RUN: not %pagosc check %s 2>&1 | %FileCheck %s
 record R { value: u32 }
-global const config: R = R(value: 1);
-static let read = config.value;
-static let address = &config.value;
+static const config: R = R(value: 1);
+comptime let read = config.value;
+comptime let address = &config.value;
 // CHECK: error[E2001]:
-// CHECK: global field address config.value
-// CHECK: global record read value
+// CHECK: static storage field address config.value
+// CHECK: static storage record read value
 // CHECK: error[E2001]:
-// CHECK: global field address config.value
+// CHECK: static storage field address config.value

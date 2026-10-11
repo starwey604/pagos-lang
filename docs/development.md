@@ -128,7 +128,7 @@ build/debug/pagosc emit-hir tests/lit/stage/usize-static.pgs \
 
 Preparation supports X86, RISC-V, and little-endian ARM/Thumb layout queries.
 Unknown triples, CPUs, and feature names fail explicitly before type checking.
-`usize` literal ranges, Static arithmetic, and aggregate budgets follow the
+`usize` literal ranges, Comptime arithmetic, and aggregate budgets follow the
 selected pointer width. Use the same target options for checking and emission;
 omitting them selects the host target, not a platform-independent default.
 LLVM IR includes the matching DataLayout, triple, and CPU
@@ -137,7 +137,7 @@ full target C ABI classification is still outside the supported subset.
 
 To inspect real internal function calls, emit MIR or LLVM IR for
 `tests/lit/codegen/residual-call-scalar.pgs`. Runtime scalar calls now produce
-`pagos.<name>.<id>` helpers; Static arguments are embedded in their bodies.
+`pagos.<name>.<id>` helpers; Comptime arguments are embedded in their bodies.
 Names are module-local implementation details, not linkable C API names.
 
 LLVM builds must include X86, RISCV, and ARM backends. Configure with
@@ -201,7 +201,7 @@ cache setup or atomic synchronization.
 owned by Pagos rather than C. The companion test runner inspects ELF sections,
 symbols and relocations with LLVM `llvm-readobj`, then links two independently
 compiled Pagos modules to check private-object identity and C pointer access.
-No new dependency is required. Initializers must be pure Static; global reads
+No new dependency is required. Initializers must be pure Comptime; global reads
 and `&name` are Runtime. See the
 [global storage contract](grammar.md#global-integer-storage-milestone-3).
 
@@ -260,7 +260,7 @@ Reservations precede expansion and are not refunded on early return. Cache
 hits and aliases do not reconstruct arrays. A zero array quota permits scalar
 code, but rejects any analyzed array construction.
 
-The residual-definition limit defaults to 4,096, independently of the Static
+The residual-definition limit defaults to 4,096, independently of the Comptime
 specialization limit. `residual-specializations` counts successfully analyzed
 Runtime scalar versions; `residual-cache-hits` counts their reuse, including
 active recursive backedges. A hit keeps
@@ -268,9 +268,9 @@ argument work but skips body analysis and another version charge. A miss is
 charged after successful analysis; recursive chains reserve slots before
 following recursive edges. Active reservations share the limit with completed
 versions. Fuel/depth/construction costs still apply. Exceeding the limit reports
-`E4012`. Zero allows pure Static and non-recursive inline
-Static-result calls. This quota is not a generated-byte or total-memory limit.
-All-Static-argument misses still consume the existing Static specialization
+`E4012`. Zero allows pure Comptime and non-recursive inline
+Comptime-result calls. This quota is not a generated-byte or total-memory limit.
+All-Comptime-argument misses still consume the existing Comptime specialization
 budget even when the analyzed body produces a Runtime result.
 Runtime recursion does not repeatedly enter analysis for an active key, so
 `--max-recursion-depth` limits compiler analysis depth, not target stack depth.
@@ -299,12 +299,12 @@ build/debug/pagosc emit-llvm tests/lit/stage/array-lookup.pgs
 
 The lookup example embeds one read-only table and retains a checked Runtime
 index. Arrays support nonempty one-dimensional integer/`bool` values;
-Static-index reads preserve individual element stages through aliases and
-direct calls. Inspect `tests/lit/stage/array-projection.pgs` for a Static
+Comptime-index reads preserve individual element stages through aliases and
+direct calls. Inspect `tests/lit/stage/array-projection.pgs` for a Comptime
 result that still retains an unrelated Runtime input read. Nested arrays and
 element mutation remain deferred.
 
-Generate a table with `[for i in 0..256 { i * i }]`, or use Static expressions
+Generate a table with `[for i in 0..256 { i * i }]`, or use Comptime expressions
 such as `0..1 << bits`. Bounds evaluate once before reservation; Runtime bounds
 report `E2002` with a dependency path. Source annotations still use literal
 lengths, checked against the resolved shape. Each iteration consumes fuel as
@@ -377,7 +377,7 @@ build/debug/pagosc emit-llvm tests/lit/stage/record-config.pgs
 ```
 
 The [CRC-32 walkthrough](crc32.md) demonstrates a complete generated table,
-Static check vector, Runtime checksum, and budget failures. Its differential
+Comptime check vector, Runtime checksum, and budget failures. Its differential
 test requires only the existing Python standard library (`zlib`) and host Clang;
 no additional package is needed. It checks external `-O0` and `-O2` execution.
 

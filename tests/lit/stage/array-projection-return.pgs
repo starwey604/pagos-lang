@@ -2,7 +2,7 @@
 // RUN: %run_residual %s 111 0 20 30
 fn caller(flag: bool) -> u32 {
     let table = [11, if flag { return 3; } else { external_input() }];
-    static let result = table[0];
+    comptime let result = table[0];
     result
 }
 let flag = external_input() == 1;

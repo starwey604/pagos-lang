@@ -4,8 +4,8 @@
 // RUN: %run_c_abi %s %S/../Inputs/record_pointers.c read first discard store volatile late alignment
 // RUN: %run_c_abi --optimize %s %S/../Inputs/record_pointers.c read first discard store volatile late alignment
 record State { tag: u8, count: u32, wide: u64, size: usize }
-global mut state: State = State(tag: 3u8, count: 12, wide: ~0u64, size: 16usize);
-global const config: State = State(tag: 7u8, count: 99, wide: 0u64, size: 0usize);
+static mut state: State = State(tag: 3u8, count: 12, wide: ~0u64, size: 16usize);
+static const config: State = State(tag: 7u8, count: 99, wide: 0u64, size: 0usize);
 extern fn change(p: *mut State) -> u32;
 extern fn next() -> *mut State;
 extern fn payload() -> u32;

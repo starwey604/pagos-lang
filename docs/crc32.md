@@ -1,7 +1,7 @@
 # CRC-32 Staging Demonstration
 
 The [executable example](../tests/lit/stage/crc32.pgs) is Milestone 2's
-representative static-table case. See the [baseline summary](milestone-2.md)
+representative Comptime table case. See the [baseline summary](milestone-2.md)
 for the overall scope and deferred work.
 
 ## Algorithm and scope
@@ -12,7 +12,7 @@ literals spell these constants; hexadecimal literals are not yet supported.
 This matches the CRC used by [zlib](https://github.com/madler/zlib/blob/develop/crc32.c).
 The ASCII check message `123456789` produces `0xCBF43926` (`3421780262`).
 
-`crc_entry` computes eight bit steps through bounded Static recursion.
+`crc_entry` computes eight bit steps through bounded Comptime recursion.
 `[for i in 0..256 { crc_entry(i, 8) }]` builds the complete read-only table.
 `crc_byte` advances the CRC using a checked table lookup and logical shift.
 `crc32_9` chains nine immutable states and complements the result.
@@ -36,7 +36,7 @@ python3 tests/lit/Inputs/run_crc32.py build/debug/pagosc clang \
   tests/lit/stage/crc32.pgs
 ```
 
-`table` and `known` are Static; `bytes` and `result` are Runtime. LLVM output
+`table` and `known` are Comptime; `bytes` and `result` are Runtime. LLVM output
 contains one deduplicated 256-entry constant, nine input reads, and nine table
 loads. Neither recursive table construction nor a compile-time evaluator is
 present in the residual program. Bounds checks remain; this is not a claim
@@ -63,7 +63,7 @@ Array quotas are cumulative construction limits, not compiler RSS limits.
 ## Shift safety
 
 Bitwise operations accept `u32` only. `>>` fills with zeros; `<<` discards high
-bits. An analyzed Static count outside `0..32` reports `E4009`; a Runtime count
+bits. An analyzed Comptime count outside `0..32` reports `E4009`; a Runtime count
 outside that range traps before shifting. Counts are not reduced modulo 32.
 Separate tests cover invalid counts, discarded results, early returns, and
 Runtime control flow, including optimized execution of trap paths.

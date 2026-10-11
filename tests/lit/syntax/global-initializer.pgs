@@ -1,3 +1,3 @@
 // RUN: not %pagosc check %s 2>&1 | %FileCheck %s
-global mut counter: u32;
-// CHECK: expected `=` before global initializer
+static mut counter: u32;
+// CHECK: expected `=` before static storage initializer

@@ -1,19 +1,19 @@
 // RUN: not %pagosc check %s 2>&1 | %FileCheck %s
-global const source: [u32; 2] = [1, 2];
-global mut read: [u32; 2] = [source[0], 0];
-global mut address: [usize; 2] = [&source[0] as usize, 0usize];
-global mut input: [u32; 2] = [external_input(), 0];
+static const source: [u32; 2] = [1, 2];
+static mut read: [u32; 2] = [source[0], 0];
+static mut address: [usize; 2] = [&source[0] as usize, 0usize];
+static mut input: [u32; 2] = [external_input(), 0];
 fn hidden() -> u32 { *&input[0] = 7; 0 }
-global mut effects: [u32; 2] = [hidden(), 0];
-global mut bss: [u32; 2] section(".bss.bad") = [0, 1];
-// CHECK: error[E2010]: global initializer must be pure Static
-// CHECK: global element address source
-// CHECK: global array read
-// CHECK: global initializer read
-// CHECK: error[E2010]: global initializer must be pure Static
-// CHECK: global initializer address
-// CHECK: error[E2010]: global initializer must be pure Static
-// CHECK: global initializer input
-// CHECK: error[E2010]: global initializer must be pure Static
-// CHECK: global initializer effects
+static mut effects: [u32; 2] = [hidden(), 0];
+static mut bss: [u32; 2] section(".bss.bad") = [0, 1];
+// CHECK: error[E2010]: static storage initializer must be pure Comptime
+// CHECK: static storage element address source
+// CHECK: static storage array read
+// CHECK: static storage initializer read
+// CHECK: error[E2010]: static storage initializer must be pure Comptime
+// CHECK: static storage initializer address
+// CHECK: error[E2010]: static storage initializer must be pure Comptime
+// CHECK: static storage initializer input
+// CHECK: error[E2010]: static storage initializer must be pure Comptime
+// CHECK: static storage initializer effects
 // CHECK: error[E2011]: BSS storage requires a zero initializer

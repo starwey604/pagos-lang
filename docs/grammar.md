@@ -9,7 +9,7 @@ The compiler supports `bool`, unsigned `u8/u16/u32/u64`, signed `i8/i16/i32/i64`
 target-sized unsigned `usize`, fixed-length scalar arrays, raw integer/record
 pointers, immutable bindings, functions, calls, `if` expressions, explicit stage
 constraints, and range-based `for` statements.
-Static ranges execute during analysis; Runtime ranges residualize as target
+Comptime ranges execute during analysis; Runtime ranges residualize as target
 control flow. A `return` inside an expression block or loop exits the nearest
 enclosing function, including when the compiler inlines that function.
 
@@ -24,9 +24,14 @@ starts a line comment. The source extension is `.pgs`.
 The grammar uses EBNF: `{ x }` repeats `x`, `[ x ]` makes `x` optional, and
 `( x | y )` selects an alternative.
 
+`comptime` and `static` are reserved keywords: `comptime let` constrains the
+result stage, while `static const` / `static mut` declare module-level storage.
+`global` is an ordinary identifier. The former `static let`, `global const`,
+and `global mut` spellings are rejected.
+
 ```ebnf
 source          = { global | record | function | statement } EOF ;
-global          = "global" ( "const" | "mut" ) identifier ":" storage-type
+global          = "static" ( "const" | "mut" ) identifier ":" storage-type
                   { storage-attribute } "=" expression ";" ;
 storage-type    = integer-type | "[" integer-type ";" integer "]" | identifier ;
 storage-attribute = "section" "(" quoted-section-name ")"
@@ -54,7 +59,7 @@ statement       = binding ";"
                 | expression ";"
                 | expression "=" expression ";"  (* left side must be *pointer *)
                 | for-expression ;
-binding         = [ "static" | "runtime" ] "let" identifier
+binding         = [ "comptime" | "runtime" ] "let" identifier
                   [ ":" type ] "=" expression ;
 for-expression  = "for" identifier "in" expression ".." expression block ;
 
@@ -108,7 +113,7 @@ their declared or inferred type. There are no implicit conversions in the
 core language.
 
 Ordinary scalar calls with a Runtime scalar result lower to internal residual
-functions, including direct and mutual Runtime recursion. Static calls still
+functions, including direct and mutual Runtime recursion. Comptime calls still
 evaluate during analysis; aggregate calls retain the inline path and aggregate
 recursion remains unsupported. Internal signatures are not a foreign ABI.
 
@@ -135,7 +140,7 @@ A further minus is an ordinary wrapping operation; `--128i8` is still -128.
 Signed integers use two's complement. Addition, subtraction, multiplication,
 and negation wrap modulo 2^width. Signed division truncates toward zero;
 remainder is zero or has the dividend's sign. Both `MIN / -1` and `MIN % -1`
-report `E4011` when evaluated Static, and trap at Runtime, as zero divisors do.
+report `E4011` when evaluated Comptime, and trap at Runtime, as zero divisors do.
 
 `value as u8` explicitly retains the low eight bits. Widening sign-extends a
 signed source and zero-extends an unsigned source, independently of the
@@ -151,9 +156,9 @@ type. Binary operands, including shift counts, must have the same type.
 Bitwise binary operators are strict, not short-circuiting. Right shift is
 arithmetic for signed integers and logical for unsigned integers; left shift
 discards high bits. Shift counts must be non-negative and below the width:
-an analyzed Static count outside this range reports `E4009`, even with a Runtime
+an analyzed Comptime count outside this range reports `E4009`, even with a Runtime
 left operand; a Runtime count is checked before shifting and traps if invalid.
-Unselected Static branches and skipped short-circuit operands are not evaluated.
+Unselected Comptime branches and skipped short-circuit operands are not evaluated.
 
 ## Minimal C ABI (Milestone 3)
 
@@ -176,7 +181,7 @@ in the same module. `pagos_main` and `pagos_external_input` are reserved names.
 
 Every export is analyzed/emitted, even if uncalled, with all parameters Runtime.
 Calls to either boundary are always Runtime and conservatively effectful,
-including calls to a constant-returning export with Static arguments. Normal
+including calls to a constant-returning export with Comptime arguments. Normal
 helpers inside an export still specialize. Foreign code never runs during
 compilation. Argument order, checked traps, and early returns remain unchanged.
 
@@ -229,8 +234,8 @@ No implicit permission conversion, pointer arithmetic, pointer indexing or
 ordering is provided. Explicit `usize` arithmetic computes byte addresses,
 wraps at the target width, and carries no bounds or allocation guarantee.
 
-A numeric pointer can be Static: `4096usize as *const u32` does not read memory.
-Every dereference/store remains Runtime, even at a Static address. The evaluator
+A numeric pointer can be Comptime: `4096usize as *const u32` does not read memory.
+Every dereference/store remains Runtime, even at a Comptime address. The evaluator
 never dereferences a compiler-host pointer. Pointer constants include the target
 address width; normal specialization/version budgets apply to pointer calls.
 A pointer-valued implicit test entry returns zero after preserving effects.
@@ -255,7 +260,7 @@ as substitutes for volatile device access.
 
 ```pagos
 record State { counter: u32, capacity: usize }
-global mut state: State = State(counter: 0, capacity: 16usize);
+static mut state: State = State(counter: 0, capacity: 16usize);
 fn advance(p: *mut State) -> u32 {
     *&(*p).counter = (*p).counter + 1;
     (*p).counter
@@ -271,10 +276,10 @@ recursive calls and explicit mutable-to-const casts also apply. Pointers may be
 passed or returned through the supported C ABI; local records remain value-only.
 
 `(*p).field` reads one scalar; `&(*p).field` produces a scalar pointer inheriting
-`p`'s permission. Both are Runtime even when `p` is a Static numeric address.
+`p`'s permission. Both are Runtime even when `p` is a Comptime numeric address.
 The pointer expression is evaluated once, then checked for null **before** field
 address calculation, including offset-zero fields and discarded addresses.
-Known Static null bases report `E4013`; Runtime null bases trap. Forming or
+Known Comptime null bases report `E4013`; Runtime null bases trap. Forming or
 passing a null record pointer alone remains valid. There is no implicit pointer
 dereference (`p.field`) or `->` syntax.
 
@@ -297,8 +302,8 @@ address-taking and pointer-containing/nested records remain unsupported.
 ## Global Integer Storage (Milestone 3)
 
 ```pagos
-global const limit: u32 = 100;
-global mut counter: u32 = 0;
+static const limit: u32 = 100;
+static mut counter: u32 = 0;
 
 export fn advance() -> u32 {
     *&counter = counter + 1;
@@ -307,7 +312,7 @@ export fn advance() -> u32 {
 export fn counter_address() -> *mut u32 { &counter }
 ```
 
-`global const` and `global mut` declare module-private objects with program-long
+`static const` and `static mut` declare module-private objects with program-long
 storage duration. An explicit integer, fixed-length integer-array, or
 integer-field record type and
 initializer are mandatory; scalar zero initialization uses `= 0` with the
@@ -317,16 +322,16 @@ Declarations may be referenced before their textual
 definition. Names must not collide with functions, records, globals or reserved
 intrinsics/entry symbols. Local bindings and parameters may shadow globals.
 
-Initializers must yield an exactly matching pure Static value (`E2010` on
+Initializers must yield an exactly matching pure Comptime value (`E2010` on
 Runtime work). Pure function calls are allowed under existing evaluation budgets.
 Reading another global, forming its address, calling foreign code or hiding a
-store behind a Static result is not allowed. No initialization-order dependency,
+store behind a Comptime result is not allowed. No initialization-order dependency,
 Runtime constructor, automatic initializer function or destructor is introduced.
 All declarations are checked even when unused. These are storage declarations,
 not a reinterpretation of existing top-level `let` statements.
 
 Reading a scalar global name loads its current value at Runtime, including a
-readonly object: `global const` is not a staging annotation. `&name` produces a pointer
+readonly object: `static const` is not a staging annotation. `&name` produces a pointer
 to the unshadowed global, `*const T` for readonly storage and `*mut T` for writable
 storage. Global array elements and integer record fields can also be addressed
 as described below; local bindings, parameters, temporaries and functions cannot.
@@ -336,7 +341,7 @@ or an alias pointer, not direct name assignment. Volatile accesses such as
 
 Global addresses are symbolic Runtime values resolved by object relocations and
 linking, never numeric compiler-host pointers. `&name as usize` executes at
-Runtime and cannot satisfy a Static demand. Separate live objects have distinct
+Runtime and cannot satisfy a Comptime demand. Separate live objects have distinct
 addresses, including equal-initialized readonly objects and same-named globals
 in separate modules. Pointers may cross existing C ABI function boundaries;
 global symbols themselves are not imported/exported. A readonly object must
@@ -354,9 +359,9 @@ initialization and allocation remain deferred.
 ### Global integer arrays
 
 ```pagos
-global mut buffer: [u8; 16] section(".bss.buffer") align(64) =
+static mut buffer: [u8; 16] section(".bss.buffer") align(64) =
     [for i in 0..16 { 0u8 }];
-global const squares: [u32; 16] = [for i in 0..16 { i * i }];
+static const squares: [u32; 16] = [for i in 0..16 { i * i }];
 export fn sample(index: u32) -> u32 {
     *&buffer[index] = 7u8;
     squares[index] + buffer[index] as u32
@@ -376,7 +381,7 @@ construction, so element byte offsets fit signed target address arithmetic.
 `name[index]` reads the current element at Runtime, including readonly objects;
 it does not materialize or copy the whole array. `&name[index]` yields a Runtime
 integer pointer with the object's write permission. The index is a `u32`, matching
-existing array indexing, and is evaluated exactly once. Known Static out-of-range
+existing array indexing, and is evaluated exactly once. Known Comptime out-of-range
 indices report `E4007`; Runtime out-of-range indices trap before forming the
 element address, even when the read or address result is discarded. One-past-end
 addresses are not accepted by this syntax. An index that returns early skips
@@ -400,7 +405,7 @@ Section and alignment attributes apply to the complete object, not each element;
 
 ```pagos
 record DeviceState { status: u8, counter: u32, capacity: usize }
-global mut state: DeviceState section(".data.state") align(64) =
+static mut state: DeviceState section(".data.state") align(64) =
     DeviceState(status: 0u8, counter: 0, capacity: 16usize);
 export fn advance() -> u32 {
     *&state.counter = state.counter + 1;
@@ -417,14 +422,14 @@ configuration, not identical across targets. An object's `align(...)` request
 does not change its type layout or field offsets. Padding bytes have no specified
 language value: do not use raw record bytes for serialization or equality.
 
-The initializer must be pure Static and match the nominal record type exactly;
+The initializer must be pure Comptime and match the nominal record type exactly;
 named arguments retain existing source-order evaluation and declaration-order
 field placement. `.bss.*` requires every field value to be zero. Existing
 aggregate construction budgets count logical field bytes, not padding or object
 alignment. LLVM emission additionally rejects a padded object exceeding
 `2^(pointer_bits - 1) - 1` bytes. These checks are not total-memory quotas.
 
-`name.field` creates a fresh Runtime scalar load, including `global const`.
+`name.field` creates a fresh Runtime scalar load, including `static const`.
 `&name.field` creates a symbolic Runtime integer pointer with the object's write
 permission. Writes use `*&name.field = value;` or an alias pointer; volatile
 accesses follow existing scalar rules. A captured field value is a snapshot,
@@ -444,9 +449,9 @@ C parameters or returns, nor promise compatibility with other ABIs or packing.
 ### Data subsections and alignment
 
 ```pagos
-global const limit: u32 section(".rodata.config") align(32) = 100;
-global mut seed: u32 section(".data.boot") align(64) = 37;
-global mut count: u32 section(".bss.boot") align(128) = 0;
+static const limit: u32 section(".rodata.config") align(32) = 100;
+static mut seed: u32 section(".data.boot") align(64) = 37;
+static mut count: u32 section(".bss.boot") align(128) = 0;
 ```
 
 Optional `section(...)` and `align(...)` attributes follow the declared type,
@@ -461,7 +466,7 @@ letters, digits, `_` and `.`. Other section classes, including `.text` and
 are reserved: common ELF linkers give them read-only-after-relocation semantics.
 A `.bss.*` initializer must evaluate to zero
 (`E2011` otherwise); `.data.*` allows zero as well as nonzero data and still
-emits initialized storage. Initializers retain the pure Static requirement.
+emits initialized storage. Initializers retain the pure Comptime requirement.
 Omitting `section` preserves the backend's ordinary default placement.
 
 `align(N)` requests a minimum object alignment in bytes. `N` is an unsuffixed
@@ -497,9 +502,9 @@ It neither adds write permission nor changes ownership. Store operands evaluate
 address first, value second, then access; early returns skip the access.
 Each executed read/write is observable, including discarded reads and repeated
 identical stores. Binding a read captures one snapshot; reusing that binding
-does not read again. Static branches may omit unexecuted accesses.
+does not read again. Comptime branches may omit unexecuted accesses.
 
-Both operations are always Runtime. Constant addresses, Static-result helpers
+Both operations are always Runtime. Constant addresses, Comptime-result helpers
 and reused specializations must not cause host access, result memoization or
 loss of effects. The compiler preserves volatile access counts and their order
 relative to other volatile accesses. It is not a general ordering barrier for
@@ -544,7 +549,7 @@ Two differently named records remain distinct even with identical fields.
 Function parameters/results, annotations, and continuing `if` arms must agree
 on the nominal type. An aggregate-valued implicit entry returns zero.
 
-A record is Static when every field is Static. Field selection preserves
+A record is Comptime when every field is Comptime. Field selection preserves
 individual stages through aliases, call parameters, and direct returns, but
 must retain evaluation of every initializer, including reads, traps, and returns.
 Explicit Runtime record boundaries and Runtime branch/call-result selection
@@ -571,51 +576,51 @@ are not part of this slice.
 ```pagos
 fn square(x: u32) -> u32 { x * x }
 fn lookup(table: [u32; 3], index: u32) -> u32 { table[index] }
-static let squares: [u32; 3] = [square(0), square(1), square(2)];
-static let folded = squares[2];
+comptime let squares: [u32; 3] = [square(0), square(1), square(2)];
+comptime let folded = squares[2];
 let selected = lookup(squares, external_input());
 ```
 
 Elements evaluate left-to-right, then indexing evaluates the array before its
-`u32` index. A constructed array is Static only when every element is Static,
-but a Static index into a mixed array inherits the selected element's stage.
+`u32` index. A constructed array is Comptime only when every element is Comptime,
+but a Comptime index into a mixed array inherits the selected element's stage.
 Aliases, call parameters, and directly returned arrays preserve that precision.
-Selecting a Static element folds its value while preserving evaluation of the
+Selecting a Comptime element folds its value while preserving evaluation of the
 entire array and the index, including unused reads, traps, and early returns.
 An explicit `runtime let` array boundary, Runtime branch/call-result selection,
 or Runtime index keeps the read Runtime, even when values happen to agree.
-An analyzed Static index outside the type's length reports `E4007`; a Runtime
+An analyzed Comptime index outside the type's length reports `E4007`; a Runtime
 index is checked before memory access and traps if out of bounds.
-Static tables used by residual indexing are embedded as deduplicated read-only
+Comptime tables used by residual indexing are embedded as deduplicated read-only
 LLVM constants. Runtime arrays remain ordinary immutable value aggregates.
 The implicit entry returns zero when its final value is an array.
 
 ### Bulk array generation
 
 `[for i in 0..256 { i * i }]` constructs a 256-element array in ascending
-index order. Both bounds must evaluate to Static `u32` values, and the end
+index order. Both bounds must evaluate to Comptime `u32` values, and the end
 must exceed the start. Its type has length `end - start`; each body
-must produce an integer or `bool`. The immutable index is Static and
+must produce an integer or `bool`. The immutable index is Comptime and
 scoped to each iteration. A body may call functions, bind locals, or return from
 the enclosing function. A definite return stops generation; Runtime returns
 remain residual.
 
 ```pagos
 fn square(i: u32) -> u32 { i * i }
-static let bits = 8;
-static let table: [u32; 256] = [for i in 0..1 << bits { square(i) }];
+comptime let bits = 8;
+comptime let table: [u32; 256] = [for i in 0..1 << bits { square(i) }];
 let result = table[external_input()];
 ```
 
 Bounds evaluate once, start then end, in the enclosing scope before the index
-binding exists. Static names, arithmetic, function calls, array indexing, and
+binding exists. Comptime names, arithmetic, function calls, array indexing, and
 record fields are accepted. The two values determine the length before the
 element vector is allocated or the body runs. Each function specialization
 resolves its own length. Bounds use ordinary `u32` arithmetic, including wrap;
 an analyzed empty or reversed range reports `E1005`, without unsigned subtraction.
 An analyzed Runtime bound reports `E2002` with its dependency path.
 
-Bound evaluation may retain Runtime effects while producing a Static value.
+Bound evaluation may retain Runtime effects while producing a Comptime value.
 Those effects precede body effects, including on cache hits. A definite return
 in a bound exits the enclosing function without reserving the outer array;
 a conditional Runtime return remains residual. Bound expressions consume normal
@@ -626,16 +631,16 @@ this is not dependent typing or dynamic allocation. Length constraints involving
 computed generators are deferred until their expressions are analyzed: binding
 annotations, call arguments, explicit returns, and function tails must agree
 with the resolved shape (`E1008`). Runtime branch continuations must agree too.
-A Static branch resolves only its selected arm; lengths in skipped arms and
+A Comptime branch resolves only its selected arm; lengths in skipped arms and
 uncalled function bodies are not evaluated. Ordinary name and element-type
 checking still covers those bodies, and known literal shape mismatches remain
 type errors. No unresolved length reaches residual HIR/MIR values.
 
-The body follows ordinary staging and evaluation-order rules. All-Static
+The body follows ordinary staging and evaluation-order rules. All-Comptime
 elements become an embedded table; mixed elements preserve per-element stages
 and residual effects. Runtime bounds, empty ranges, nested array
 elements, and mutation are not supported. Both Runtime branches are analyzed
-and budgeted; unselected Static branches do not generate or consume budget.
+and budgeted; unselected Comptime branches do not generate or consume budget.
 
 Array construction has cumulative per-analysis quotas, charged before reserve
 or body evaluation: `--max-array-elements` (default 65,536 slots) and
@@ -664,8 +669,8 @@ Reservations are cumulative per analysis and precede member-vector allocation
 and initializer/body evaluation. Failed reservations change no counters and
 only the first construction-budget failure is reported. Successful reservations
 are not refunded on early return, discarded results, or later failure.
-Unselected Static branches do not construct; both Runtime branches are charged.
-Static loops/generators charge each analyzed construction, while Runtime loop
+Unselected Comptime branches do not construct; both Runtime branches are charged.
+Comptime loops/generators charge each analyzed construction, while Runtime loop
 bodies charge during analysis, not per target iteration. Aliases/projections
 and cached results incur no reconstruction charge, but freshly constructed call
 arguments are charged even when the call hits a cache entry.

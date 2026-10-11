@@ -17,9 +17,9 @@ TEST(Target, UsizeAnalysisIsSessionLocalAndDoesNotMutateSyntax) {
     const auto source = source::SourceFile::from_text(
         "usize.pgs", "record R { size: usize } "
                      "fn read(a: [usize; 2]) -> usize { return a[1]; } "
-                     "static let maximum: usize = ~0usize; "
-                     "static let r = R(size: maximum); "
-                     "static let result = read([1usize, r.size]) as u64;");
+                     "comptime let maximum: usize = ~0usize; "
+                     "comptime let r = R(size: maximum); "
+                     "comptime let result = read([1usize, r.size]) as u64;");
     source::DiagnosticEngine diagnostics(source);
     syntax::Lexer lexer(source, diagnostics);
     const auto tokens = lexer.tokenize();

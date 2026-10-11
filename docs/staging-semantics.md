@@ -3,19 +3,24 @@
 Status: normative Milestone 0 baseline for the core grammar. Sections marked as
 open questions remain non-normative.
 
+The [Stage Model RFC](stage-model-rfc.md) explains the broader semantic model
+with examples and proposes limited stage convergence. Its proposed extensions
+do not change the current rules below; provenance representation and algorithms
+remain separate design work.
+
 ## 1. Stages
 
 Pagos begins with a two-point binding-time lattice:
 
 ```text
-Static <= Runtime
+Comptime <= Runtime
 
-join(Static, Static)   = Static
-join(Static, Runtime)  = Runtime
-join(Runtime, Runtime) = Runtime
+join(Comptime, Comptime) = Comptime
+join(Comptime, Runtime)  = Runtime
+join(Runtime, Runtime)  = Runtime
 ```
 
-`Static` means the compiler can produce the value during compilation under the
+`Comptime` means the compiler can produce the value during compilation under the
 permitted compile-time effects. `Runtime` means the residual target program
 must produce or carry the value.
 
@@ -27,29 +32,29 @@ Frozen and thawed are explanatory aliases:
 
 | Formal term | Diagnostic metaphor |
 | --- | --- |
-| `Static` | frozen |
+| `Comptime` | frozen |
 | `Runtime` | thawed |
 | runtime dependency propagation | thaw path |
 
 The stage is a property of values and operations. It is distinct from
-mutability: a static value may be mutated by the compile-time evaluator, and an
-immutable binding may contain a runtime value.
+mutability: a Comptime value may be mutated by the compile-time evaluator, and
+an immutable binding may contain a runtime value.
 
 ## 2. Binding forms
 
 Core surface forms:
 
 ```pagos
-let a = expression;          // infer stage
-static let b = expression;   // require Static
-runtime let c = expression;  // introduce or require Runtime
+let a = expression;           // infer stage
+comptime let b = expression;  // require Comptime
+runtime let c = expression;   // introduce or require Runtime
 ```
 
-An unqualified binding does not mean "always Static." It requests the most
-static valid result. If the initializer depends on runtime data, the binding is
-Runtime.
+An unqualified binding does not mean "always Comptime." It requests a Comptime
+result whenever the propagation rules permit it. If the initializer depends on
+runtime data, the binding is Runtime.
 
-`static` adds a constraint rather than an optimization hint. Failure is a
+`comptime` adds a constraint rather than an optimization hint. Failure is a
 compile error and should include the shortest useful runtime dependency path.
 
 `runtime` is a semantic boundary, not an anti-optimization annotation. LLVM may
@@ -63,9 +68,9 @@ memory allocation in residual code.
 ## 3. Expression propagation
 
 For a strict pure primitive operation, the result stage is the join of the
-operand stages. Static operands are evaluated immediately. Runtime operations
-are emitted into residual IR with static operands materialized as constants.
-`&&` and `||` first evaluate their left operand; a Static left operand that
+operand stages. Comptime operands are evaluated immediately. Runtime operations
+are emitted into residual IR with Comptime operands materialized as constants.
+`&&` and `||` first evaluate their left operand; a Comptime left operand that
 determines the result prevents the right operand from thawing the expression.
 
 Analysis should be value- and field-sensitive:
@@ -73,14 +78,14 @@ Analysis should be value- and field-sensitive:
 ```pagos
 record Config { clock_hz: u32, revision: u32 }
 let config = Config(clock_hz: 80_000_000, revision: external_input());
-static let clock = config.clock_hz;
+comptime let clock = config.clock_hz;
 ```
 
 The runtime `revision` field must not thaw `clock_hz` or unrelated device
 topology. Minimal named records now implement this rule for integer/`bool`
 fields. Field precision is an analysis property, not a stage annotation in the
 record type. Constructors evaluate named initializers in source order, then
-store values in declaration order. A Static field read preserves all constructor
+store values in declaration order. A Comptime field read preserves all constructor
 work and may therefore still require Runtime reads, traps, or early returns.
 Aliases, parameters, and direct returns retain precision; explicit Runtime
 boundaries and Runtime branch/call-result selection remain opaque, as for arrays.
@@ -88,11 +93,11 @@ Records are nominal, immutable, and have no structural equality or stable ABI.
 See [Minimal Records](grammar.md#minimal-records-milestone-2).
 
 Fixed-length array construction retains each element's stage. The array as a
-whole is Static only when every element is Static, but a Static index selects
+whole is Comptime only when every element is Comptime, but a Comptime index selects
 that element's stage and dependency path rather than joining unrelated
 elements. This precision survives aliases, call parameters, and direct returns.
-For example, `[11, external_input()][0]` is Static `11`; the input read still
-executes exactly once. A Static value need not be free of residual work.
+For example, `[11, external_input()][0]` is Comptime `11`; the input read still
+executes exactly once. A Comptime value need not be free of residual work.
 
 Explicit `runtime let` array boundaries and Runtime control selecting an array
 (including per-call return joins) keep every projection Runtime. A Runtime
@@ -114,7 +119,7 @@ path through the function body; an unused Runtime argument does not by itself
 thaw the result.
 
 Value stage and residual execution are separate: a call can produce a known
-Static constant while still requiring Runtime work. Statements execute in
+Comptime constant while still requiring Runtime work. Statements execute in
 source order and arguments are evaluated left-to-right before the callee body,
 including unused arguments. Discarding a value must preserve required reads,
 checked-arithmetic traps, and residual loops. A binding denotes one evaluation;
@@ -137,17 +142,17 @@ Runtime. Backend strength reduction, such as replacing multiplication by a
 shift, is outside the staging semantics.
 
 Calls with scalar arguments (`bool` or integers) and a Runtime scalar result
-now produce internal residual functions and typed MIR/LLVM calls. Typed Static
+now produce internal residual functions and typed MIR/LLVM calls. Typed Comptime
 values remain embedded in the specialized body; Runtime values become generic
 parameters. All argument work executes once, left-to-right in the caller,
-including Static arguments whose evaluation has Runtime effects. Such effects
+including Comptime arguments whose evaluation has Runtime effects. Such effects
 are not embedded in the shared definition or included in its key.
 Nested calls, loop-index arguments, checked traps, and early returns retain
 their existing semantics. A callee's return never exits its caller.
 
 Equivalent scalar specializations reuse both staging results and residual
 definitions within one analysis. The key contains source-function identity,
-typed Static values, and Runtime parameter positions/types. Target configuration
+typed Comptime values, and Runtime parameter positions/types. Target configuration
 is fixed for the session, and all caches reset between analyses. Each call is
 still a separate execution: sharing code never memoizes Runtime results or
 merges reads/traps. Symbolic parameter provenance is rebound at the call site,
@@ -156,43 +161,43 @@ so cache hits report the current caller's dependency path.
 `--max-residual-specializations` defaults to 4,096 versions. Non-recursive
 misses are charged after successful body analysis, before publication. Runtime
 recursive chains reserve slots before following recursive edges, including
-expansion through changing Static arguments with Runtime parameters. Completed
+expansion through changing Comptime arguments with Runtime parameters. Completed
 definitions and active reservations share the limit; failed active reservations
 are released. Hits use no extra slot. Fuel/depth/construction limits protect
 analysis too. Exceeding the count produces `E4012`, never a silent staging
 fallback. Zero permits programs needing no residual definitions. This is not
 a machine-code-size or process-memory limit. `explain-stage` reports
-`residual-specializations` and `residual-cache-hits` separately from the Static
+`residual-specializations` and `residual-cache-hits` separately from the Comptime
 cache statistics; the hit counter includes active recursive backedges, not
 target executions. The version statistic counts completed definitions. Body
 constructions are counted once per analyzed definition;
 call-argument constructions still occur on every call.
-An all-Static-argument miss also consumes the existing Static specialization
+An all-Comptime-argument miss also consumes the existing Comptime specialization
 budget, even if its body returns Runtime; a residual hit consumes neither
-another Static specialization nor another residual version.
-Calls with aggregate arguments/results, and non-recursive Static-result calls
+another Comptime specialization nor another residual version.
+Calls with aggregate arguments/results, and non-recursive Comptime-result calls
 with residual effects, continue through the existing inline HIR path. This
 preserves precise aggregate projections and known results; Runtime work alone does not
 force the result to Runtime. Internal signatures are not a public C ABI.
 
-The compiler memoizes specializations by function identity, static arguments,
+The compiler memoizes specializations by function identity, Comptime arguments,
 target configuration, and relevant effect dependencies. It must enforce a
 specialization budget to prevent accidental code-size explosion.
 
-The separate Static-result cache applies when every argument and the result
-are Static and evaluating the specialized body has no residual work.
+The separate Comptime-result cache applies when every argument and the result
+are Comptime and evaluating the specialized body has no residual work.
 Argument evaluation is preserved separately, including on cache hits. Its key
 contains function identity and the typed argument constants; target
 configuration is fixed for each analysis and the cache resets between analyses;
 future cross-session caching must include target and effect dependencies.
 Record keys contain the nominal name and typed scalar fields in declaration
 order, so reordered initializers share a key without reordering their effects.
-Static recursion is permitted when selected
-Static branches change the arguments and terminate within the configured fuel,
-depth, and specialization limits. Re-entering a pure Static active key is a
-recursive specialization cycle (`E4003`). A different all-Static key still
+Comptime recursion is permitted when selected
+Comptime branches change the arguments and terminate within the configured fuel,
+depth, and specialization limits. Re-entering a pure Comptime active key is a
+recursive specialization cycle (`E4003`). A different all-Comptime key still
 evaluates normally, even when reached from a Runtime version of that function.
-Such expansion remains subject to Static fuel/depth/specialization budgets.
+Such expansion remains subject to Comptime fuel/depth/specialization budgets.
 
 Scalar direct and mutual Runtime recursion use predeclared signatures. An
 active key with Runtime parameters, or Runtime work already encountered in its
@@ -214,8 +219,8 @@ slice.
 
 `extern fn` imports and `export fn` definitions have fixed, unspecialized
 `u32/i32` or integer-pointer signatures. Their calls always remain Runtime and
-conservatively effectful, even with Static arguments or a known constant body.
-They cannot satisfy `static let`, and foreign code is never invoked by the evaluator.
+conservatively effectful, even with Comptime arguments or a known constant body.
+They cannot satisfy `comptime let`, and foreign code is never invoked by the evaluator.
 Each call preserves left-to-right argument work and its own effect identity;
 aliasing a call result does not execute the call again.
 
@@ -226,11 +231,11 @@ export reserves one residual-definition slot, even if unused; imported
 declarations consume none. Completed export bodies count in
 `residual-specializations`, but boundary calls are not specialization-cache hits.
 Fuel/depth/construction limits apply to analyzing an export, not each target
-invocation. `static let` failures identify the C parameter or boundary call.
+invocation. `comptime let` failures identify the C parameter or boundary call.
 
 ## 5. Control flow
 
-### Static condition
+### Comptime condition
 
 Both branches must parse, resolve names, and type-check. Only the selected
 branch is executed and contributes effects or residual code. The result stage
@@ -240,7 +245,7 @@ is the selected branch's stage.
 
 The conditional is emitted to residual IR. Both reachable branches must be
 valid runtime code. Its value is Runtime because branch selection depends on
-Runtime control, even if both branch values are Static. Compile-time effects
+Runtime control, even if both branch values are Comptime. Compile-time effects
 may not be conditionally performed under Runtime control.
 
 In the following example, `build_u32()` denotes an intrinsic with the
@@ -253,37 +258,37 @@ let value = if enabled { build_u32() } else { 0 };
 // error: compile-time effect under Runtime control
 ```
 
-Static loops execute in the compile-time evaluator. Runtime loops residualize.
-For the core range form, a loop is Static when both bounds are Static; each
-iteration variable is a new Static binding. If either bound is Runtime, the
+Comptime loops execute in the compile-time evaluator. Runtime loops residualize.
+For the core range form, a loop is Comptime when both bounds are Comptime; each
+iteration variable is a new Comptime binding. If either bound is Runtime, the
 loop, its iteration variable, and values selected by its control are Runtime.
 Compile-time effects are forbidden inside a Runtime loop. Compile-time loops
 are subject to fuel and memory limits.
 
-`return` exits the enclosing function from any nesting depth. Under Static
+`return` exits the enclosing function from any nesting depth. Under Comptime
 control the evaluator stops that path immediately. Under Runtime control it
 emits an edge to the current call's result merge; it does not return from the
 caller. Only paths that continue can execute later statements, operands, or
 loop increments. A zero-trip loop reaches the function's fallthrough result.
 If Runtime control selects an early return versus a later result, the call
-result is Runtime even when the individual returned values are Static. Its
+result is Runtime even when the individual returned values are Comptime. Its
 dependency path includes the controlling source and `return control`.
 
 Short-circuit expressions follow the same control rule: a statically skipped
 right operand performs no effect, while a right operand selected by a Runtime
 left operand is under Runtime control.
 
-Static-bound array generators expand in ascending index order with a fresh
-Static index per iteration. The body follows the same staging, effect-order,
-and enclosing-function return rules as a Static loop; only scalar continuation
+Comptime-bound array generators expand in ascending index order with a fresh
+Comptime index per iteration. The body follows the same staging, effect-order,
+and enclosing-function return rules as a Comptime loop; only scalar continuation
 values become array elements. A Runtime body does not make the length dynamic.
 Unlike statement loops, generators reject Runtime bounds (`E2002`). Each bound
-is evaluated once, left-to-right, before reservation and expansion; Static
+is evaluated once, left-to-right, before reservation and expansion; Comptime
 values may still retain residual effects and early returns. A specialization
 resolves its own array length, and deferred shape constraints are checked before
-residualization. Computed shape obligations in skipped Static arms or uncalled
+residualization. Computed shape obligations in skipped Comptime arms or uncalled
 functions are not evaluated; Runtime branch continuations must have equal shapes.
-Static selection skips unselected generators; Runtime branches are both
+Comptime selection skips unselected generators; Runtime branches are both
 analyzed and charged against cumulative array quotas. Construction inside a
 Runtime loop is charged when analyzed, not on each target execution. Bounds,
 reservation rules, and defaults are specified in
@@ -316,8 +321,8 @@ network access.
 Raw pointer access does not require an `unsafe` keyword or a borrow checker.
 Memory validity is the programmer's responsibility, subject to the
 [pointer contract](grammar.md#raw-pointers-and-memory-milestone-3).
-Numeric address construction/conversion may be Static, but loads/stores are
-always residual work. A Static-result helper may still retain stores; neither
+Numeric address construction/conversion may be Comptime, but loads/stores are
+always residual work. A Comptime-result helper may still retain stores; neither
 result caching nor specialization reuse may suppress them. Repeated reads are
 distinct computations, whereas an alias of an already-read value is a snapshot.
 Runtime stores are ordered after their address/value computations and before
@@ -332,19 +337,20 @@ validity and volatile device validity are different obligations; consult the
 [volatile rules](grammar.md#volatile-access-and-mmio-milestone-3) for alignment,
 target-width limits and the absence of synchronization/barrier guarantees.
 
-Global storage initialization is a separate Static-only boundary: its value
+Global storage initialization is a separate Comptime-only boundary: its value
 must be a pure integer or integer array and may not retain Runtime work, even
-behind a Static helper result. Storage qualifiers `global const`/`global mut` are independent
-of binding time. A global-name read is Runtime, and global addresses remain
-symbolic Runtime values until relocation/linking. No global read is memoized
-as its initializer, and taking an address never exposes compiler-host storage.
+behind a Comptime helper result. Storage qualifiers `static const`/`static mut`
+are independent of binding time. A global-name read is Runtime, and global
+addresses remain symbolic Runtime values until relocation/linking. No global
+read is memoized as its initializer, and taking an address never exposes
+compiler-host storage.
 Section/alignment metadata does not change staging or trigger Runtime work.
-A `.bss.*` object's pure Static initializer must additionally evaluate to zero;
+A `.bss.*` object's pure Comptime initializer must additionally evaluate to zero;
 even an unused invalid declaration is rejected.
 Global-array initializer generators use the existing construction budgets and
 must resolve to the declared length. Element reads and addresses remain Runtime,
-even for a readonly table and a Static index; their checked-address operation
-retains index effects and possible traps when its result is discarded. A Static
+even for a readonly table and a Comptime index; their checked-address operation
+retains index effects and possible traps when its result is discarded. A Comptime
 helper result does not make an initializer with such residual work admissible.
 
 `build.fs` and `build.env` calls record exact dependencies for incremental and
@@ -354,7 +360,7 @@ compile-time process spawning.
 
 ## 7. Cross-stage persistence
 
-A static value used by residual code must be representable in the target
+A Comptime value used by residual code must be representable in the target
 program. This requires a language concept tentatively called `Embed`:
 
 - fixed-width scalars, arrays, enums, and layout-known records are normally
@@ -383,7 +389,7 @@ operand. Directly negated signed literals are checked with their sign, allowing
 Unsuffixed negative expressions remain invalid because the operand is `u32`.
 
 Integer addition, subtraction, multiplication, and signed negation wrap modulo
-2^width at both stages. Division or remainder by zero is an error during Static
+2^width at both stages. Division or remainder by zero is an error during Comptime
 evaluation (`E4001`) and
 a defined runtime trap in residual code. Comparisons produce `bool`. The
 evaluator must implement these rules explicitly and must not inherit the host
@@ -391,7 +397,7 @@ C++ integer model.
 
 Signed values use two's complement. Division truncates toward zero and
 remainder has the dividend's sign (or is zero). `MIN / -1` and `MIN % -1`
-report `E4011` during Static evaluation and trap at Runtime. Runtime code checks
+report `E4011` during Comptime evaluation and trap at Runtime. Runtime code checks
 both this pair and zero divisors before executing `sdiv` or `srem`, even when
 the result is discarded. Negating `MIN`, unlike dividing it by -1, wraps to
 `MIN`. Signed comparisons use signed ordering; equality compares typed bits.
@@ -399,14 +405,14 @@ the result is discarded. Negating `MIN`, unlike dividing it by -1, wraps to
 Strict integer bitwise operators are `&`, `|`, `^`, and complement `~`.
 `<<` shifts left modulo 2^width; `>>` sign-fills signed integers and zero-fills
 unsigned integers. Both operands have the same integer type and evaluate
-left-to-right. A Static
+left-to-right. A Comptime
 shift count below zero or at least as large as the width reports `E4009` when
 analyzed, even if the left operand is Runtime. A Runtime count is checked before
 execution;
 invalid counts trap, including in discarded expressions. Counts are never
 implicitly masked. Explicit Runtime boundaries remain opaque to staging.
 The LLVM backend must not execute an out-of-range shift or add overflow/exact
-flags that contradict these rules. Static and residual evaluation agree at
+flags that contradict these rules. Comptime and residual evaluation agree at
 counts 0 and width minus one and on discarded high bits.
 
 Explicit `as` conversions retain low bits when narrowing; widening sign-extends
@@ -427,13 +433,13 @@ range bounds/indices, and array indices remain `u32`. This is a test ABI,
 not general C ABI support.
 
 `usize` is unsigned and follows the selected target DataLayout pointer width,
-including during literal checking and Static evaluation on a different host.
+including during literal checking and Comptime evaluation on a different host.
 It is not an alias for `u32`/`u64`; conversions must be explicit even when widths
 match. Its shifts, wrapping arithmetic, casts, and logical construction budgets
 use that width. The CLI resolves one target before type checking for every
 command. HIR/MIR retain the semantic pointer width even if all target-dependent
 work folds away; emission with a different pointer width is rejected.
-Static results computed at a different pointer width must not be reused.
+Comptime results computed at a different pointer width must not be reused.
 
 Floating point, implicit conversions, and `isize` remain outside the
 core grammar.
@@ -454,8 +460,8 @@ pagosc emit-mir source.pgs
 Example constraint failure:
 
 ```text
-error: static binding `table` was thawed
-  --> board.pgs:18:12
+error: comptime binding `table` was thawed
+  --> board.pgs:18:14
 
 runtime source introduced here:
   --> board.pgs:7:28

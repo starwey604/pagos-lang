@@ -1,6 +1,6 @@
 // RUN: not %pagosc check %s 2>&1 | %FileCheck %s
-static let address = 4096usize as *const u32;
-static let result = volatile *address;
+comptime let address = 4096usize as *const u32;
+comptime let result = volatile *address;
 // CHECK: error[E2001]:
 // CHECK: volatile load
 // CHECK: result

@@ -50,11 +50,12 @@ Evaluator::unary(syntax::UnaryOperator operation,
     case syntax::UnaryOperator::VolatileDereference:
         return std::unexpected(EvaluationError{
             .code = "E4013",
-            .message = "target memory cannot be read by the Static evaluator"});
+            .message =
+                "target memory cannot be read by the Comptime evaluator"});
     case syntax::UnaryOperator::AddressOf:
         return std::unexpected(EvaluationError{
             .code = "E4002",
-            .message = "global addresses require target relocation"});
+            .message = "static storage addresses require target relocation"});
     }
     return std::unexpected(
         EvaluationError{.code = "E4002", .message = "unknown unary operation"});

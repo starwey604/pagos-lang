@@ -23,9 +23,9 @@ export fn api_foreign() -> u32 {
     old + *p
 }
 export fn api_inline(p: *mut u32) -> u32 {
-    static let a = set(p, 1);
+    comptime let a = set(p, 1);
     c_change(p);
-    static let b = set(p, 1);
+    comptime let b = set(p, 1);
     a + b + *p
 }
 export fn api_loop(p: *mut u32, count: u32) -> u32 {

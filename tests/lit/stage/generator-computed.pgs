@@ -8,13 +8,13 @@ record Config { offset: u32, exponent: u32 }
 fn power(n: u32) -> u32 {
     if n == 0 { 1 } else { 2 * power(n - 1) }
 }
-static let config = Config(offset: 2, exponent: 2);
-static let table = [for i in config.offset..config.offset + power(config.exponent) {
+comptime let config = Config(offset: 2, exponent: 2);
+comptime let table = [for i in config.offset..config.offset + power(config.exponent) {
     i * i
 }];
 let result = table[external_input()];
-// HIR: binding table: [u32; 4] [Static] = [4, 9, 16, 25]
+// HIR: binding table: [u32; 4] [Comptime] = [4, 9, 16, 25]
 // LLVM: private unnamed_addr constant [4 x i32]
-// STAGE: table: Static
+// STAGE: table: Comptime
 // STAGE: result: Runtime
 // STAGE: array-elements=4, array-bytes=16, aggregate-constructions=2, aggregate-members=6, aggregate-bytes=24

@@ -38,16 +38,16 @@ fn crc32_9(table: [u32; 256], bytes: [u32; 9]) -> u32 {
     ~crc_byte(table, c7, bytes[8])
 }
 
-static let table: [u32; 256] = [for i in 0..256 { crc_entry(i, 8) }];
+comptime let table: [u32; 256] = [for i in 0..256 { crc_entry(i, 8) }];
 // ASCII "123456789": 0xCBF43926, decimal 3421780262.
-static let known = crc32_9(table, [49, 50, 51, 52, 53, 54, 55, 56, 57]);
+comptime let known = crc32_9(table, [49, 50, 51, 52, 53, 54, 55, 56, 57]);
 let bytes = [external_input(), external_input(), external_input(),
              external_input(), external_input(), external_input(),
              external_input(), external_input(), external_input()];
 let result = crc32_9(table, bytes);
 
-// STAGE: table: Static
-// STAGE: known: Static
+// STAGE: table: Comptime
+// STAGE: known: Comptime
 // STAGE: bytes: Runtime
 // STAGE: result: Runtime
 // STAGE-SAME: external_input -> array element 0 -> bytes -> crc32_9.bytes

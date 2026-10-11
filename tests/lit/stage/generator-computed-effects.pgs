@@ -4,4 +4,4 @@
 // RUN: %run_residual %s trap 2 0
 fn bound(n: u32) -> u32 { 10 / external_input(); n }
 let table = [for i in bound(0)..bound(3) { external_input(); i }];
-static let result = table[2];
+comptime let result = table[2];

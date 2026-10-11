@@ -4,7 +4,7 @@ runtime let unrelated = external_input();
 runtime let selected = external_input();
 let pair = Pair(left: unrelated, right: selected);
 let alias = pair;
-static let result = alias.right;
+comptime let result = alias.right;
 // CHECK: error[E2001]
 // CHECK: Runtime source `selected`
 // CHECK: dependency path: selected -> field right -> pair -> alias -> field access right -> result

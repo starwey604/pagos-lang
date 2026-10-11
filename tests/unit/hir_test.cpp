@@ -4,7 +4,7 @@
 
 namespace {
 
-TEST(HirEffects, StaticValueCanRetainRuntimeWork) {
+TEST(HirEffects, ComptimeValueCanRetainRuntimeWork) {
     using namespace pagos::hir;
     const auto value =
         make_constant(std::uint32_t{7}, pagos::sema::TypeKind::Integer, {});
@@ -16,7 +16,7 @@ TEST(HirEffects, StaticValueCanRetainRuntimeWork) {
     auto sequence = std::make_shared<Expr>(*value);
     sequence->kind = Expr::Kind::Sequence;
     sequence->operands = {input, value};
-    EXPECT_EQ(sequence->stage, Stage::Static);
+    EXPECT_EQ(sequence->stage, Stage::Comptime);
     EXPECT_TRUE(has_residual_work(sequence));
     EXPECT_FALSE(is_cacheable_result(sequence));
     auto alias = std::make_shared<Expr>(*value);

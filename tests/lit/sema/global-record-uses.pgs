@@ -1,15 +1,15 @@
 // RUN: not %pagosc check %s 2>&1 | %FileCheck %s --implicit-check-not=E1005
 record R { value: u32 }
-global mut state: R = R(value: 1);
-global const config: R = R(value: 2);
+static mut state: R = R(value: 1);
+static const config: R = R(value: 2);
 let copy = state;
 let whole = *&state;
 *&config.value = 3;
 let missing = state.missing;
 let local = R(value: 0);
 let local_address = &local.value;
-// CHECK: error[E1015]: global records require field selection
+// CHECK: error[E1015]: static storage records require field selection
 // CHECK: error[E1016]: record dereference requires field selection
 // CHECK: error[E1011]:
 // CHECK: error[E1008]: unknown field `missing` in `R`
-// CHECK: error[E1013]: address-taking requires an unshadowed global name, array element, or record field
+// CHECK: error[E1013]: address-taking requires an unshadowed static storage name, array element, or record field

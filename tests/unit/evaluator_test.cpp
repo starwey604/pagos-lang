@@ -69,7 +69,7 @@ TEST(Evaluator, DivisionByZeroIsAnEvaluationError) {
     EXPECT_EQ(result.error().message, "division by zero");
 }
 
-TEST(Evaluator, BooleanNotIsStatic) {
+TEST(Evaluator, BooleanNotIsComptime) {
     const pagos::hir::Constant value{true};
     const auto result =
         pagos::vm::Evaluator::unary(pagos::syntax::UnaryOperator::Not, value);

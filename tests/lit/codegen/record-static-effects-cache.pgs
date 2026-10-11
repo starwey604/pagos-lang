@@ -7,7 +7,7 @@ fn read(config: Config) -> u32 { 11 }
 let a = Config(value: Pair(other: external_input(), value: 11).value);
 let b = Config(value: Pair(other: external_input(), value: 11).value);
 let result = read(a) + read(b);
-// CHECK: a: Static
-// CHECK: b: Static
-// CHECK: result: Static
+// CHECK: a: Comptime
+// CHECK: b: Comptime
+// CHECK: result: Comptime
 // CHECK: specializations=1, cache-hits=1

@@ -11,5 +11,5 @@ work();
 let b = work();
 let result = a + b;
 
-// CHECK: result: Static
+// CHECK: result: Comptime
 // CHECK: cache-hits=0

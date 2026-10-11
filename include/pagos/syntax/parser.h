@@ -24,7 +24,7 @@ class Parser {
     [[nodiscard]] bool check(TokenKind kind) const noexcept;
     bool match(TokenKind kind) noexcept;
     const Token* consume(TokenKind kind, std::string message);
-    void synchronize();
+    void synchronize(std::size_t before);
 
     std::unique_ptr<Function> parse_function();
     std::optional<Module::Record> parse_record();

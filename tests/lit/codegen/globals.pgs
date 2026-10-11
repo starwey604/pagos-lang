@@ -4,13 +4,13 @@
 // RUN: %run_globals %s
 // RUN: %run_globals --optimize %s
 fn initial() -> u32 { 17 }
-global const identity: u32 = initial();
-global const twin: u32 = 17;
-global mut counter: u32 = 0;
-global mut configured: u32 = 41;
-global mut small: i8 = -128i8;
-global mut wide: u64 = 18446744073709551615u64;
-global mut size: usize = 7usize;
+static const identity: u32 = initial();
+static const twin: u32 = 17;
+static mut counter: u32 = 0;
+static mut configured: u32 = 41;
+static mut small: i8 = -128i8;
+static mut wide: u64 = 18446744073709551615u64;
+static mut size: usize = 7usize;
 extern fn change(p: *mut u32) -> u32;
 fn read() -> u32 { counter }
 fn increment() -> u32 { *&counter = counter + 1; counter }
@@ -32,10 +32,10 @@ export fn shadow(counter: u32) -> u32 { counter + read() }
 export fn recurse(n: u32) -> u32 {
     if n == 0 { counter } else { increment(); recurse(n - 1) }
 }
-// HIR: global const identity: u32 = 17
-// HIR: global mut counter: u32 = 0
+// HIR: static const identity: u32 = 17
+// HIR: static mut counter: u32 = 0
 // HIR: global_address(counter)
-// MIR: global mut @pagos.global.counter: u32 = 0
+// MIR: static mut @pagos.global.counter: u32 = 0
 // MIR: global_address @pagos.global.counter
 // IR: @pagos.global.identity = internal constant i32 17, align 4
 // IR: @pagos.global.counter = internal global i32 0, align 4

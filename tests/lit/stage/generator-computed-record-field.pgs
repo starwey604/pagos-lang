@@ -5,6 +5,6 @@ record Config { count: u32, ready: bool }
 fn config() -> Config { Config(count: 3, ready: external_input() != 0) }
 let table = [for i in 0..config().count { i }];
 let result = table[2];
-// CHECK: table: Static
-// CHECK: result: Static
+// CHECK: table: Comptime
+// CHECK: result: Comptime
 // CHECK: aggregate-constructions=2, aggregate-members=5, aggregate-bytes=17

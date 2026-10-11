@@ -38,9 +38,9 @@ returns or fails, the outer array has no reservation; a returning body instead
 keeps its full reservation. Computed lengths cannot bypass either set of array
 quotas. Literal bounds now also consume ordinary expression fuel.
 
-- Both Runtime branch bodies are analyzed and charged; an unselected Static
+- Both Runtime branch bodies are analyzed and charged; an unselected Comptime
   branch is not.
-- Static loops and generators charge each construction they analyze. Runtime
+- Comptime loops and generators charge each construction they analyze. Runtime
   loops charge the analyzed body, not every target iteration.
 - Aliases, projections, and cached results do not reconstruct values.
 - Fresh argument constructors are charged before a cache lookup, even on a hit.

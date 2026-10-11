@@ -28,8 +28,8 @@ std::string_view token_kind_name(TokenKind kind) noexcept {
         return "`export`";
     case TokenKind::KwLet:
         return "`let`";
-    case TokenKind::KwStatic:
-        return "`static`";
+    case TokenKind::KwComptime:
+        return "`comptime`";
     case TokenKind::KwRuntime:
         return "`runtime`";
     case TokenKind::KwReturn:
@@ -74,8 +74,8 @@ std::string_view token_kind_name(TokenKind kind) noexcept {
         return "`mut`";
     case TokenKind::KwVolatile:
         return "`volatile`";
-    case TokenKind::KwGlobal:
-        return "`global`";
+    case TokenKind::KwStatic:
+        return "`static`";
     case TokenKind::LeftParen:
         return "`(`";
     case TokenKind::RightParen:

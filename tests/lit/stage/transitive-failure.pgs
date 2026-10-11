@@ -6,7 +6,7 @@ fn scale(factor: u32, value: u32) -> u32 {
 
 runtime let sample = external_input();
 let scaled = scale(4, sample);
-static let result = scaled;
+comptime let result = scaled;
 
-// CHECK: error[E2001]: static binding `result` was thawed
+// CHECK: error[E2001]: comptime binding `result` was thawed
 // CHECK: dependency path: sample -> scale.value -> scaled -> result

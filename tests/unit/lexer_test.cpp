@@ -9,6 +9,27 @@
 
 namespace {
 
+TEST(Lexer, DistinguishesStageStorageAndIdentifierKeywords) {
+    using enum pagos::syntax::TokenKind;
+    const auto source = pagos::source::SourceFile::from_text(
+        "keywords.pgs",
+        "comptime static global comptime_value static_value global_value");
+    pagos::source::DiagnosticEngine diagnostics(source);
+    pagos::syntax::Lexer lexer(source, diagnostics);
+    const auto tokens = lexer.tokenize();
+    const std::vector expected{KwComptime, KwStatic,   Identifier, Identifier,
+                               Identifier, Identifier, End};
+
+    ASSERT_FALSE(diagnostics.has_error());
+    ASSERT_EQ(tokens.size(), expected.size());
+    for (std::size_t index = 0; index < tokens.size(); ++index) {
+        EXPECT_EQ(tokens[index].kind, expected[index]);
+    }
+    EXPECT_EQ(pagos::syntax::token_kind_name(KwComptime), "`comptime`");
+    EXPECT_EQ(pagos::syntax::token_kind_name(KwStatic), "`static`");
+    EXPECT_EQ(tokens[2].lexeme, "global");
+}
+
 TEST(Lexer, RecognizesCoreBinding) {
     const auto source = pagos::source::SourceFile::from_text(
         "test.pgs", "runtime let input: u32 = external_input();\n");

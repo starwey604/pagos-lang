@@ -3,8 +3,8 @@
 runtime let end = external_input();
 for index in 0..end {
     let alias = index;
-    static let invalid = alias;
+    comptime let invalid = alias;
 }
 
-// CHECK: error[E2001]: static binding `invalid` was thawed
+// CHECK: error[E2001]: comptime binding `invalid` was thawed
 // CHECK: dependency path: end -> index -> alias -> invalid

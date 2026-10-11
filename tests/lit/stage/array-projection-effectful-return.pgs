@@ -9,5 +9,5 @@ fn read() -> u32 {
     external_input();
     a[0]
 }
-static let result = read();
-// CHECK: result: Static
+comptime let result = read();
+// CHECK: result: Comptime

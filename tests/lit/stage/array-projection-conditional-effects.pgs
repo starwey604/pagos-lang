@@ -2,10 +2,10 @@
 // RUN: %run_residual %s 22 0 20
 fn choose(flag: bool) -> u32 {
     if flag {
-        static let value = [11, external_input()][0];
+        comptime let value = [11, external_input()][0];
         value
     } else {
-        static let value = [22, external_input()][0];
+        comptime let value = [22, external_input()][0];
         value
     }
 }

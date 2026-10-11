@@ -7,5 +7,5 @@ fn stuck(value: u32) -> u32 {
 let result = stuck(1);
 
 // CHECK: error[E4003]: recursive specialization cycle in `stuck`
-// CHECK: the same Static arguments recur
-// CHECK: help: change the recursive arguments or add a terminating Static branch
+// CHECK: the same Comptime arguments recur
+// CHECK: help: change the recursive arguments or add a terminating Comptime branch

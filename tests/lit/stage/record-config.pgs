@@ -10,17 +10,17 @@ fn identity(config: Config) -> Config { return config; }
 fn clock(config: Config) -> u32 { config.clock_hz }
 let config = Config(ready: external_input() != 0, clock_hz: 80_000_000);
 let alias = identity(config);
-static let frequency = clock(alias);
-static let divisor = frequency / 1_000_000;
+comptime let frequency = clock(alias);
+comptime let divisor = frequency / 1_000_000;
 let result = divisor + (if alias.ready { 3 } else { 0 });
 // STAGE: config: Runtime
 // STAGE: alias: Runtime
-// STAGE: frequency: Static
-// STAGE: divisor: Static
+// STAGE: frequency: Comptime
+// STAGE: divisor: Comptime
 // STAGE: result: Runtime
 // STAGE-SAME: field ready
 // HIR: record Config {clock_hz: u32, ready: bool}
-// HIR: binding divisor: u32 [Static] = sequence(
+// HIR: binding divisor: u32 [Comptime] = sequence(
 // HIR-SAME: , 80)
 // MIR: record
 // MIR: field

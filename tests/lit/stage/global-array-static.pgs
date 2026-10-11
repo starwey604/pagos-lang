@@ -1,9 +1,9 @@
 // RUN: not %pagosc check %s 2>&1 | %FileCheck %s
-global const table: [u32; 2] = [1, 2];
-static let read = table[0];
-static let address = &table[0];
+static const table: [u32; 2] = [1, 2];
+comptime let read = table[0];
+comptime let address = &table[0];
 // CHECK: error[E2001]:
-// CHECK: global element address table
-// CHECK: global array read
+// CHECK: static storage element address table
+// CHECK: static storage array read
 // CHECK: error[E2001]:
-// CHECK: global element address table
+// CHECK: static storage element address table

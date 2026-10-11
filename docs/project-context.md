@@ -33,9 +33,9 @@ frost or ice. Pagos uses the following metaphor:
 - Values begin frozen: they are candidates for compile-time evaluation.
 - Explicit runtime sources introduce heat.
 - Runtime dependence thaws downstream values along the dataflow graph.
-- A `static` constraint requires a value to remain frozen.
+- A `comptime` constraint requires a value to remain frozen.
 
-Formal specifications should use **Static**, **Runtime**, **binding-time
+Formal specifications should use **Comptime**, **Runtime**, **binding-time
 analysis**, **partial evaluation**, and **residual program**. Frozen/thawed is a
 documentation and diagnostic metaphor, not a substitute for precise semantics.
 
@@ -48,8 +48,8 @@ provisional until the toolchain exists and package/domain conflicts are checked.
 1. Pagos is a staged systems programming language, not just a build DSL.
 2. Stages belong to values, expressions, control flow, and effects, not vaguely
    to "all statements."
-3. The base binding-time lattice is `Static <= Runtime`.
-4. `runtime` introduces a dynamic source; `static` imposes a compile-time
+3. The base binding-time lattice is `Comptime <= Runtime`.
+4. `runtime` introduces a dynamic source; `comptime` imposes a compile-time
    constraint; unqualified bindings are inferred.
 5. Analysis should be value- and field-sensitive. A runtime field should not
    unnecessarily thaw an entire configuration graph.
@@ -92,9 +92,9 @@ Zephyr already moves Kconfig and Devicetree information into compile-time
 generated headers and device objects. Pagos's opportunity is therefore not to
 invent static device configuration, but to offer a typed and unified model with
 better composition, diagnostics, dependency tracking, and controlled
-static/dynamic mixing.
+Comptime/Runtime mixing.
 
-Static platform description may reduce some parsing, probing, and binary size,
+Comptime platform description may reduce some parsing, probing, and binary size,
 but it cannot by itself guarantee fast Linux boot. Decompression, driver probe,
 firmware, storage, the root filesystem, and userspace initialization must be
 measured separately.

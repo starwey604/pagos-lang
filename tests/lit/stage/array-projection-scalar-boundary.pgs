@@ -2,6 +2,6 @@
 fn first(a: [u32; 2]) -> u32 { a[0] }
 runtime let value = 11;
 let table = [value, 22];
-static let result = first(table);
-// CHECK: error[E2001]: static binding
+comptime let result = first(table);
+// CHECK: error[E2001]: comptime binding
 // CHECK: value -> array element 0 -> table -> first.a -> array index -> result

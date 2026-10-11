@@ -7,5 +7,5 @@ fn choose() -> u32 {
     1 / 0
 }
 let result = choose();
-// CHECK: result: Static
+// CHECK: result: Comptime
 // CHECK: array-elements=0, array-bytes=0

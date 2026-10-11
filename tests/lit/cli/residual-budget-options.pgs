@@ -5,6 +5,6 @@
 // RUN: %pagosc --max-residual-specializations=0 check %s
 // RUN: %pagosc --max-residual-specializations=3 explain-stage %s --max-residual-specializations=0 | %FileCheck %s --check-prefix=STATS
 fn known(x: u32) -> u32 { x; 7 }
-static let result = known(external_input());
+comptime let result = known(external_input());
 // INVALID: error: invalid numeric option
 // STATS: residual-specializations=0, residual-cache-hits=0

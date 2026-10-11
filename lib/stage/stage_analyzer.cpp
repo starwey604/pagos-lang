@@ -42,7 +42,7 @@ project_aggregate_member(hir::ExprPtr array, std::uint32_t offset,
         } else if (array->kind == hir::Expr::Kind::Array ||
                    array->kind == hir::Expr::Kind::Record) {
             const auto& element = array->operands.at(offset);
-            if (element->stage == hir::Stage::Static) {
+            if (element->stage == hir::Stage::Comptime) {
                 return AggregateProjection{.constant = element->constant};
             }
             auto trace = element->trace;
@@ -161,8 +161,8 @@ hir::ExprPtr StageAnalyzer::global_address(const syntax::Module::Global& global,
                                           global.writable, types_.pointer_bits),
                       span, {},
                       {.origin_span = span,
-                       .origin_name = "global address " + global.name,
-                       .path = {"global address " + global.name}}));
+                       .origin_name = "static storage address " + global.name,
+                       .path = {"static storage address " + global.name}}));
     address->variable_name = global.name;
     return address;
 }
@@ -279,9 +279,9 @@ bool StageAnalyzer::reserve_residual(ResidualEntry& entry, source::Span span) {
                                 entry.definition->name + "`; " +
                                 std::to_string(used) +
                                 " residual versions reserved or completed"},
-                .help =
-                    "increase --max-residual-specializations or reduce "
-                    "distinct Static arguments and Runtime parameter patterns",
+                .help = "increase --max-residual-specializations or reduce "
+                        "distinct Comptime arguments and Runtime parameter "
+                        "patterns",
             });
             residual_budget_exhausted_ = true;
         }
@@ -422,10 +422,10 @@ StageAnalyzer::analyze(const syntax::Module& module) {
             };
             const auto trace = find_trace(initializer);
             auto path = trace ? trace->path : std::vector<std::string>{};
-            path.push_back("global initializer " + global.name);
+            path.push_back("static storage initializer " + global.name);
             diagnostics_.report(
                 {.code = "E2010",
-                 .message = "global initializer must be pure Static",
+                 .message = "static storage initializer must be pure Comptime",
                  .primary = {.span = global.initializer->span},
                  .help = "no Runtime reads, addresses, calls or effects are "
                          "permitted",
@@ -434,7 +434,7 @@ StageAnalyzer::analyze(const syntax::Module& module) {
         }
         if (!check_resolved_type(types_.resolve(global.type), initializer,
                                  global.initializer->span,
-                                 "global initializer"))
+                                 "static storage initializer"))
             continue;
         const auto& value = *initializer->constant;
         if (global.storage.requires_zero() && !is_zero_integer_storage(value)) {
@@ -589,8 +589,8 @@ StageAnalyzer::analyze_for(const syntax::ForStmt& loop_statement) {
         return {.value = make_sequence({begin}, end, loop_statement.span),
                 .returned = true};
     }
-    if (begin->stage == hir::Stage::Static &&
-        end->stage == hir::Stage::Static) {
+    if (begin->stage == hir::Stage::Comptime &&
+        end->stage == hir::Stage::Comptime) {
         const auto begin_value = static_cast<std::uint32_t>(
             std::get<IntegerValue>(begin->constant.value()).bits());
         const auto end_value =
@@ -692,9 +692,9 @@ hir::ExprPtr StageAnalyzer::analyze_binding(const syntax::BindingStmt& binding,
         value = hir::with_trace_step(value, binding.name);
     }
 
-    if (binding.binding_kind == syntax::BindingKind::Static &&
+    if (binding.binding_kind == syntax::BindingKind::Comptime &&
         value->stage == hir::Stage::Runtime && value->trace) {
-        report_static_failure(binding, *value->trace);
+        report_comptime_failure(binding, *value->trace);
     }
 
     define(binding.name, value);
@@ -733,7 +733,7 @@ hir::ExprPtr StageAnalyzer::analyze_expression(const syntax::Expr& expression) {
         const auto& name = static_cast<const syntax::NameExpr&>(expression);
         if (const auto global = types_.global_references.find(&expression);
             global != types_.global_references.end()) {
-            const auto origin = "global read " + name.name;
+            const auto origin = "static storage read " + name.name;
             return make_runtime(
                 hir::Expr::Kind::Load, type_of(expression), expression.span,
                 {global_address(*global->second, expression.span)},
@@ -749,7 +749,7 @@ hir::ExprPtr StageAnalyzer::analyze_expression(const syntax::Expr& expression) {
         if (!operand || !operand->falls_through)
             return operand;
         const auto type = type_of(expression);
-        if (operand->stage == hir::Stage::Static) {
+        if (operand->stage == hir::Stage::Comptime) {
             const auto bits =
                 operand->type.is_pointer()
                     ? std::get<PointerConstant>(*operand->constant).address
@@ -860,7 +860,7 @@ hir::ExprPtr StageAnalyzer::analyze_field(const syntax::FieldExpr& expression) {
             return address;
         auto trace = *address->trace;
         trace.path.push_back((types_.global_references.contains(&expression)
-                                  ? "global record read "
+                                  ? "static storage record read "
                                   : "record field read ") +
                              expression.name);
         return make_runtime(hir::Expr::Kind::Load, type_of(expression),
@@ -876,7 +876,7 @@ hir::ExprPtr StageAnalyzer::analyze_field(const syntax::FieldExpr& expression) {
     const auto offset = static_cast<std::uint32_t>(found - fields.begin());
     std::optional<hir::Constant> constant;
     std::optional<hir::RuntimeTrace> trace;
-    if (record->stage == hir::Stage::Static) {
+    if (record->stage == hir::Stage::Comptime) {
         constant = from_scalar(
             std::get<RecordConstant>(*record->constant).fields.at(offset));
     } else if (const auto projected =
@@ -1041,10 +1041,10 @@ hir::ExprPtr StageAnalyzer::analyze_array_generator(
     if (!end->falls_through) {
         return make_sequence(std::move(bound_work), end, expression.span);
     }
-    const auto require_static = [&](const hir::ExprPtr& value,
-                                    source::Span span,
-                                    const std::string& position) {
-        if (value->stage == hir::Stage::Static) {
+    const auto require_comptime = [&](const hir::ExprPtr& value,
+                                      source::Span span,
+                                      const std::string& position) {
+        if (value->stage == hir::Stage::Comptime) {
             return true;
         }
         const auto trace =
@@ -1054,7 +1054,7 @@ hir::ExprPtr StageAnalyzer::analyze_array_generator(
         diagnostics_.report({
             .severity = source::Severity::Error,
             .code = "E2002",
-            .message = "array generator " + position + " must be Static",
+            .message = "array generator " + position + " must be Comptime",
             .primary = {.span = span,
                         .message = "determines a fixed array length"},
             .related = {{.span = trace.origin_span,
@@ -1066,8 +1066,8 @@ hir::ExprPtr StageAnalyzer::analyze_array_generator(
         });
         return false;
     };
-    if (!require_static(begin, expression.begin->span, "start") ||
-        !require_static(end, expression.end->span, "end")) {
+    if (!require_comptime(begin, expression.begin->span, "start") ||
+        !require_comptime(end, expression.end->span, "end")) {
         return nullptr;
     }
     const auto first = static_cast<std::uint32_t>(
@@ -1170,7 +1170,7 @@ hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
         if (!address || !address->falls_through)
             return address;
         auto trace = *address->trace;
-        trace.path.push_back("global array read");
+        trace.path.push_back("static storage array read");
         return make_runtime(hir::Expr::Kind::Load, type_of(expression),
                             expression.span, {address}, std::move(trace));
     }
@@ -1186,7 +1186,7 @@ hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
         return make_sequence({array}, index, expression.span);
     }
     std::optional<hir::RuntimeTrace> selected_trace;
-    if (index->stage == hir::Stage::Static) {
+    if (index->stage == hir::Stage::Comptime) {
         const auto offset = static_cast<std::uint32_t>(
             std::get<IntegerValue>(*index->constant).bits());
         if (offset >= array->type.length) {
@@ -1197,7 +1197,7 @@ hir::ExprPtr StageAnalyzer::analyze_index(const syntax::IndexExpr& expression) {
             return nullptr;
         }
         std::optional<hir::Constant> value;
-        if (array->stage == hir::Stage::Static) {
+        if (array->stage == hir::Stage::Comptime) {
             if (array->type.element_type() == sema::TypeKind::Bool) {
                 value = static_cast<bool>(
                     std::get<std::vector<bool>>(*array->constant)[offset]);
@@ -1238,13 +1238,13 @@ StageAnalyzer::global_element_address(const syntax::IndexExpr& expression) {
     if (!index || !index->falls_through)
         return index;
     const auto array_type = types_.resolve(global.type);
-    if (index->stage == hir::Stage::Static &&
+    if (index->stage == hir::Stage::Comptime &&
         std::get<IntegerValue>(*index->constant).bits() >= array_type.length) {
         diagnostics_.error("E4007", "array index out of bounds",
                            expression.index->span);
         return nullptr;
     }
-    const auto origin = "global element address " + global.name;
+    const auto origin = "static storage element address " + global.name;
     auto trace =
         index->trace.value_or(hir::RuntimeTrace{.origin_span = expression.span,
                                                 .origin_name = origin,
@@ -1266,7 +1266,7 @@ hir::ExprPtr StageAnalyzer::field_address(const syntax::FieldExpr& expression) {
     if (const auto global = types_.global_references.find(&expression);
         global != types_.global_references.end()) {
         pointer = global_address(*global->second, expression.span);
-        origin = "global field address " + global->second->name + "." +
+        origin = "static storage field address " + global->second->name + "." +
                  expression.name;
     } else {
         const auto& dereference =
@@ -1325,7 +1325,7 @@ hir::ExprPtr StageAnalyzer::analyze_unary(const syntax::UnaryExpr& expression) {
                              .origin_name = origin,
                              .path = {origin}});
     }
-    if (operand->stage == hir::Stage::Static) {
+    if (operand->stage == hir::Stage::Comptime) {
         const auto result = vm::Evaluator::unary(expression.operation,
                                                  operand->constant.value());
         if (!result) {
@@ -1354,7 +1354,7 @@ StageAnalyzer::analyze_binary(const syntax::BinaryExpr& expression) {
     }
 
     using enum syntax::BinaryOperator;
-    if (left->stage == hir::Stage::Static &&
+    if (left->stage == hir::Stage::Comptime &&
         (expression.operation == LogicalAnd ||
          expression.operation == LogicalOr)) {
         const auto left_value = std::get<bool>(left->constant.value());
@@ -1378,12 +1378,12 @@ StageAnalyzer::analyze_binary(const syntax::BinaryExpr& expression) {
         expression.operation != LogicalOr) {
         return make_sequence({left}, right, expression.span);
     }
-    if (!right->falls_through && left->stage == hir::Stage::Static) {
+    if (!right->falls_through && left->stage == hir::Stage::Comptime) {
         return make_sequence({left}, right, expression.span);
     }
     if ((expression.operation == ShiftLeft ||
          expression.operation == ShiftRight) &&
-        right->stage == hir::Stage::Static &&
+        right->stage == hir::Stage::Comptime &&
         std::get<IntegerValue>(*right->constant).bits() >=
             left->type.integer_type.width) {
         diagnostics_.error(
@@ -1395,8 +1395,8 @@ StageAnalyzer::analyze_binary(const syntax::BinaryExpr& expression) {
             expression.right->span);
         return nullptr;
     }
-    if (left->stage == hir::Stage::Static &&
-        right->stage == hir::Stage::Static) {
+    if (left->stage == hir::Stage::Comptime &&
+        right->stage == hir::Stage::Comptime) {
         const auto result =
             vm::Evaluator::binary(expression.operation, left->constant.value(),
                                   right->constant.value());
@@ -1517,7 +1517,7 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
         residual_key->arguments.reserve(arguments.size());
         for (const auto& argument : arguments) {
             residual_key->arguments.push_back(
-                {argument->type, argument->stage == hir::Stage::Static
+                {argument->type, argument->stage == hir::Stage::Comptime
                                      ? argument->constant
                                      : std::nullopt});
         }
@@ -1542,14 +1542,14 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
         }
     }
     // Only recurrence within the current call chain forces Runtime treatment.
-    // Pure Static recursion still evaluates (and diagnoses exact-key cycles).
+    // Pure Comptime recursion still evaluates (and diagnoses exact-key cycles).
     const auto recursive_begin =
         std::ranges::find_if(residual_stack_, [&](const auto& entry) {
             if (entry->definition->name != function.name)
                 return false;
             if (!key)
                 return true;
-            // A different all-Static key may still terminate during staging,
+            // A different all-Comptime key may still terminate during staging,
             // even when reached from a Runtime version of the same function.
             if (!residual_key || !entry->runtime_seen)
                 return false;
@@ -1581,9 +1581,9 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
                 .message = "recursive specialization cycle in `" +
                            expression.callee + "`",
                 .primary = {.span = expression.span,
-                            .message = "the same Static arguments recur"},
+                            .message = "the same Comptime arguments recur"},
                 .help = "change the recursive arguments or add a terminating "
-                        "Static branch",
+                        "Comptime branch",
             });
             return nullptr;
         }
@@ -1598,7 +1598,7 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
                         .message =
                             "aggregate recursive calls are not supported"},
             .help = "use scalar recursive parameters and result or keep "
-                    "recursion Static",
+                    "recursion Comptime",
         });
         return nullptr;
     }
@@ -1612,7 +1612,7 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
                         .message = std::to_string(stats_.specializations) +
                                    " specializations already created"},
             .help = "increase --max-specializations or reduce distinct "
-                    "Static call arguments",
+                    "Comptime call arguments",
         });
         return nullptr;
     }
@@ -1661,7 +1661,7 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
             value = std::move(parameter);
         } else if (residual_key) {
             // Caller-side effects belong to argument_work, never the cached
-            // body. The typed Static value alone determines specialization.
+            // body. The typed Comptime value alone determines specialization.
             value =
                 hir::make_constant(*value->constant, value->type, value->span);
         } else if (value->stage == hir::Stage::Runtime) {
@@ -1744,7 +1744,7 @@ hir::ExprPtr StageAnalyzer::analyze_if(const syntax::IfExpr& expression) {
     if (!condition || !condition->falls_through) {
         return condition;
     }
-    if (condition->stage == hir::Stage::Static) {
+    if (condition->stage == hir::Stage::Comptime) {
         const auto selected = std::get<bool>(condition->constant.value())
                                   ? expression.then_block.get()
                                   : expression.else_block.get();
@@ -1892,7 +1892,7 @@ bool StageAnalyzer::check_resolved_type(const sema::Type& expected,
     return false;
 }
 
-void StageAnalyzer::report_static_failure(
+void StageAnalyzer::report_comptime_failure(
     const syntax::BindingStmt& binding,
     const hir::RuntimeTrace& symbolic_trace) {
     const auto trace =
@@ -1900,13 +1900,13 @@ void StageAnalyzer::report_static_failure(
     source::Diagnostic diagnostic{
         .severity = source::Severity::Error,
         .code = "E2001",
-        .message = "static binding `" + binding.name + "` was thawed",
+        .message = "comptime binding `" + binding.name + "` was thawed",
         .primary = {.span = binding.name_span,
-                    .message = "requires a Static value"},
+                    .message = "requires a Comptime value"},
         .related = {{.span = trace.origin_span,
                      .message = "Runtime source `" + trace.origin_name + "`",
                      .heading = "runtime source introduced here"}},
-        .help = "remove `static` or remove the Runtime dependency",
+        .help = "remove `comptime` or remove the Runtime dependency",
         .dependency_path = trace.path,
     };
     diagnostics_.report(std::move(diagnostic));
@@ -1948,7 +1948,7 @@ StageAnalyzer::specialization_key(
     SpecializationKey key{.function = &function};
     key.arguments.reserve(arguments.size());
     for (const auto& argument : arguments) {
-        if (!argument || argument->stage != hir::Stage::Static ||
+        if (!argument || argument->stage != hir::Stage::Comptime ||
             !argument->constant) {
             return std::nullopt;
         }

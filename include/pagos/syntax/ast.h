@@ -91,7 +91,7 @@ struct Type {
         return type;
     }
 };
-enum class BindingKind { Inferred, Static, Runtime };
+enum class BindingKind { Inferred, Comptime, Runtime };
 enum class UnaryOperator {
     Not,
     BitNot,

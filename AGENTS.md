@@ -33,7 +33,7 @@ and LLVM details; store semantic facts in side tables and lower through HIR and
 verified SSA MIR.
 
 Write Markdown with ATX headings, tagged fences, and lines near 80 characters.
-Use **Pagos**, `pagosc`, and `.pgs`. Prefer the formal terms `Static`, `Runtime`,
+Use **Pagos**, `pagosc`, and `.pgs`. Prefer the formal terms `Comptime`, `Runtime`,
 binding-time analysis, and residual program.
 
 ## Testing Guidelines

@@ -1,9 +1,9 @@
 // QEMU virt only: UART 0x10000000, LSR +5, SiFive test device 0x100000.
 // All device accesses are Pagos; startup/linker support remains assembly.
-global mut boot_seed: [u32; 2] section(".data.boot") align(64) = [37, 99];
-global mut boot_count: [u32; 2] section(".bss.boot") align(128) = [0, 0];
-global const boot_table: [u32; 16] section(".rodata.boot") align(32) = [for i in 0..16 { i * i }];
-global const poll_limit: u32 section(".rodata.uart") align(32) = 100000;
+static mut boot_seed: [u32; 2] section(".data.boot") align(64) = [37, 99];
+static mut boot_count: [u32; 2] section(".bss.boot") align(128) = [0, 0];
+static const boot_table: [u32; 16] section(".rodata.boot") align(32) = [for i in 0..16 { i * i }];
+static const poll_limit: u32 section(".rodata.uart") align(32) = 100000;
 
 fn bump_boot() -> u32 { *&boot_count[0] = boot_count[0] + 1; boot_count[0] }
 fn boot_ok() -> bool {

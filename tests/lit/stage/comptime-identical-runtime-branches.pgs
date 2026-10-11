@@ -1,0 +1,6 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+runtime let flag = external_input() != 0;
+comptime let answer = if flag { 7 } else { 7 };
+// CHECK: error[E2001]: comptime binding `answer` was thawed
+// CHECK: requires a Comptime value
+// CHECK: dependency path: flag -> answer

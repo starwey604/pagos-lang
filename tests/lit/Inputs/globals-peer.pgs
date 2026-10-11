@@ -1,3 +1,3 @@
 // Same internal name as the other module must not alias its storage.
-global mut counter: u32 = 99;
+static mut counter: u32 = 99;
 export fn peer_address() -> *mut u32 { &counter }

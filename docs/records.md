@@ -15,7 +15,7 @@ fn keep(config: Config) -> Config { config }
 
 let config = Config(ready: external_input() != 0, clock_hz: 80_000_000);
 let alias = keep(config);
-static let divisor = alias.clock_hz / 1_000_000;
+comptime let divisor = alias.clock_hz / 1_000_000;
 let result = divisor + (if alias.ready { 3 } else { 0 });
 ```
 
@@ -28,18 +28,18 @@ initializers always execute in their written order.
 
 ## Staging and execution
 
-`config` is Runtime, yet `clock_hz` and `divisor` are Static. Passing through
+`config` is Runtime, yet `clock_hz` and `divisor` are Comptime. Passing through
 aliases, parameters, and direct returns preserves this field precision.
-Reading a Static field still preserves all initializer reads, checks, and
+Reading a Comptime field still preserves all initializer reads, checks, and
 early returns. Repeated projections never repeat the constructor's evaluation.
 The example reads one input and returns `83` for nonzero input or `80` for zero.
 
 Explicit `runtime let` records, Runtime conditional selection, and Runtime
 call-return joins keep projections Runtime. The compiler does not inspect
-equal values behind these boundaries. A failing Static constraint reports the
+equal values behind these boundaries. A failing Comptime constraint reports the
 selected field's dependency path rather than an unrelated field's input.
 
-Fully Static records become typed constants. Cache keys include the record
+Fully Comptime records become typed constants. Cache keys include the record
 name and typed fields in declaration order; constructor spelling order does
 not affect equality. Cache hits must still execute argument initializer work.
 Bodies with residual work remain ineligible for pure-result caching.

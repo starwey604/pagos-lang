@@ -6,7 +6,7 @@ fn adjust(up: bool, k: i8, x: i8) -> i8 {
     if up { x + k } else { x - k }
 }
 let a = adjust(true, known(), external_input() as i8);
-// Same typed Static value, with no effectful argument on the cache hit.
+// Same typed Comptime value, with no effectful argument on the cache hit.
 let b = adjust(true, -1i8, external_input() as i8);
 let c = adjust(false, -1i8, external_input() as i8);
 let d = adjust(true, -2i8, external_input() as i8);

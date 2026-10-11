@@ -69,8 +69,8 @@ TEST(Pointer, ConstantsAreTargetAddressesNotIntegerOrHostPointerPayloads) {
 
 TEST(Pointer, SourcePointersResolveIndependentlyAcrossAnalysisSessions) {
     PointerInput input("fn keep(p: *mut usize) -> *mut usize { p } "
-                       "static let p = keep((~0usize) as *mut usize); "
-                       "static let result = p as usize;");
+                       "comptime let p = keep((~0usize) as *mut usize); "
+                       "comptime let result = p as usize;");
     for (const auto* triple : {"riscv32-unknown-elf", "riscv64-unknown-elf",
                                "riscv32-unknown-elf"}) {
         const auto target = codegen::TargetLayout::create({.triple = triple});
@@ -92,7 +92,7 @@ TEST(Pointer, SourcePointersResolveIndependentlyAcrossAnalysisSessions) {
     }
 }
 
-TEST(Pointer, StaticAddressesSpecializeButReadsAreNeverMemoized) {
+TEST(Pointer, ComptimeAddressesSpecializeButReadsAreNeverMemoized) {
     PointerInput input(
         "fn read(p: *const u32) -> u32 { *p } "
         "let a = read(4096usize as *const u32); "
@@ -185,7 +185,7 @@ TEST(Pointer, MirRejectsWrongAddressPayloadAndPermissionEscalation) {
     EXPECT_FALSE(mir::verify(*module));
 }
 
-TEST(Pointer, StaticEvaluatorNeverDereferencesEvenANumericAddress) {
+TEST(Pointer, ComptimeEvaluatorNeverDereferencesEvenANumericAddress) {
     const auto result = vm::Evaluator::unary(
         syntax::UnaryOperator::Dereference,
         PointerConstant{IntegerValue::create({64, false, true}, 4096).value()});
@@ -193,11 +193,11 @@ TEST(Pointer, StaticEvaluatorNeverDereferencesEvenANumericAddress) {
     EXPECT_EQ(result.error().code, "E4013");
 }
 
-TEST(Volatile, StaticResultsNeverSuppressRepeatedStores) {
-    PointerInput input(
-        "fn set(p: *mut u32) -> u32 { volatile *p = 7; 1 } "
-        "let p = 4096usize as *mut u32; "
-        "static let a = set(p); static let b = set(p); let result = a + b;");
+TEST(Volatile, ComptimeResultsNeverSuppressRepeatedStores) {
+    PointerInput input("fn set(p: *mut u32) -> u32 { volatile *p = 7; 1 } "
+                       "let p = 4096usize as *mut u32; "
+                       "comptime let a = set(p); comptime let b = set(p); let "
+                       "result = a + b;");
     sema::TypeChecker checker(input.diagnostics, 64);
     ASSERT_TRUE(checker.check(*input.syntax));
     stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
@@ -247,7 +247,7 @@ TEST(Volatile, MirRejectsWideLoadAndStoreOnNarrowTarget) {
     }
 }
 
-TEST(Volatile, StaticEvaluatorRejectsVolatileDereference) {
+TEST(Volatile, ComptimeEvaluatorRejectsVolatileDereference) {
     const auto result = vm::Evaluator::unary(
         syntax::UnaryOperator::VolatileDereference,
         PointerConstant{IntegerValue::create({64, false, true}, 4096).value()});
@@ -257,7 +257,7 @@ TEST(Volatile, StaticEvaluatorRejectsVolatileDereference) {
 
 TEST(GlobalStorage, TargetInitializersAndSymbolicAddressesSurviveSessionReset) {
     PointerInput input(
-        "global mut size: usize = ~0usize; let p = &size; let result = size;");
+        "static mut size: usize = ~0usize; let p = &size; let result = size;");
     for (unsigned bits : {32U, 64U, 32U}) {
         sema::TypeChecker checker(input.diagnostics, bits);
         ASSERT_TRUE(checker.check(*input.syntax));
@@ -284,7 +284,7 @@ TEST(GlobalStorage, TargetInitializersAndSymbolicAddressesSurviveSessionReset) {
 }
 
 TEST(GlobalStorage, VerifierRejectsMalformedStorageAndReferences) {
-    PointerInput input("global const data: u32 = 17; export fn address() -> "
+    PointerInput input("static const data: u32 = 17; export fn address() -> "
                        "*const u32 { &data }");
     sema::TypeChecker checker(input.diagnostics, 64);
     ASSERT_TRUE(checker.check(*input.syntax));
@@ -326,7 +326,7 @@ TEST(GlobalStorage, VerifierRejectsMalformedStorageAndReferences) {
 }
 
 TEST(GlobalStorage, GlobalOnlyModuleHasNoSyntheticEntry) {
-    PointerInput input("global mut word: u32 = 0;");
+    PointerInput input("static mut word: u32 = 0;");
     sema::TypeChecker checker(input.diagnostics, 64);
     ASSERT_TRUE(checker.check(*input.syntax));
     stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
@@ -338,9 +338,9 @@ TEST(GlobalStorage, GlobalOnlyModuleHasNoSyntheticEntry) {
     EXPECT_EQ(module->globals.size(), 1U);
 }
 
-TEST(GlobalStorage, InitializersRejectRuntimeWorkEvenWithAStaticResult) {
+TEST(GlobalStorage, InitializersRejectRuntimeWorkEvenWithAComptimeResult) {
     PointerInput input(
-        "fn init() -> u32 { *&data = 7; 1 } global mut data: u32 = init();");
+        "fn init() -> u32 { *&data = 7; 1 } static mut data: u32 = init();");
     sema::TypeChecker checker(input.diagnostics, 64);
     ASSERT_TRUE(checker.check(*input.syntax));
     stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
@@ -352,9 +352,9 @@ TEST(GlobalStorage, InitializersRejectRuntimeWorkEvenWithAStaticResult) {
 
 TEST(GlobalStorage, PlacementSurvivesTargetAndAnalyzerSessionChanges) {
     PointerInput input(
-        "global mut size: usize align(64) section(\".data.size\") = ~0usize; "
-        "global mut zero: u32 section(\".bss.zero\") = 7 - 7; "
-        "global const small: u8 align(32) = 1u8;");
+        "static mut size: usize align(64) section(\".data.size\") = ~0usize; "
+        "static mut zero: u32 section(\".bss.zero\") = 7 - 7; "
+        "static const small: u8 align(32) = 1u8;");
     for (const auto* triple : {"riscv32-unknown-elf", "riscv64-unknown-elf",
                                "riscv32-unknown-elf"}) {
         const auto target = codegen::TargetLayout::create({.triple = triple});
@@ -386,7 +386,7 @@ TEST(GlobalStorage, PlacementSurvivesTargetAndAnalyzerSessionChanges) {
 }
 
 TEST(GlobalStorage, VerifierRejectsInvalidPlacementBeforeLLVM) {
-    PointerInput input("global mut data: u32 section(\".data.state\") = 7;");
+    PointerInput input("static mut data: u32 section(\".data.state\") = 7;");
     sema::TypeChecker checker(input.diagnostics, 64);
     ASSERT_TRUE(checker.check(*input.syntax));
     stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
@@ -438,7 +438,7 @@ TEST(GlobalStorage, ParserRejectsInvalidOrRepeatedAttributes) {
         SCOPED_TRACE(attribute);
         const auto source = source::SourceFile::from_text(
             "attributes.pgs",
-            std::string("global mut data: u32 ") + attribute + " = 0;");
+            std::string("static mut data: u32 ") + attribute + " = 0;");
         source::DiagnosticEngine diagnostics(source);
         syntax::Lexer lexer(source, diagnostics);
         const auto tokens = lexer.tokenize();
@@ -451,8 +451,8 @@ TEST(GlobalStorage, ParserRejectsInvalidOrRepeatedAttributes) {
 TEST(GlobalStorage, QuotedMetadataDoesNotIntroduceStringExpressions) {
     for (const auto* text :
          {"let text = \"hello\";",
-          "global mut data: u32 section(\"unterminated",
-          "global mut data: u32 section(\"line\nbreak\") = 0;"}) {
+          "static mut data: u32 section(\"unterminated",
+          "static mut data: u32 section(\"line\nbreak\") = 0;"}) {
         const auto source = source::SourceFile::from_text("quoted.pgs", text);
         source::DiagnosticEngine diagnostics(source);
         syntax::Lexer lexer(source, diagnostics);
@@ -463,7 +463,7 @@ TEST(GlobalStorage, QuotedMetadataDoesNotIntroduceStringExpressions) {
     }
 }
 TEST(GlobalArrays, TargetInitializersAndElementAddressesSurviveSessionReset) {
-    PointerInput input("global mut data: [usize; 2] = [~0usize, 7usize]; "
+    PointerInput input("static mut data: [usize; 2] = [~0usize, 7usize]; "
                        "let p = &data[1]; let result = data[1];");
     for (const auto* triple : {"riscv32-unknown-elf", "riscv64-unknown-elf",
                                "riscv32-unknown-elf"}) {
@@ -498,7 +498,7 @@ TEST(GlobalArrays, TargetInitializersAndElementAddressesSurviveSessionReset) {
 }
 
 TEST(GlobalArrays, VerifierRejectsMalformedInitializers) {
-    PointerInput input("global mut data: [u32; 2] = [0, 0];");
+    PointerInput input("static mut data: [u32; 2] = [0, 0];");
     sema::TypeChecker checker(input.diagnostics, 64);
     ASSERT_TRUE(checker.check(*input.syntax));
     stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
@@ -544,7 +544,7 @@ TEST(GlobalArrays, VerifierRejectsMalformedInitializers) {
 
 TEST(GlobalArrays, VerifierChecksAddressTypeIndexAndDominance) {
     PointerInput input(
-        "global const data: [u32; 2] = [1, 2]; global const scalar: u32 = 1; "
+        "static const data: [u32; 2] = [1, 2]; static const scalar: u32 = 1; "
         "export fn address(i: u32) -> *const u32 { &data[i] }");
     sema::TypeChecker checker(input.diagnostics, 64);
     ASSERT_TRUE(checker.check(*input.syntax));
@@ -600,7 +600,7 @@ TEST(GlobalArrays,
      UnusedInitializersStillConsumeTargetSizedConstructionBudget) {
     for (unsigned bits : {32U, 64U}) {
         PointerInput input(
-            "global const table: [usize; 4] = [for i in 0..4 { i as usize }];");
+            "static const table: [usize; 4] = [for i in 0..4 { i as usize }];");
         sema::TypeChecker checker(input.diagnostics, bits);
         ASSERT_TRUE(checker.check(*input.syntax));
         stage::AnalysisLimits limits;
@@ -633,7 +633,7 @@ TEST(GlobalRecords, TargetLayoutAndFieldAddressesSurviveSessionReset) {
     PointerInput input(
         "record State { tag: u8, count: u32, wide: u64, size: usize, tail: i16 "
         "} "
-        "global mut state: State align(64) = "
+        "static mut state: State align(64) = "
         "State(tail: -7i16, size: ~0usize, wide: ~0u64, count: 12, tag: 3u8); "
         "let p = &state.size; let result = state.count;");
     for (const auto* triple :
@@ -676,8 +676,8 @@ TEST(GlobalRecords, TargetLayoutAndFieldAddressesSurviveSessionReset) {
 
 TEST(GlobalRecords, VerifierRejectsMalformedInitializersAndNominalSchemas) {
     PointerInput input("record R { tag: u8, size: usize } "
-                       "global mut state: R = R(tag: 0u8, size: 0usize); "
-                       "global mut twin: R = R(tag: 0u8, size: 0usize);");
+                       "static mut state: R = R(tag: 0u8, size: 0usize); "
+                       "static mut twin: R = R(tag: 0u8, size: 0usize);");
     sema::TypeChecker checker(input.diagnostics, 64);
     ASSERT_TRUE(checker.check(*input.syntax));
     stage::StageAnalyzer analyzer(input.diagnostics, checker.types());
@@ -738,8 +738,8 @@ TEST(GlobalRecords, VerifierRejectsMalformedInitializersAndNominalSchemas) {
 
 TEST(GlobalRecords, VerifierChecksFieldAddressBaseIndexTypeAndPermission) {
     PointerInput input(
-        "record R { field: u32 } global const data: R = R(field: 1); "
-        "global const scalar: u32 = 0; "
+        "record R { field: u32 } static const data: R = R(field: 1); "
+        "static const scalar: u32 = 0; "
         "export fn address() -> *const u32 { &data.field }");
     sema::TypeChecker checker(input.diagnostics, 64);
     ASSERT_TRUE(checker.check(*input.syntax));
@@ -793,7 +793,7 @@ TEST(GlobalRecords, ConstructionBudgetCountsLogicalFieldsNotStoragePadding) {
     for (unsigned bits : {32U, 64U}) {
         PointerInput input(
             "record R { tag: u8, size: usize } "
-            "global const unused: R = R(tag: 0u8, size: 0usize);");
+            "static const unused: R = R(tag: 0u8, size: 0usize);");
         sema::TypeChecker checker(input.diagnostics, bits);
         ASSERT_TRUE(checker.check(*input.syntax));
         stage::AnalysisLimits limits;
@@ -849,7 +849,7 @@ TEST(RecordPointers, IdentityIncludesNominalPointeePermissionAndTarget) {
 TEST(RecordPointers, TargetSchemasAndResidualDefinitionsSurviveSessionReset) {
     PointerInput input(
         "record R { tag: u8, size: usize } "
-        "global mut state: R = R(tag: 0u8, size: 7usize); "
+        "static mut state: R = R(tag: 0u8, size: 7usize); "
         "fn get(p: *const R) -> usize { (*p).size } "
         "export fn address() -> *mut R { &state } "
         "export fn read(p: *const R) -> u32 { (get(p) + get(p)) as u32 }");
@@ -885,7 +885,7 @@ TEST(RecordPointers, TargetSchemasAndResidualDefinitionsSurviveSessionReset) {
 
 TEST(RecordPointers, VerifierRejectsInconsistentSchemasAndWholeRecordMemory) {
     PointerInput input(
-        "record R { value: u32 } global mut state: R = R(value: 0); "
+        "record R { value: u32 } static mut state: R = R(value: 0); "
         "export fn field(p: *mut R) -> *mut u32 { &(*p).value }");
     sema::TypeChecker checker(input.diagnostics, 64);
     ASSERT_TRUE(checker.check(*input.syntax));
@@ -944,11 +944,12 @@ TEST(RecordPointers, VerifierRejectsInconsistentSchemasAndWholeRecordMemory) {
     }
 }
 
-TEST(RecordPointers, StaticNullFieldAddressesFailWithoutHostDereference) {
+TEST(RecordPointers, ComptimeNullFieldAddressesFailWithoutHostDereference) {
     for (const auto* expression : {"(*p).first", "&(*p).first", "&(*p).last"}) {
-        PointerInput input(std::string("record R { first: u8, last: u32 } ") +
-                           "static let p = 0usize as *const R; let result = " +
-                           expression + ";");
+        PointerInput input(
+            std::string("record R { first: u8, last: u32 } ") +
+            "comptime let p = 0usize as *const R; let result = " + expression +
+            ";");
         sema::TypeChecker checker(input.diagnostics, 32);
         ASSERT_TRUE(checker.check(*input.syntax));
         stage::StageAnalyzer analyzer(input.diagnostics, checker.types());

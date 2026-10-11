@@ -35,7 +35,10 @@ const Token* Parser::consume(TokenKind kind, std::string message) {
     return nullptr;
 }
 
-void Parser::synchronize() {
+void Parser::synchronize(std::size_t before) {
+    if (index_ == before && !at_end()) {
+        ++index_;
+    }
     while (!at_end()) {
         if (index_ > 0 && previous().kind == TokenKind::Semicolon) {
             return;
@@ -46,6 +49,7 @@ void Parser::synchronize() {
         case TokenKind::KwExport:
         case TokenKind::KwRecord:
         case TokenKind::KwLet:
+        case TokenKind::KwComptime:
         case TokenKind::KwStatic:
         case TokenKind::KwRuntime:
         case TokenKind::KwReturn:
@@ -63,7 +67,7 @@ std::unique_ptr<Module> Parser::parse_module() {
     auto module = std::make_unique<Module>();
     while (!at_end()) {
         const auto before = index_;
-        if (check(TokenKind::KwGlobal)) {
+        if (check(TokenKind::KwStatic)) {
             if (auto global = parse_global())
                 module->globals.push_back(std::move(*global));
         } else if (check(TokenKind::KwRecord)) {
@@ -83,7 +87,7 @@ std::unique_ptr<Module> Parser::parse_module() {
             ++index_;
         }
         if (diagnostics_.has_error()) {
-            synchronize();
+            synchronize(before);
         }
     }
     return module;
@@ -122,13 +126,15 @@ std::optional<Module::Record> Parser::parse_record() {
 }
 
 std::optional<Module::Global> Parser::parse_global() {
-    consume(TokenKind::KwGlobal, "expected `global`");
+    consume(TokenKind::KwStatic, "expected `static`");
     const bool writable = match(TokenKind::KwMut);
     if (!writable && !consume(TokenKind::KwConst,
-                              "expected `const` or `mut` after `global`"))
+                              "expected `const` or `mut` after `static`"))
         return std::nullopt;
-    const auto* name = consume(TokenKind::Identifier, "expected global name");
-    if (!name || !consume(TokenKind::Colon, "expected `:` after global name"))
+    const auto* name =
+        consume(TokenKind::Identifier, "expected static storage name");
+    if (!name ||
+        !consume(TokenKind::Colon, "expected `:` after static storage name"))
         return std::nullopt;
     auto type = parse_type();
     if (!type)
@@ -141,13 +147,13 @@ std::optional<Module::Global> Parser::parse_global() {
         ++index_;
         const bool section = attribute.lexeme == "section";
         if (!section && attribute.lexeme != "align") {
-            diagnostics_.error("E1002", "unknown global storage attribute",
+            diagnostics_.error("E1002", "unknown static storage attribute",
                                attribute.span);
             return std::nullopt;
         }
         bool& seen = section ? saw_section : saw_alignment;
         if (seen) {
-            diagnostics_.error("E1002", "duplicate global storage attribute",
+            diagnostics_.error("E1002", "duplicate static storage attribute",
                                attribute.span);
             return std::nullopt;
         }
@@ -189,11 +195,13 @@ std::optional<Module::Global> Parser::parse_global() {
                      "expected `)` after storage attribute"))
             return std::nullopt;
     }
-    if (!consume(TokenKind::Equal, "expected `=` before global initializer"))
+    if (!consume(TokenKind::Equal,
+                 "expected `=` before static storage initializer"))
         return std::nullopt;
     auto initializer = parse_expression();
     if (!initializer ||
-        !consume(TokenKind::Semicolon, "expected `;` after global initializer"))
+        !consume(TokenKind::Semicolon,
+                 "expected `;` after static storage initializer"))
         return std::nullopt;
     return Module::Global{.name = std::string(name->lexeme),
                           .name_span = name->span,
@@ -365,27 +373,28 @@ std::unique_ptr<Block> Parser::parse_block() {
 
     auto block = std::make_unique<Block>();
     while (!check(TokenKind::RightBrace) && !at_end()) {
-        if (check(TokenKind::KwLet) || check(TokenKind::KwStatic) ||
+        const auto before = index_;
+        if (check(TokenKind::KwLet) || check(TokenKind::KwComptime) ||
             check(TokenKind::KwRuntime) || check(TokenKind::KwReturn) ||
             check(TokenKind::KwFor)) {
             if (auto statement = parse_statement()) {
                 block->statements.push_back(std::move(statement));
             } else {
-                synchronize();
+                synchronize(before);
             }
             continue;
         }
 
         auto expression = parse_expression();
         if (!expression) {
-            synchronize();
+            synchronize(before);
             continue;
         }
         if (check(TokenKind::Equal)) {
             if (auto statement = parse_store(std::move(expression)))
                 block->statements.push_back(std::move(statement));
             else
-                synchronize();
+                synchronize(before);
             continue;
         }
         if (match(TokenKind::Semicolon)) {
@@ -410,12 +419,12 @@ std::unique_ptr<Block> Parser::parse_block() {
 }
 
 std::unique_ptr<Stmt> Parser::parse_statement() {
-    if (match(TokenKind::KwStatic)) {
+    if (match(TokenKind::KwComptime)) {
         const auto start = previous().span;
-        if (!consume(TokenKind::KwLet, "expected `let` after `static`")) {
+        if (!consume(TokenKind::KwLet, "expected `let` after `comptime`")) {
             return nullptr;
         }
-        return parse_binding(BindingKind::Static, start);
+        return parse_binding(BindingKind::Comptime, start);
     }
     if (match(TokenKind::KwRuntime)) {
         const auto start = previous().span;

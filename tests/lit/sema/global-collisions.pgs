@@ -1,9 +1,9 @@
 // RUN: not %pagosc check %s 2>&1 | %FileCheck %s
-global mut same: u32 = 0;
-global const same: u32 = 1;
-global mut external_input: u32 = 0;
-global mut method: u32 = 0;
+static mut same: u32 = 0;
+static const same: u32 = 1;
+static mut external_input: u32 = 0;
+static mut method: u32 = 0;
 fn method() -> u32 { 0 }
-// CHECK: error[E1004]: duplicate or reserved global name `same`
-// CHECK: error[E1004]: duplicate or reserved global name `external_input`
-// CHECK: error[E1004]: duplicate or reserved global name `method`
+// CHECK: error[E1004]: duplicate or reserved static storage name `same`
+// CHECK: error[E1004]: duplicate or reserved static storage name `external_input`
+// CHECK: error[E1004]: duplicate or reserved static storage name `method`

@@ -75,7 +75,7 @@ flowchart TB
     Inputs["Pagos source and configuration"] --> Parse["Lexer, parser, and AST"]
     Parse --> Sema["Name resolution, types, and effects"]
     Sema --> HIR["Typed HIR<br/>stage variables and constraints"]
-    HIR --> BTA["Binding-time analysis<br/>field-sensitive Static and Runtime"]
+    HIR --> BTA["Binding-time analysis<br/>field-sensitive Comptime and Runtime"]
     BTA --> Eval["Compile-time VM<br/>partial evaluation"]
 
     Caps["Capability APIs<br/>declared FS and environment inputs"] <--> Eval
@@ -113,7 +113,7 @@ Perform:
 - type checking and inference;
 - effect checking;
 - construction of generic constraints;
-- collection of explicit `static` and `runtime` constraints.
+- collection of explicit `comptime` and `runtime` constraints.
 
 Do not emit LLVM IR from the AST.
 
@@ -137,23 +137,23 @@ The current scalar/array HIR is a shared expression graph. `Reference` nodes
 attach use-specific diagnostic paths without cloning the referenced computation;
 loop indices and Runtime reads keep their original identity through aliases
 and calls. `Sequence` records ordered residual evaluations plus a result whose
-value stage may still be Static. Statement and argument evaluations are
+value stage may still be Comptime. Statement and argument evaluations are
 retained even when their values are unused. MIR reuses an already lowered
 value only where its definition dominates the use. `emit-hir` includes a
 `residual =` line for sequenced entry work, including top-level loops; repeated
 textual expressions can denote shared nodes rather than repeated evaluations.
 
-Static-index array projection follows `Reference` nodes and the result of a
+Comptime-index array projection follows `Reference` nodes and the result of a
 `Sequence` to an `Array` construction. It selects that element's stage and
 rebases diagnostic alias/parameter steps onto that element's Runtime source.
 Folding emits a `Sequence` of the original array/index work and a fresh scalar
 constant, preserving identity and all earlier evaluations. Explicit
 `RuntimeBoundary`, Runtime `If`, and `ReturnScope` nodes are opaque: projection
-does not infer Static values across Runtime selection or compare branches.
+does not infer Comptime values across Runtime selection or compare branches.
 
 HIR records whether an expression can continue and whether it may return from
 the enclosing call. `Return` carries the return value; `ReturnScope` delimits
-the return boundary of a specialized body, inline or outlined. Static returns
+the return boundary of a specialized body, inline or outlined. Comptime returns
 disappear during analysis. MIR lowering routes residual returns to a per-call
 exit and merges their values with a phi. Terminated paths contribute neither an `if`
 continuation nor a loop backedge. The type side table uses an internal `never`
@@ -161,9 +161,9 @@ type for expressions that always return, so they need no continuation value.
 
 ### 5. Binding-time analysis
 
-Solve the `Static <= Runtime` constraints, preserving field and value
+Solve the `Comptime <= Runtime` constraints, preserving field and value
 precision. Record explanation edges so every Runtime result can identify its
-origin and every failed `static` requirement can show a thaw path.
+origin and every failed `comptime` requirement can show a thaw path.
 
 This phase determines which regions are executable by the compile-time VM and
 which require symbolic/residual values.
@@ -184,12 +184,12 @@ LLVM JIT. Priorities are:
 ORC JIT can later accelerate pure, closed, frequently evaluated functions. It
 must not become the semantic reference implementation.
 
-The evaluator produces both concrete static values and residual operations.
-Static values crossing the boundary are checked for embeddability.
+The evaluator produces both concrete Comptime values and residual operations.
+Comptime values crossing the boundary are checked for embeddability.
 
-The current evaluator supports bounded Static recursion and memoizes pure,
-fully Static results. `AnalysisLimits` controls fuel, recursion depth, and the
-number of Static specializations and, separately, completed scalar residual
+The current evaluator supports bounded Comptime recursion and memoizes pure,
+fully Comptime results. `AnalysisLimits` controls fuel, recursion depth, and the
+number of Comptime specializations and, separately, completed scalar residual
 definitions. `AnalysisStats` exposes both counts and cache-hit counters, along
 with consumption and maximum analysis depth. Scalar Runtime recursion reuses
 active signatures. Full host-memory accounting remains future work.
@@ -215,7 +215,7 @@ Quota checks use remaining capacity and division before multiplication to
 avoid overflow; counters reset for each analysis. These quotas do not measure
 HIR overhead, cache copies, or backend allocations.
 
-The CRC-32 demonstration exercises this path with recursive Static table
+The CRC-32 demonstration exercises this path with recursive Comptime table
 construction and residual checked lookups. `u32` bitwise operators preserve
 the same stages and sequencing as other strict primitives. MIR names shifts
 `shl.checked` / `lshr.checked`; LLVM lowering guards Runtime counts before
@@ -368,15 +368,15 @@ have code.
 
 Scalar-argument calls with Runtime scalar results retain an HIR `Call` and
 share an immutable `ResidualFunction` containing generic `Parameter` nodes.
-The staging key includes source identity, typed Static values, and Runtime
+The staging key includes source identity, typed Comptime values, and Runtime
 positions/types; session-local caches cannot cross semantic target layouts.
 Caller-side sequencing retains all argument work, while only Runtime values
-are passed to parameters. Static values with effects are embedded as pure
+are passed to parameters. Comptime values with effects are embedded as pure
 constants after preserving their effects in the caller. Each call remains a
 distinct HIR computation identity. Lowering interns definition identities into
 module-local symbols, with a separate SSA/dominance cache and return scopes
 per function. Aggregate calls retain their inline path and projection precision.
-Non-recursive scalar Static-result bodies are instantiated back into the caller
+Non-recursive scalar Comptime-result bodies are instantiated back into the caller
 with a DAG-preserving parameter substitution, not forced into Runtime calls.
 
 Parameter traces carry symbolic IDs. Invocation substitutes current argument
@@ -410,7 +410,7 @@ stack usage. Do not infer aggregate C ABI classification from storage layout
 alone.
 
 Ordinary external calls are Runtime and conservatively effectful unless a
-separate, explicit compile-time capability exists. A Static address never
+separate, explicit compile-time capability exists. A Comptime address never
 licenses evaluating, removing, merging, or caching a volatile/MMIO read or
 write. Future target addresses must be target-width values or symbolic
 relocations, never dereferenceable host pointers. Ordinary raw memory now uses
@@ -418,7 +418,7 @@ the contract below; additional address spaces remain future
 work. No host execution of target code is introduced.
 
 The current `hir::has_residual_work` and `hir::is_cacheable_result` predicates
-are shared entry points: a Static result can retain Runtime work, trapping
+are shared entry points: a Comptime result can retain Runtime work, trapping
 operations, or return control. Cache hits still evaluate arguments in source
 order, including unused arguments, and only pure completed constant results
 are memoized. MIR's dominance-aware reuse of the same computation identity
@@ -448,7 +448,7 @@ See the [source contract](grammar.md#raw-pointers-and-memory-milestone-3).
 
 Explicit volatile dereferences/stores retain their access mode through syntax,
 HIR `VolatileLoad`/`VolatileStore` and MIR load/store flags. They share permission,
-sequencing and residual-work rules with ordinary accesses, never Static result
+sequencing and residual-work rules with ordinary accesses, never Comptime result
 caching. MIR additionally rejects non-native volatile integer widths. Codegen
 checks the current x86-64/RV32 target whitelist, emits null/alignment guards and
 LLVM integer volatile loads/stores with natural alignment rather than `align 1`.
@@ -462,7 +462,7 @@ Global declarations are separate from legacy top-level executable statements.
 The semantic side table resolves name expressions to source declarations,
 respecting local shadowing; staging does not search caller scopes for globals.
 All initializers are evaluated before entry/export analysis and must be pure
-Static values of the declared storage type. Existing fuel and specialization
+Comptime values of the declared storage type. Existing fuel and specialization
 budgets still apply.
 Declaration storage and LLVM allocations are not a new total-memory quota.
 

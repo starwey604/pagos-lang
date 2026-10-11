@@ -3,7 +3,7 @@
 // RUN: %run_optimized %s 1 2 255 65535
 record Mixed { byte: u8, half: u16, wide: u64, flag: bool }
 fn select(a: [u64; 3], i: u32) -> u64 { a[i] }
-static let table = [for i in 0..3 { (i as u64 << 32u64) | 7u64 }];
+comptime let table = [for i in 0..3 { (i as u64 << 32u64) | 7u64 }];
 let selected = select(table, external_input());
 let config = Mixed(wide: selected, byte: external_input() as u8,
                    flag: true, half: external_input() as u16);

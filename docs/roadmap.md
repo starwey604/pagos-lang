@@ -12,9 +12,9 @@ expected result must update the relevant rule and example together.
 Deliverables:
 
 - grammar sketch for the core expression language;
-- normative definitions of `let`, `static let`, and `runtime let`;
-- Static/Runtime propagation rules;
-- rules for pure calls, static and runtime branches, loops, and diagnostics;
+- normative definitions of `let`, `comptime let`, and `runtime let`;
+- Comptime/Runtime propagation rules;
+- rules for pure calls, Comptime and Runtime branches, loops, and diagnostics;
 - a decision on integer overflow and target-width arithmetic;
 - at least 20 small examples with expected stage results and errors.
 
@@ -27,7 +27,7 @@ Acceptance criteria:
 ## Milestone 1: First residual program
 
 Status: baseline complete. The C++26 compiler implements the vertical slice
-below with typed HIR, explainable stage paths, pure static evaluation, verified
+below with typed HIR, explainable stage paths, pure Comptime evaluation, verified
 host LLVM IR, and GoogleTest plus `lit`/`FileCheck` coverage.
 
 Implement a host compiler in C++ with:
@@ -58,7 +58,7 @@ Acceptance criteria:
 - `factor` is evaluated at compile time;
 - runtime input remains symbolic;
 - emitted LLVM IR contains no compile-time evaluator machinery;
-- a violated `static` binding reports its runtime source;
+- a violated `comptime` binding reports its runtime source;
 - stage tests are snapshot/golden tests.
 
 ## Milestone 2: Explainable partial evaluation
@@ -74,7 +74,7 @@ future work; this baseline does not imply a stable language or systems ABI.
 Delivered:
 
 - stage-polymorphic calls and specialization caching;
-- static and runtime loops;
+- Comptime and Runtime loops;
 - aggregates with field-sensitive staging;
 - cross-stage embedding for scalars, arrays, and records;
 - SSA residual MIR;
@@ -85,10 +85,23 @@ Delivered:
 Acceptance criteria:
 
 - CRC/lookup tables can be generated entirely at compile time;
-- a runtime index can access a static embedded table;
+- a Runtime index can access a Comptime embedded table;
 - reports show which operations remain and why;
-- exceeding the configured Static specialization count reports a deterministic
+- exceeding the configured Comptime specialization count reports a deterministic
   diagnostic; this is not a guarantee against host-memory exhaustion.
+
+### Stage Model follow-up
+
+The [Stage Model RFC](stage-model-rfc.md) develops the semantic foundation for
+the typed board configuration experiment: stage contracts, behavior
+preservation, explainable results and residual work, and proposed limited
+convergence. The current staging rules remain the implementation baseline.
+
+Provenance representation, query algorithms, and their compilation costs need
+separate research before implementation. Structured explanations should first
+preserve existing stage results; convergence then needs an explicit update to
+the semantics, examples, and execution tests. This work introduces no new stage
+keywords or business-code stage reflection.
 
 ## Milestone 3: Bare-metal systems slice
 
@@ -105,7 +118,7 @@ retain their behavior. The second slice adds `i8/i16/i32/i64`, negative literals
 wrapping negation, signed comparisons/division/shifts, and signedness-aware
 conversions. MIN/-1 division and remainder have explicit checks at both stages.
 The third slice adds distinct target-dependent `usize`, target-aware checking
-and Static evaluation, and cross-session width consistency checks;
+and Comptime evaluation, and cross-session width consistency checks;
 the fourth slice emits scalar residual functions with typed parameters and
 direct calls, preserving argument evaluation and early-return boundaries.
 The fifth slice reuses equivalent scalar residual specializations within one
@@ -122,17 +135,17 @@ lowering, additional ABI types/targets and allocation remain open. The ninth
 slice adds explicit volatile accesses, natural-alignment checks and native
 integer-width limits. Pagos-native UART/test-device firmware now runs in QEMU
 without C device helpers; fences, DMA, interrupts and real hardware remain open.
-The tenth slice adds private integer globals with pure Static initializers,
+The tenth slice adds private integer globals with pure Comptime initializers,
 symbolic global addresses and default ELF data sections. Pagos-owned startup
 state detects missing data copying or BSS clearing in QEMU. The eleventh slice adds
 named ELF data subsections and minimum object alignment, with verified section
 flags, BSS-zero constraints and linked RV32 startup coverage. Arbitrary sections,
 retained/uninitialized memory and fixed-address placement remain open.
-The twelfth slice adds global fixed-length integer arrays, pure Static generated
+The twelfth slice adds global fixed-length integer arrays, pure Comptime generated
 initializers, Runtime element reads and checked element addresses. Host and RV32
 C interoperation uses existing integer pointers; no aggregate calling convention
 is implied. The thirteenth slice adds global integer-field records with
-declaration-order, target-aligned storage layout, pure Static initializers,
+declaration-order, target-aligned storage layout, pure Comptime initializers,
 Runtime field reads and integer field pointers. Host/RV32 C layout and alias
 checks cover padded sizes/offsets and startup data/BSS, without aggregate call
 lowering. The fourteenth slice adds nominal record pointers, whole-global record
@@ -258,9 +271,9 @@ Acceptance criteria:
 
 Maintain paired Pagos and C/C++ implementations for:
 
-- static CRC and trigonometric lookup-table generation;
+- Comptime CRC and trigonometric lookup-table generation;
 - register field and peripheral configuration;
-- protocol packet parsing with static schema and runtime bytes;
+- protocol packet parsing with Comptime schema and Runtime bytes;
 - board revision selection;
 - compile-time driver graph validation;
 - a small real firmware application.

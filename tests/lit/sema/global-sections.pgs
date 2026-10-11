@@ -1,14 +1,14 @@
 // RUN: not %pagosc check %s 2>&1 | %FileCheck %s
-global mut a: u32 section(".rodata.bad") = 1;
-global const b: u32 section(".data.bad") = 1;
-global const c: u32 section(".bss.bad") = 0;
-global mut d: u32 section(".noinit.state") = 0;
-global mut e: u32 section(".text.state") = 0;
-global mut f: u32 section(".bss.") = 0;
-global mut g: u32 section(".data.a b") = 1;
-global mut h: u32 section(".data.a/b") = 1;
-global mut i: u32 section(".data.a\\b") = 1;
-global mut j: u32 section(".data.rel.ro") = 1;
-global mut k: u32 section(".data.rel.ro.local.state") = 1;
-global mut l: u32 section(".bss.rel.ro.state") = 0;
-// CHECK-COUNT-12: error[E1014]: invalid global storage attributes
+static mut a: u32 section(".rodata.bad") = 1;
+static const b: u32 section(".data.bad") = 1;
+static const c: u32 section(".bss.bad") = 0;
+static mut d: u32 section(".noinit.state") = 0;
+static mut e: u32 section(".text.state") = 0;
+static mut f: u32 section(".bss.") = 0;
+static mut g: u32 section(".data.a b") = 1;
+static mut h: u32 section(".data.a/b") = 1;
+static mut i: u32 section(".data.a\\b") = 1;
+static mut j: u32 section(".data.rel.ro") = 1;
+static mut k: u32 section(".data.rel.ro.local.state") = 1;
+static mut l: u32 section(".bss.rel.ro.state") = 0;
+// CHECK-COUNT-12: error[E1014]: invalid static storage attributes

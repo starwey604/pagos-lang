@@ -3,7 +3,7 @@
 // RUN: %run_optimized %s 9 1
 record Pair { known: u32, other: u32 }
 fn choose() -> u32 {
-    static let known = Pair(known: 11, other: if external_input() != 0 {
+    comptime let known = Pair(known: 11, other: if external_input() != 0 {
         return 9;
     } else { external_input() }).known;
     known + 1

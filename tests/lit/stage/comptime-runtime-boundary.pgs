@@ -1,0 +1,10 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+runtime let x = 7;
+comptime let y = x;
+// CHECK: error[E2001]: comptime binding `y` was thawed
+// CHECK: :3:14
+// CHECK: comptime let y = x;
+// CHECK-NEXT: {{^  \|              \^ requires a Comptime value$}}
+// CHECK: Runtime source `x`
+// CHECK: dependency path: x -> y
+// CHECK: help: remove `comptime` or remove the Runtime dependency

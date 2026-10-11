@@ -9,11 +9,11 @@ record State { tag: u8, count: u32, wide: u64, size: usize, tail: i16 }
 fn initial() -> State {
     State(size: ~0usize, tail: -7i16, wide: ~0u64, count: 12, tag: 3u8)
 }
-global mut state: State section(".data.state") align(64) = initial();
-global mut zero: State section(".bss.state") align(32) =
+static mut state: State section(".data.state") align(64) = initial();
+static mut zero: State section(".bss.state") align(32) =
     State(tag: 0u8, count: 0, wide: 0u64, size: 0usize, tail: 0i16);
-global const config: State section(".rodata.state") = initial();
-global const twin: State = initial();
+static const config: State section(".rodata.state") = initial();
+static const twin: State = initial();
 extern fn change(p: *mut u32) -> u32;
 export fn tag_address() -> *mut u8 { &state.tag }
 export fn count_address() -> *mut u32 { &state.count }
@@ -46,7 +46,7 @@ export fn shadow() -> u32 {
     let state = State(tag: 1u8, count: 99, wide: 0u64, size: 0usize, tail: 0i16);
     state.count
 }
-// HIR: global mut state: State section(".data.state") align(64) = State(3, 12,
+// HIR: static mut state: State section(".data.state") align(64) = State(3, 12,
 // HIR: field_address(global_address(state), 1)
 // MIR: field_address %{{[0-9]+}}, 1
 // IR: @pagos.global.state = internal global { i8, i32, i64, i64, i16 } { i8 3, i32 12, i64 -1, i64 -1, i16 -7 }, section ".data.state", align 64

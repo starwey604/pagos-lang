@@ -1,0 +1,9 @@
+// RUN: not %pagosc check %s 2>&1 | %FileCheck %s
+fn f() -> u32 { static const invalid: u32 = 0; comptime let x = 7; x }
+fn g() -> u32 { if true { static mut invalid: u32 = 0; let x = 7; x } else { 0 } }
+// CHECK: error[E1002]: expected expression
+// CHECK: :2:17
+// CHECK: found `static`
+// CHECK: error[E1002]: expected expression
+// CHECK: :3:27
+// CHECK: found `static`

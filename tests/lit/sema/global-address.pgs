@@ -1,8 +1,8 @@
 // RUN: not %pagosc check %s 2>&1 | %FileCheck %s
-global const read_only: u32 = 0;
+static const read_only: u32 = 0;
 let local = 1;
 let p = &local;
 let value = &17;
 *&read_only = 3;
-// CHECK-COUNT-2: error[E1013]: address-taking requires an unshadowed global name
+// CHECK-COUNT-2: error[E1013]: address-taking requires an unshadowed static storage name
 // CHECK: error[E1011]: store requires a `*mut` pointer

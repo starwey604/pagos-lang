@@ -5,7 +5,7 @@ fn choose(end: u32) -> u32 {
     return 9;
 }
 runtime let input = external_input();
-static let invalid = choose(input);
+comptime let invalid = choose(input);
 
-// CHECK: error[E2001]: static binding `invalid` was thawed
+// CHECK: error[E2001]: comptime binding `invalid` was thawed
 // CHECK: dependency path: input -> choose.end -> index -> return control -> invalid

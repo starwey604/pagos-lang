@@ -15,5 +15,5 @@ let a = next(ignore(mark()));
 let b = ignore(mark());
 let result = a + b;
 
-// CHECK: result: Static
+// CHECK: result: Comptime
 // CHECK: cache-hits=3

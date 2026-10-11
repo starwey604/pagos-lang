@@ -1,4 +1,4 @@
-"""Verify actual global storage, relocations and independent module identity."""
+"""Verify actual static storage, relocations and independent module identity."""
 from pathlib import Path
 import subprocess
 import sys

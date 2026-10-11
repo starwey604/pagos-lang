@@ -379,10 +379,10 @@ TEST(ResidualSpecialization, RejectsOneOverBudgetAndReportsOnce) {
     EXPECT_EQ(analyzer.stats().residual_cache_hits, 0U);
 }
 
-TEST(ResidualSpecialization, ZeroBudgetPermitsStaticResultsWithEffects) {
+TEST(ResidualSpecialization, ZeroBudgetPermitsComptimeResultsWithEffects) {
     StageInput input("fn known(x: u32) -> u32 { x; external_input(); 7 } "
-                     "static let a = known(external_input()); "
-                     "static let b = known(external_input());");
+                     "comptime let a = known(external_input()); "
+                     "comptime let b = known(external_input());");
     pagos::stage::AnalysisLimits limits;
     limits.residual_specializations = 0;
     pagos::stage::StageAnalyzer analyzer(input.diagnostics,
@@ -398,7 +398,7 @@ TEST(ResidualSpecialization, ZeroBudgetPermitsStaticResultsWithEffects) {
     EXPECT_EQ(mir->functions.size(), 1U);
 }
 
-TEST(ResidualSpecialization, AllStaticArgumentsCanShareAnEffectfulBody) {
+TEST(ResidualSpecialization, AllComptimeArgumentsCanShareAnEffectfulBody) {
     StageInput input("fn read(k: u32) -> u32 { external_input() + k } "
                      "let a = read(1); let b = read(1);");
     pagos::stage::AnalysisLimits limits;
@@ -419,7 +419,7 @@ TEST(ResidualSpecialization, AllStaticArgumentsCanShareAnEffectfulBody) {
 }
 
 TEST(ResidualSpecialization, FailedBodiesAreNotPublished) {
-    StageInput input("fn bad(x: u32) -> u32 { static let invalid = x; x } "
+    StageInput input("fn bad(x: u32) -> u32 { comptime let invalid = x; x } "
                      "let a = bad(external_input()); "
                      "let b = bad(external_input());");
     pagos::stage::StageAnalyzer analyzer(input.diagnostics,
@@ -441,7 +441,7 @@ TEST(ResidualSpecialization, CacheHitTraceUsesCurrentCallerThroughNestedCalls) {
         "fn inner(x: u32) -> u32 { x + x } "
         "fn outer(x: u32) -> u32 { inner(x) } "
         "let first = external_input(); let a = outer(first); "
-        "let second = external_input(); static let b = outer(second);");
+        "let second = external_input(); comptime let b = outer(second);");
     pagos::stage::StageAnalyzer analyzer(input.diagnostics,
                                          input.checker.types());
     (void)analyzer.analyze(*input.module);
@@ -455,7 +455,8 @@ TEST(ResidualSpecialization, CacheHitTraceUsesCurrentCallerThroughNestedCalls) {
     EXPECT_EQ(analyzer.stats().residual_cache_hits, 1U);
 }
 
-TEST(ResidualSpecialization, StaticRecursionMayBuildDistinctResidualVersions) {
+TEST(ResidualSpecialization,
+     ComptimeRecursionMayBuildDistinctResidualVersions) {
     StageInput input(
         "fn expand(n: u32) -> u32 { if n == 0 { external_input() } "
         "else { expand(n - 1) + 1 } } "
@@ -521,9 +522,9 @@ TEST(RuntimeRecursion, ReusesActiveSignatureAndResetsSessions) {
     EXPECT_TRUE(pagos::mir::lower(*second));
 }
 
-TEST(RuntimeRecursion, StaticSubcallsRemainStaticInsideRuntimeVersions) {
+TEST(RuntimeRecursion, ComptimeSubcallsRemainComptimeInsideRuntimeVersions) {
     StageInput input("fn f(n: u32) -> u32 { if n == 0 { 7 } else { "
-                     "static let base = f(0); base + n } } "
+                     "comptime let base = f(0); base + n } } "
                      "let result = f(external_input());");
     pagos::stage::AnalysisLimits limits;
     limits.residual_specializations = 1;
@@ -555,7 +556,7 @@ TEST(RuntimeRecursion, VersionGrowthIsBoundedBeforeDepthExhaustion) {
 
 TEST(RuntimeRecursion, FailedComponentsAreNotReused) {
     StageInput input(
-        "fn a(n: u32) -> u32 { b(n); static let invalid = n; n } "
+        "fn a(n: u32) -> u32 { b(n); comptime let invalid = n; n } "
         "fn b(n: u32) -> u32 { a(n) } "
         "let first = a(external_input()); let second = b(external_input());");
     pagos::stage::StageAnalyzer analyzer(input.diagnostics,
@@ -569,7 +570,7 @@ TEST(RuntimeRecursion, FailedComponentsAreNotReused) {
 }
 
 TEST(RuntimeRecursion,
-     EffectfulInfiniteCycleIsResidualButPureCycleIsStaticError) {
+     EffectfulInfiniteCycleIsResidualButPureCycleIsComptimeError) {
     for (const bool effectful : {false, true}) {
         StageInput input(std::string("fn spin() -> u32 { ") +
                          (effectful ? "external_input(); " : "") +

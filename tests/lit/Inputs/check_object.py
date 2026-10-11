@@ -48,7 +48,7 @@ def main():
         assert obj.read_bytes() == marker
         temporary.unlink()
         invalid = root / "invalid.pgs"
-        invalid.write_text("static let x = external_input();")
+        invalid.write_text("comptime let x = external_input();")
         invoke("emit-obj", invalid, "-o", obj, error="E2001")
         assert obj.read_bytes() == marker and not temporary.exists()
         invoke("emit-obj", source, "-o", root, error="cannot replace object output")

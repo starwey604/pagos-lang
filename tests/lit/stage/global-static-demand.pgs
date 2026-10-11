@@ -1,6 +1,6 @@
 // RUN: not %pagosc check %s 2>&1 | %FileCheck %s
-global mut counter: u32 = 0;
-static let result = counter;
+static mut counter: u32 = 0;
+comptime let result = counter;
 // CHECK: error[E2001]:
-// CHECK: global read counter
+// CHECK: static storage read counter
 // CHECK: result

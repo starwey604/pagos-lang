@@ -5,13 +5,13 @@
 // RUN: %run_c_abi --optimize %s %S/../Inputs/global_arrays.c read store address discard
 // RUN: %pagosc emit-obj %s -o %t.o
 // RUN: llvm-readobj --sections --symbols %t.o | %FileCheck %s --check-prefix=ELF
-global mut buffer: [u8; 16] section(".bss.buffer") align(64) = [for i in 0..16 { 0u8 }];
-global const squares: [u32; 16] section(".rodata.squares") align(32) = [for i in 0..16 { i * i }];
-global const twin: [u32; 16] = [for i in 0..16 { i * i }];
-global mut words: [u32; 4] section(".data.words") = [1, 2, 3, 4];
-global mut narrow: [i16; 2] = [-1234i16, 32767i16];
-global mut wide: [u64; 2] = [~0u64, 1u64];
-global mut sizes: [usize; 2] = [~0usize, 7usize];
+static mut buffer: [u8; 16] section(".bss.buffer") align(64) = [for i in 0..16 { 0u8 }];
+static const squares: [u32; 16] section(".rodata.squares") align(32) = [for i in 0..16 { i * i }];
+static const twin: [u32; 16] = [for i in 0..16 { i * i }];
+static mut words: [u32; 4] section(".data.words") = [1, 2, 3, 4];
+static mut narrow: [i16; 2] = [-1234i16, 32767i16];
+static mut wide: [u64; 2] = [~0u64, 1u64];
+static mut sizes: [usize; 2] = [~0usize, 7usize];
 extern fn next() -> u32;
 extern fn payload() -> u32;
 extern fn change(p: *mut u8) -> u32;
@@ -32,9 +32,9 @@ export fn snapshot() -> u32 {
 }
 export fn foreign_change() -> u32 { change(&buffer[0]); read(0) }
 export fn repeat() -> u32 {
-    static let a = set();
+    comptime let a = set();
     change(&buffer[0]);
-    static let b = set();
+    comptime let b = set();
     a + b + read(0)
 }
 export fn fill(n: u32) -> u32 {
@@ -56,7 +56,7 @@ export fn shadow() -> u32 { let buffer = [1u8, 2u8]; buffer[1] as u32 }
 export fn trap_read(i: u32) -> u32 { buffer[i] as u32 }
 export fn trap_store(i: u32) -> u32 { *&buffer[i] = 1u8; 0 }
 export fn trap_discard(i: u32) -> u32 { &buffer[i]; 0 }
-// HIR: global mut buffer: [u8; 16] section(".bss.buffer") align(64) = [0, 0,
+// HIR: static mut buffer: [u8; 16] section(".bss.buffer") align(64) = [0, 0,
 // HIR: global_element_address(buffer,
 // MIR: global_element_address @pagos.global.buffer,
 // IR: @pagos.global.buffer = internal global [16 x i8] zeroinitializer, section ".bss.buffer", align 64

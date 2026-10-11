@@ -9,7 +9,7 @@ through explicit runtime sources and propagates through the dataflow from there.
 
 The name comes from Ancient Greek **πάγος** (*pagos*): that which is fixed or
 firmly set, and by extension frost or ice. The language uses freezing and
-thawing as an explanatory metaphor for static and runtime values; the formal
+thawing as an explanatory metaphor for Comptime and Runtime values; the formal
 model uses binding-time analysis and partial evaluation.
 
 Pagos is currently a research compiler. The first executable vertical slice is
@@ -23,7 +23,7 @@ fn uart_divisor(clock_hz: u32, baud: u32) -> u32 {
     return clock_hz / baud;
 }
 
-let clock_hz = 80_000_000;              // inferred Static
+let clock_hz = 80_000_000;              // inferred Comptime
 runtime let baud = external_input();     // explicit Runtime source
 
 let divisor = uart_divisor(clock_hz, baud);
@@ -37,7 +37,7 @@ The intended rules are:
 - `let` is stage-inferred and is evaluated at compile time when possible.
 - `runtime let` introduces a runtime value explicitly.
 - Expressions depending on runtime values become runtime expressions.
-- `static let` requires a compile-time result and reports the dependency path
+- `comptime let` requires a compile-time result and reports the dependency path
   that thawed it when the constraint cannot be satisfied.
 - Mixed-stage functions are partially evaluated. Pagos emits only the residual
   computation required at runtime.
@@ -88,8 +88,11 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
   non-goals
 - [Core grammar](docs/grammar.md): the syntax baseline for the first compiler
   slice
-- [Staging semantics](docs/staging-semantics.md): the normative Static/Runtime
+- [Staging semantics](docs/staging-semantics.md): the normative Comptime/Runtime
   model, effects, residualization, and open questions
+- [Stage Model RFC](docs/stage-model-rfc.md): an example-led proposal for stage
+  contracts, behavior preservation, explanations, and limited convergence;
+  provenance implementation choices remain future research
 - [Semantic examples](docs/semantic-examples.md): executable-design cases with
   expected stages, residual work, and errors
 - [Diagnostic conventions](docs/diagnostics.md): stable structure for stage and
@@ -105,18 +108,18 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
 ## Status
 
 Milestone 1 is complete. The C++26 reference compiler parses and type-checks the
-core language, infers stages, evaluates Static expressions, explains Runtime
+core language, infers stages, evaluates Comptime expressions, explains Runtime
 dependency paths, and emits verified residual LLVM IR for the host target.
 The [Milestone 2 core baseline](docs/milestone-2.md) is complete, with total
 compiler-memory limits explicitly deferred. Typed, verified residual SSA MIR
-sits between partial evaluation and LLVM. Static recursion and pure Static
+sits between partial evaluation and LLVM. Comptime recursion and pure Comptime
 specializations are memoized under explicit evaluation limits.
-Static and Runtime loops, per-call early returns, and immutable fixed-length
-arrays are supported. Static lookup tables embed as read-only constants, with
+Comptime and Runtime loops, per-call early returns, and immutable fixed-length
+arrays are supported. Comptime lookup tables embed as read-only constants, with
 bounds-checked Runtime indexing.
-Static-index reads of mixed arrays retain the selected element's stage while
+Comptime-index reads of mixed arrays retain the selected element's stage while
 preserving evaluation of the entire array.
-Bulk generation uses `[for i in 0..256 { i * i }]`; bounds can also be Static
+Bulk generation uses `[for i in 0..256 { i * i }]`; bounds can also be Comptime
 expressions such as `0..1 << bits`, with concrete lengths per specialization.
 Fuel and cumulative construction quotas bound expansion. See the
 [computed-bound example](tests/lit/stage/generator-computed.pgs) and
@@ -127,7 +130,7 @@ Runtime checksums verified against zlib. See the
 [CRC walkthrough](docs/crc32.md) for commands and current limitations.
 Minimal named records support immutable scalar fields, field-sensitive staging,
 and residual aggregate values. The [record walkthrough](docs/records.md)
-demonstrates mixed Static/Runtime configuration without a stable-layout promise.
+demonstrates mixed Comptime/Runtime configuration without a stable-layout promise.
 Arrays and records share cumulative member/data-byte construction budgets;
 the [resource budget guide](docs/resource-budgets.md) defines accounting,
 legacy array limits, and the distinction from host-memory limits.
@@ -142,23 +145,23 @@ fixed container, not yet on GitHub Actions.
 M3 now includes `u8/u16/u32/u64` and `i8/i16/i32/i64`, typed literals
 (`255u8`, `-128i8`), and explicit
 conversions (`external_input() as u8`). Arithmetic wraps at the declared width;
-Static and Runtime checked operations agree. Arrays and records retain element
+Comptime and Runtime checked operations agree. Arrays and records retain element
 widths, and construction quotas count logical bytes. See the
 [integer rules](docs/grammar.md#core-type-rules) and
 [multi-width example](tests/lit/codegen/unsigned-widths.pgs), and the
 [signed boundary example](tests/lit/codegen/signed-arithmetic-64.pgs).
 Target-sized unsigned `usize` now follows the selected LLVM DataLayout through
-checking, Static evaluation, MIR, and LLVM emission. It remains distinct from
+checking, Comptime evaluation, MIR, and LLVM emission. It remains distinct from
 `u32`/`u64`; see the [RV32/RV64 example](tests/lit/stage/usize-static.pgs).
 All CLI commands accept target options. General C ABI support remains pending.
 
 Runtime scalar calls now emit internal functions with typed parameters and
-real MIR/LLVM calls; Static arguments still specialize their bodies. See the
+real MIR/LLVM calls; Comptime arguments still specialize their bodies. See the
 [nested-call example](tests/lit/codegen/residual-call-scalar.pgs).
 Equivalent scalar specializations share one definition within an analysis;
 see the [reuse example](tests/lit/codegen/residual-reuse.pgs). The independent
 `--max-residual-specializations` limit bounds their count. Aggregate and
-non-recursive Static-result calls retain the inline path. Scalar direct and
+non-recursive Comptime-result calls retain the inline path. Scalar direct and
 mutual Runtime recursion now reuse active signatures; see the
 [recursive example](tests/lit/codegen/runtime-recursion-sum.pgs). Compilation
 budgets do not guarantee termination or bound the target stack. These internal
@@ -175,7 +178,7 @@ Other boundary types and targets remain unsupported. See the
 
 Raw `*const T` / `*mut T` pointers now support integer memory loads/stores and
 explicit target-`usize` address conversions. Memory access stays Runtime even
-at a Static address. The [RAM example](tests/lit/codegen/pointers.pgs) runs on
+at a Comptime address. The [RAM example](tests/lit/codegen/pointers.pgs) runs on
 the host and RV32 with C-owned storage. No borrow checker or `unsafe` keyword
 is introduced; callers own lifetime/range validity. Local address-taking, allocation,
 and RAII remain future slices. See the
@@ -189,8 +192,8 @@ helpers. Startup remains assembly. Volatile is not an atomic operation, CPU
 fence or cache policy; see the
 [access rules](docs/grammar.md#volatile-access-and-mmio-milestone-3).
 
-`global const` / `global mut` now declare module-private integer storage with
-pure Static initializers. `&name` yields a relocatable target address; reading
+`static const` / `static mut` now declare module-private integer storage with
+pure Comptime initializers. `&name` yields a relocatable target address; reading
 storage remains Runtime. The [global example](tests/lit/codegen/globals.pgs)
 tests C access and independent modules. The QEMU UART example also owns its boot
 state and detects skipped `.data` copying or `.bss` clearing. See the
@@ -199,7 +202,7 @@ Optional `section(".data.boot")` and `align(64)` attributes now control named
 ELF data subsections and minimum object alignment. The
 [placement example](tests/lit/codegen/global-sections.pgs) checks actual ELF
 flags and alignment; final memory regions remain a linker-script decision.
-Fixed-length integer globals now support generated Static initializers,
+Fixed-length integer globals now support generated Comptime initializers,
 Runtime element reads and checked `&name[index]` addresses. The
 [array example](tests/lit/codegen/global-arrays.pgs) shares a Pagos-owned buffer
 with C on the host and RV32, without whole-array copies or array-pointer types.

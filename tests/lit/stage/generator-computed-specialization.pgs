@@ -8,6 +8,6 @@ let a = last(2);
 let b = last(4);
 let c = last(2);
 let result = a + b + c;
-// CHECK: result: Static
+// CHECK: result: Comptime
 // CHECK: specializations=2, cache-hits=1
 // CHECK-SAME: array-elements=6, array-bytes=24

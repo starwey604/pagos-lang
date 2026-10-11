@@ -19,7 +19,7 @@
 
 namespace pagos::hir {
 
-enum class Stage { Static, Runtime };
+enum class Stage { Comptime, Runtime };
 using Constant = pagos::Constant;
 
 struct RuntimeTrace {
@@ -67,7 +67,7 @@ struct Expr {
 
     Kind kind{Kind::Constant};
     sema::Type type{sema::TypeKind::Error};
-    Stage stage{Stage::Static};
+    Stage stage{Stage::Comptime};
     bool falls_through{true};
     bool may_return{};
     source::Span span;
@@ -96,7 +96,7 @@ struct Binding {
     std::string name;
     source::Span name_span;
     sema::Type type{sema::TypeKind::Error};
-    Stage stage{Stage::Static};
+    Stage stage{Stage::Comptime};
     ExprPtr value;
     std::optional<RuntimeTrace> trace;
 };
@@ -132,7 +132,7 @@ struct Module {
 };
 
 [[nodiscard]] std::string_view stage_name(Stage stage) noexcept;
-// A Static result can still require ordered Runtime work or return control.
+// A Comptime result can still require ordered Runtime work or return control.
 [[nodiscard]] bool has_residual_work(const ExprPtr& expression);
 [[nodiscard]] bool is_cacheable_result(const ExprPtr& expression);
 [[nodiscard]] ExprPtr make_constant(Constant value, sema::Type type,

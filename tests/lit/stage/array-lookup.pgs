@@ -4,7 +4,7 @@
 // RUN: %run_residual %s 33 2
 // RUN: %run_residual %s trap 3
 // RUN: %run_residual %s trap 4294967295
-static let table: [u32; 3] = [11, 22, 33];
+comptime let table: [u32; 3] = [11, 22, 33];
 let result = table[external_input()];
 // MIR: [u32; 3] = const [11, 22, 33]
 // MIR: index.checked

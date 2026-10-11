@@ -8,7 +8,7 @@ The illustrative prelude provides `read_u32() -> u32` with effect `target.io`
 and `build_u32() -> u32` with effect `build.fs`. A declared `build.fs`
 capability is assumed except where an example tests its absence.
 
-## Static inference
+## Comptime inference
 
 ### 1. Literal binding
 
@@ -16,7 +16,7 @@ capability is assumed except where an example tests its absence.
 let answer = 42;
 ```
 
-Expected: `answer: u32` is Static; no residual operation is emitted.
+Expected: `answer: u32` is Comptime; no residual operation is emitted.
 
 ### 2. Pure arithmetic
 
@@ -24,23 +24,23 @@ Expected: `answer: u32` is Static; no residual operation is emitted.
 let divisor = 80_000_000 / 115_200;
 ```
 
-Expected: `divisor` is the Static `u32` value `694`.
+Expected: `divisor` is the Comptime `u32` value `694`.
 
-### 3. Static comparison
+### 3. Comptime comparison
 
 ```pagos
 let enabled = 3 < 5;
 ```
 
-Expected: `enabled: bool` is Static `true`.
+Expected: `enabled: bool` is Comptime `true`.
 
-### 4. Satisfied static constraint
+### 4. Satisfied Comptime constraint
 
 ```pagos
-static let table_size = 16 * 4;
+comptime let table_size = 16 * 4;
 ```
 
-Expected: `table_size` is Static `64`; the constraint succeeds.
+Expected: `table_size` is Comptime `64`; the constraint succeeds.
 
 ## Runtime roots and propagation
 
@@ -50,7 +50,7 @@ Expected: `table_size` is Static `64`; the constraint succeeds.
 runtime let input = 7;
 ```
 
-Expected: `input` is Runtime even though its initializer is Static. Residual
+Expected: `input` is Runtime even though its initializer is Comptime. Residual
 storage is not required, and a backend may still fold the constant.
 
 ### 6. Direct propagation
@@ -63,14 +63,14 @@ let output = input + 1;
 Expected: `output` is Runtime; residual code contains addition by `1` before
 backend optimization.
 
-### 7. Failed static constraint
+### 7. Failed Comptime constraint
 
 ```pagos
 runtime let input = 7;
-static let output = input + 1;
+comptime let output = input + 1;
 ```
 
-Expected error: `output` requires Static. The dependency path is
+Expected error: `output` requires Comptime. The dependency path is
 `input -> output`, rooted at the `runtime let`.
 
 ### 8. Target effect
@@ -84,7 +84,7 @@ target; the read remains in residual code.
 
 ## Calls and specialization
 
-### 9. Fully static call
+### 9. Fully Comptime call
 
 ```pagos
 fn double(value: u32) -> u32 {
@@ -94,7 +94,7 @@ fn double(value: u32) -> u32 {
 let result = double(6);
 ```
 
-Expected: `result` is Static `12`; no call is residualized.
+Expected: `result` is Comptime `12`; no call is residualized.
 
 ### 10. Mixed-stage call
 
@@ -121,10 +121,10 @@ runtime let input = 9;
 let result = first(5, input);
 ```
 
-Expected: `result` is Static `5`; stages propagate through actual data use,
+Expected: `result` is Comptime `5`; stages propagate through actual data use,
 not by blindly joining every argument. If the unused argument contains a
 Runtime read or loop, that computation still executes before the call body;
-the result remains Static. A specialization-cache hit also preserves argument
+the result remains Comptime. A specialization-cache hit also preserves argument
 evaluation.
 
 ### 12. Transitive failure path
@@ -136,28 +136,28 @@ fn scale(factor: u32, value: u32) -> u32 {
 
 runtime let sample = 3;
 let scaled = scale(4, sample);
-static let result = scaled;
+comptime let result = scaled;
 ```
 
 Expected error: the useful path is
 `sample -> scale.value -> scaled -> result`.
 
-Recursive calls with fully Static arguments are evaluated and memoized by
-function plus typed argument constants. A selected Static base case terminates
+Recursive calls with fully Comptime arguments are evaluated and memoized by
+function plus typed argument constants. A selected Comptime base case terminates
 normally; an active specialization that calls itself with the same key is an
 error. Fuel, recursion-depth, and specialization budgets fail with `E4xxx`
 resource diagnostics rather than exhausting the compiler process.
 
 ## Control flow
 
-### 13. Static condition
+### 13. Comptime condition
 
 ```pagos
 runtime let fallback = 9;
 let result = if true { 1 } else { fallback };
 ```
 
-Expected: `result` is Static `1`. The unselected arm is type-checked but does
+Expected: `result` is Comptime `1`. The unselected arm is type-checked but does
 not thaw the result or produce residual code.
 
 ### 14. Runtime condition
@@ -179,14 +179,14 @@ let result = if condition { 1 } else { 1 };
 Expected: `result` is Runtime by language staging rules. LLVM may later fold
 the residual conditional without changing what compile-time code may observe.
 
-### 16. Static short-circuit
+### 16. Comptime short-circuit
 
 ```pagos
 runtime let flag = true;
 let result = false && flag;
 ```
 
-Expected: `result` is Static `false`; the right operand is not observed.
+Expected: `result` is Comptime `false`; the right operand is not observed.
 
 ### 17. Runtime short-circuit
 
@@ -197,7 +197,7 @@ let result = true && flag;
 
 Expected: `result` is Runtime because the right operand is required.
 
-### 18. Static range loop
+### 18. Comptime range loop
 
 ```pagos
 for index in 0..4 {
@@ -206,7 +206,7 @@ for index in 0..4 {
 ```
 
 Expected: the loop executes four times during compilation. Each `index` is a
-Static `u32`; the expression leaves no residual work.
+Comptime `u32`; the expression leaves no residual work.
 
 ### 19. Runtime range loop
 
@@ -225,14 +225,14 @@ discarded. An empty or reversed range executes no body operations.
 
 ## Effects
 
-### 20. Build effect under static control
+### 20. Build effect under Comptime control
 
 ```pagos
 let value = if true { build_u32() } else { 0 };
 ```
 
 Expected: with a declared `build.fs` capability, the selected call runs once
-during compilation and `value` is Static. The input dependency is recorded.
+during compilation and `value` is Comptime. The input dependency is recorded.
 
 ### 21. Build effect under runtime branch
 
@@ -274,7 +274,7 @@ checking.
 let wrapped: u32 = 4_294_967_295 + 1;
 ```
 
-Expected: `wrapped` is Static `0`, using arithmetic modulo 2^32.
+Expected: `wrapped` is Comptime `0`, using arithmetic modulo 2^32.
 
 ### 25. Literal outside `u32`
 
@@ -285,7 +285,7 @@ let too_large: u32 = 4_294_967_296;
 Expected error: the literal cannot be represented as `u32`; no truncation is
 performed.
 
-### 26. Static division by zero
+### 26. Comptime division by zero
 
 ```pagos
 let invalid = 10 / 0;
@@ -310,7 +310,7 @@ let invalid = if true { 1 } else { false };
 ```
 
 Expected error: the `if` arms have incompatible types `u32` and `bool`, even
-though the condition is Static.
+though the condition is Comptime.
 
 ### 29. Runtime-loop early return
 
@@ -329,34 +329,34 @@ let result = first(end) + 100;
 Expected: `result` is Runtime. If `end <= 1`, the result is `109`; otherwise it
 is `101`. The loop return exits `first`, and the caller still adds `100`.
 Without the fallthrough `return 9`, result-completeness checking reports
-`E1007`. A `static let result` reports the Runtime control dependency.
+`E1007`. A `comptime let result` reports the Runtime control dependency.
 
-### 30. Fixed-length static lookup table
+### 30. Fixed-length Comptime lookup table
 
 ```pagos
 fn square(x: u32) -> u32 { x * x }
-static let table: [u32; 3] = [square(0), square(1), square(2)];
-static let folded = table[2];
+comptime let table: [u32; 3] = [square(0), square(1), square(2)];
+comptime let folded = table[2];
 let selected = table[external_input()];
 ```
 
-Expected: `table` is Static `[0, 1, 4]`, `folded` is Static `4`, and `selected`
+Expected: `table` is Comptime `[0, 1, 4]`, `folded` is Comptime `4`, and `selected`
 is Runtime. Residual LLVM contains a read-only table and a bounds-checked
 load, not calls to `square`. Index `3` or larger traps. Replacing the Runtime
-index with Static `3` reports `E4007` instead.
+index with Comptime `3` reports `E4007` instead.
 
 ### 31. Element-sensitive staging and immutable values
 
 ```pagos
 fn pair(value: u32) -> [u32; 2] { [11, value] }
 let values = pair(external_input());
-static let first = values[0];
+comptime let first = values[0];
 ```
 
-Expected: `values` is Runtime but `first` is Static `11`. The input read
+Expected: `values` is Runtime but `first` is Comptime `11`. The input read
 executes exactly once, even though `first` selects the known element. This
 refines the original whole-array slice; unrelated Runtime elements no longer
-thaw a Static-index read. `[u32; 3]` cannot receive this pair: array length is
+thaw a Comptime-index read. `[u32; 3]` cannot receive this pair: array length is
 part of the type. Arrays cannot be compared for equality or mutated yet.
 
 ### 32. Array projection respects Runtime boundaries
@@ -365,13 +365,13 @@ part of the type. Arrays cannot be compared for equality or mutated yet.
 runtime let forced = [11, 22];
 runtime let flag = true;
 let selected = if flag { [11, 20] } else { [11, 30] };
-static let a = forced[0];
-static let b = selected[0];
+comptime let a = forced[0];
+comptime let b = selected[0];
 ```
 
-Expected: both Static constraints fail with `E2001`. The paths point to
+Expected: both Comptime constraints fail with `E2001`. The paths point to
 `forced` and `flag`, respectively. Equal element values across Runtime
-branches do not make their selection Static. The same rule applies to arrays
+branches do not make their selection Comptime. The same rule applies to arrays
 selected by Runtime-controlled early returns, and to Runtime indices.
 
 ### 33. Selected-element diagnostic provenance
@@ -380,22 +380,22 @@ selected by Runtime-controlled early returns, and to Runtime indices.
 runtime let unrelated = external_input();
 runtime let selected = external_input();
 let table = [unrelated, selected];
-static let result = table[1];
+comptime let result = table[1];
 ```
 
 Expected: `E2001` names `selected`, not `unrelated`, with the path
 `selected -> array element 1 -> table -> array index -> result`. Array aliases
 and function parameter names remain in this path when present.
 
-### 34. Bulk static lookup generation
+### 34. Bulk Comptime lookup generation
 
 ```pagos
 fn square(i: u32) -> u32 { i * i }
-static let table: [u32; 256] = [for i in 0..256 { square(i) }];
+comptime let table: [u32; 256] = [for i in 0..256 { square(i) }];
 let result = table[external_input()];
 ```
 
-Expected: generation is Static and produces a 256-entry read-only table.
+Expected: generation is Comptime and produces a 256-entry read-only table.
 Runtime input `255` returns `65025`; `256` traps. No generator loop or
 `square` call remains. `explain-stage` reports 256 reserved array elements
 and 1024 logical data bytes. Bounds must be increasing `u32` literals.
@@ -417,9 +417,9 @@ Full compiler-memory accounting remains separate from these quotas.
 ### 36. Bitwise operations and checked shifts
 
 ```pagos
-static let high = 1 << 31;
-static let wrapped = 2 << 31;
-static let low = high >> 31;
+comptime let high = 1 << 31;
+comptime let wrapped = 2 << 31;
+comptime let low = high >> 31;
 let result = ~external_input() & 255;
 ```
 
@@ -427,13 +427,13 @@ Expected: `high` is `2147483648`, `wrapped` is zero, and `low` is one.
 `result` is Runtime and retains one input read. All bitwise operands must be
 `u32`. An analyzed `external_input() << 32` reports `E4009`; with a Runtime
 count instead, 32 or greater traps before shifting, even if unused. A skipped
-Static branch does not evaluate its invalid shift. Use `(value & 1) != 0`
+Comptime branch does not evaluate its invalid shift. Use `(value & 1) != 0`
 to test a bit because equality binds more tightly than bitwise AND.
 
 ### 37. CRC-32 representative case
 
 The [CRC example](../tests/lit/stage/crc32.pgs) generates a 256-entry table using
-eight Static recursive bit steps per entry. The same checksum functions fold
+eight Comptime recursive bit steps per entry. The same checksum functions fold
 ASCII `123456789` to `3421780262` and process nine Runtime inputs with checked
 table loads. Each input contributes its low eight bits. The whole table and
 Runtime results agree with Python zlib at external Clang `-O0` and `-O2`.
@@ -446,13 +446,13 @@ record Config { clock_hz: u32, revision: u32 }
 fn keep(config: Config) -> Config { config }
 let config = Config(revision: external_input(), clock_hz: 80_000_000);
 let alias = keep(config);
-static let divisor = alias.clock_hz / 1_000_000;
+comptime let divisor = alias.clock_hz / 1_000_000;
 let result = divisor + alias.revision;
 ```
 
-Expected: `divisor` is Static `80`, while `result` is Runtime. The input executes
+Expected: `divisor` is Comptime `80`, while `result` is Runtime. The input executes
 exactly once, even though its initializer precedes the known field and passes
-through a call. A failed Static read of `revision` names that field's Runtime
+through a call. A failed Comptime read of `revision` names that field's Runtime
 source. A Runtime binding or branch selecting the record keeps every field
 read Runtime, even if all candidate field values agree. Record constructors
 require all declared fields exactly once and preserve source evaluation order.
@@ -476,24 +476,24 @@ declared fields; aliases and cached results do not reconstruct values, while
 fresh call arguments still consume quota on cache hits. See
 [resource budgets](resource-budgets.md) for the exact scope and legacy limits.
 
-### 40. Computed Static generator lengths
+### 40. Computed Comptime generator lengths
 
 ```pagos
 fn last(n: u32) -> u32 {
     let table = [for i in 0..n { i * i }];
     table[n - 1]
 }
-static let small = last(2);
-static let large = last(4);
+comptime let small = last(2);
+comptime let large = last(4);
 ```
 
 Expected: `small` is `1`, `large` is `9`; their arrays have independent lengths
 two and four. Both bounds evaluate before reservation and body execution.
 `last(external_input())` fails with `E2002` and a dependency path through
 `last.n`. Returning this table from a function declared `-> [u32; 2]` with
-`n == 4` instead fails with `E1008`. Bounds may use Static record fields or
+`n == 4` instead fails with `E1008`. Bounds may use Comptime record fields or
 function results, preserving any accompanying Runtime reads/traps/returns.
-Runtime branch continuations must agree on concrete shape; Static selection
+Runtime branch continuations must agree on concrete shape; Comptime selection
 does not evaluate skipped bounds. See the
 [computed table fixture](../tests/lit/stage/generator-computed.pgs) and
 [bulk generation rules](grammar.md#bulk-array-generation).

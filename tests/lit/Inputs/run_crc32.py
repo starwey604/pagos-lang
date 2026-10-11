@@ -15,7 +15,7 @@ def main():
         [pagosc, "emit-hir", source], check=True, capture_output=True,
         text=True, timeout=10,
     ).stdout
-    assert "binding known: u32 [Static] = 3421780262" in hir, hir
+    assert "binding known: u32 [Comptime] = 3421780262" in hir, hir
     emitted = subprocess.run(
         [pagosc, "emit-llvm", source], check=True, capture_output=True,
         text=True, timeout=10,

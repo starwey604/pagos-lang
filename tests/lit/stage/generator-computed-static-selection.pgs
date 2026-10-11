@@ -5,5 +5,5 @@ let table = if true { [for i in 0..n { i + 2 }] } else { [0, 1] };
 let skipped = if true { 0 } else { [for i in 0..external_input() { 1 / 0 }][0] };
 let skipped_empty = if true { 0 } else { [for i in 0..0 { i }][0] };
 let result = table[2];
-// CHECK: binding table: [u32; 3] [Static] = [2, 3, 4]
-// CHECK: binding result: u32 [Static] = 4
+// CHECK: binding table: [u32; 3] [Comptime] = [2, 3, 4]
+// CHECK: binding result: u32 [Comptime] = 4

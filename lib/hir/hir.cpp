@@ -14,7 +14,7 @@ bool has_residual_work(const ExprPtr& expression) {
 }
 
 bool is_cacheable_result(const ExprPtr& expression) {
-    return expression && expression->stage == Stage::Static &&
+    return expression && expression->stage == Stage::Comptime &&
            expression->constant.has_value() && expression->falls_through &&
            !has_residual_work(expression);
 }
@@ -231,21 +231,21 @@ void print_expression(const ExprPtr& expression, std::ostream& output) {
 } // namespace
 
 std::string_view stage_name(Stage stage) noexcept {
-    return stage == Stage::Static ? "Static" : "Runtime";
+    return stage == Stage::Comptime ? "Comptime" : "Runtime";
 }
 
 ExprPtr make_constant(Constant value, sema::Type type, source::Span span) {
     auto expression = std::make_shared<Expr>();
     expression->kind = Expr::Kind::Constant;
     expression->type = std::move(type);
-    expression->stage = Stage::Static;
+    expression->stage = Stage::Comptime;
     expression->span = span;
     expression->constant = std::move(value);
     return expression;
 }
 
 ExprPtr with_trace_step(const ExprPtr& expression, std::string step) {
-    if (!expression || expression->stage == Stage::Static ||
+    if (!expression || expression->stage == Stage::Comptime ||
         !expression->trace) {
         return expression;
     }
@@ -259,7 +259,7 @@ ExprPtr with_trace_step(const ExprPtr& expression, std::string step) {
 
 void print(const Module& module, std::ostream& output) {
     for (const auto& global : module.globals) {
-        output << "global " << (global.writable ? "mut " : "const ")
+        output << "static " << (global.writable ? "mut " : "const ")
                << global.name << ": " << sema::type_name(global.type);
         if (!global.storage.section.empty())
             output << " section(\"" << global.storage.section << "\")";

@@ -13,11 +13,11 @@ fn factorial(value: u32) -> u32 {
 let first = factorial(5);
 let second = factorial(5);
 
-// HIR: binding first: u32 [Static] = 120
-// HIR: binding second: u32 [Static] = 120
+// HIR: binding first: u32 [Comptime] = 120
+// HIR: binding second: u32 [Comptime] = 120
 
-// EXPLAIN: first: Static
-// EXPLAIN: second: Static
+// EXPLAIN: first: Comptime
+// EXPLAIN: second: Comptime
 // EXPLAIN: analysis: fuel={{[0-9]+}}, specializations=6, cache-hits=1, max-depth=6
 
 // IR-LABEL: define i32 @pagos_main()

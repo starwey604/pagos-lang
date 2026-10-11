@@ -995,7 +995,7 @@ void print(const Module& module, std::ostream& output) {
     if (module.pointer_bits != 0)
         output << "target pointer_bits = " << module.pointer_bits << '\n';
     for (const auto& global : module.globals) {
-        output << "global " << (global.writable ? "mut @" : "const @")
+        output << "static " << (global.writable ? "mut @" : "const @")
                << global.name << ": " << type_name(global.type);
         if (!global.storage.section.empty())
             output << " section(\"" << global.storage.section << "\")";

@@ -12,5 +12,5 @@ fn runtime_early(end: u32) -> u32 {
 let known = early();
 let result = runtime_early(external_input()) + known;
 
-// CHECK: binding known: u32 [Static] = 3
+// CHECK: binding known: u32 [Comptime] = 3
 // CHECK: binding result: u32 [Runtime]

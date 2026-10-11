@@ -2,4 +2,4 @@
 
 let wrapped: u32 = 4_294_967_295 + 1;
 
-// CHECK: binding wrapped: u32 [Static] = 0
+// CHECK: binding wrapped: u32 [Comptime] = 0

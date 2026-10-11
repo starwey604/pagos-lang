@@ -7,7 +7,7 @@ fn double(value: u32) -> u32 {
 
 let result = double(6);
 
-// HIR: binding result: u32 [Static] = 12
+// HIR: binding result: u32 [Comptime] = 12
 // IR-LABEL: define i32 @pagos_main()
 // IR-NEXT: entry:
 // IR-NEXT: ret i32 12

@@ -13,7 +13,7 @@ The intended experience is:
 - ordinary code expresses both computation and configuration;
 - compile-time execution does not require a separate template language;
 - runtime work is explicit, inspectable, and measurable;
-- a failed static requirement explains exactly which runtime dependency caused
+- a failed Comptime requirement explains exactly which runtime dependency caused
   it;
 - abstractions can disappear without hiding how or why they disappeared.
 
@@ -68,7 +68,7 @@ external commands. This separation is required for caching and reproducibility.
 
 - Replacing Linux, Zephyr, CMake, Kconfig, and Devicetree simultaneously
 - Transparent compatibility with arbitrary C++ templates and ABI details
-- Claiming that every static specialization improves speed or size
+- Claiming that every Comptime specialization improves speed or size
 - Allowing unrestricted compile-time network and process access
 - Using LLVM optimization as a substitute for a defined staging model
 - Designing a production package manager before the core semantics work
@@ -113,7 +113,7 @@ Pagos has demonstrated its core value when it can:
 1. compile representative mixed-stage programs to residual code comparable to
    hand-written C;
 2. explain why every residual operation remained at runtime;
-3. reject a violated `static` constraint with a useful dependency path;
+3. reject a violated `comptime` constraint with a useful dependency path;
 4. generate and consume an embedded configuration artifact in an existing
    project;
 5. report compile time, code size, RAM, and runtime performance against a fair

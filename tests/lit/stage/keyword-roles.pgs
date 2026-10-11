@@ -1,0 +1,20 @@
+// RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
+// RUN: %pagosc explain-stage %s | %FileCheck %s --check-prefix=STAGE
+// RUN: %run_residual %s 107
+comptime let answer = 7;
+static const limit: u32 = 100;
+static mut count: u32 = 0;
+let global = answer;
+*&count = global;
+let observed = limit;
+let result = observed + count;
+// HIR: static const limit: u32 = 100
+// HIR: static mut count: u32 = 0
+// HIR: binding answer: u32 [Comptime] = 7
+// HIR: binding global: u32 [Comptime] = 7
+// HIR: binding observed: u32 [Runtime]
+// STAGE: answer: Comptime
+// STAGE: global: Comptime
+// STAGE: observed: Runtime
+// STAGE: static storage read limit -> observed
+// STAGE: result: Runtime

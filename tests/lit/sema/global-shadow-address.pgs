@@ -1,4 +1,4 @@
 // RUN: not %pagosc check %s 2>&1 | %FileCheck %s
-global mut data: u32 = 0;
+static mut data: u32 = 0;
 fn shadow(data: u32) -> *mut u32 { &data }
-// CHECK: error[E1013]: address-taking requires an unshadowed global name
+// CHECK: error[E1013]: address-taking requires an unshadowed static storage name

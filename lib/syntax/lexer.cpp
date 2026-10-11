@@ -15,7 +15,7 @@ constexpr std::array keywords{
     std::pair<std::string_view, TokenKind>{"extern", TokenKind::KwExtern},
     std::pair<std::string_view, TokenKind>{"export", TokenKind::KwExport},
     std::pair<std::string_view, TokenKind>{"let", TokenKind::KwLet},
-    std::pair<std::string_view, TokenKind>{"static", TokenKind::KwStatic},
+    std::pair<std::string_view, TokenKind>{"comptime", TokenKind::KwComptime},
     std::pair<std::string_view, TokenKind>{"runtime", TokenKind::KwRuntime},
     std::pair<std::string_view, TokenKind>{"return", TokenKind::KwReturn},
     std::pair<std::string_view, TokenKind>{"if", TokenKind::KwIf},
@@ -38,7 +38,7 @@ constexpr std::array keywords{
     std::pair<std::string_view, TokenKind>{"const", TokenKind::KwConst},
     std::pair<std::string_view, TokenKind>{"mut", TokenKind::KwMut},
     std::pair<std::string_view, TokenKind>{"volatile", TokenKind::KwVolatile},
-    std::pair<std::string_view, TokenKind>{"global", TokenKind::KwGlobal},
+    std::pair<std::string_view, TokenKind>{"static", TokenKind::KwStatic},
 };
 
 bool is_identifier_start(char character) {
