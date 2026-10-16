@@ -92,6 +92,10 @@ class FunctionEvidence {
     read_detail(const EvidenceGroup& group) const;
     [[nodiscard]] std::expected<source::Span, cache::Error>
     resolve_anchor(const SourceAnchor& anchor) const;
+    [[nodiscard]] const cache::ObjectRef& root_object() const { return root_; }
+    // Current anchor-to-offset binding, separate from the semantic root.
+    [[nodiscard]] std::expected<cache::Digest, cache::Error>
+    position_fingerprint(cache::Limits limits = {}) const;
     [[nodiscard]] std::size_t metadata_objects_read() const {
         return metadata_objects_;
     }
@@ -105,6 +109,7 @@ class FunctionEvidence {
     cache::FileStore store_;
     CacheIdentity identity_;
     cache::Limits limits_;
+    cache::ObjectRef root_;
     std::map<std::tuple<unsigned, std::string, std::uint32_t>, std::size_t>
         anchors_;
     std::vector<EvidenceCatalogEntry> catalog_;

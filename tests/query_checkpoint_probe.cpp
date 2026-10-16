@@ -1,0 +1,210 @@
+#include "pagos/stage/function_evidence_view.h"
+#include "pagos/stage/stage_analyzer.h"
+#include "pagos/syntax/lexer.h"
+#include "pagos/syntax/parser.h"
+
+#include <charconv>
+#include <fstream>
+#include <iostream>
+#include <iterator>
+
+using namespace pagos;
+using namespace pagos::stage;
+using namespace pagos::stage::provenance;
+namespace fs = std::filesystem;
+namespace {
+cache::QueryContext context() {
+    return {.module = {"checkpoint-test", "input.pgs"},
+            .target = {"riscv32-unknown-elf", "generic-rv32", "", "e-p:32:32",
+                       32, true},
+            .compiler_build = "checkpoint-probe-v1",
+            .semantic_options = "pagos.staging.v1"};
+}
+cache::Digest parse_digest(std::string_view text) {
+    cache::Digest value;
+    if (text.size() != 64)
+        throw std::runtime_error("bad digest");
+    for (unsigned i = 0; i < 32; ++i) {
+        unsigned byte{};
+        const auto part = text.substr(i * 2, 2);
+        const auto result =
+            std::from_chars(part.data(), part.data() + 2, byte, 16);
+        if (result.ec != std::errc{} || result.ptr != part.data() + 2)
+            throw std::runtime_error("bad digest");
+        value.bytes[i] = static_cast<std::uint8_t>(byte);
+    }
+    return value;
+}
+void print_page(const QueryPage& page, bool& first) {
+    if (!page.sequence)
+        return;
+    if (!first)
+        std::cout << ',';
+    first = false;
+    std::cout << "{\"sequence\":" << page.sequence << ",\"records\":[";
+    bool first_record = true;
+    for (const auto& source : page.sources) {
+        if (!first_record)
+            std::cout << ',';
+        first_record = false;
+        std::cout << "\"S:" << source.node.value << ':' << source.site << ':'
+                  << source.context << "\"";
+    }
+    for (const auto& state : page.witness) {
+        if (!first_record)
+            std::cout << ',';
+        first_record = false;
+        std::cout << "\"W:" << state.node.value << ':' << state.context << "\"";
+    }
+    std::cout << "]}";
+}
+void print_result(const QueryTask& task) {
+    const auto result = task.result();
+    std::string content;
+    for (const auto& source : result.sources)
+        content += "S" + std::to_string(source.node.value) + ":" +
+                   std::to_string(source.site) + ":" +
+                   std::to_string(source.context) + ";";
+    for (const auto& state : result.witness)
+        content += "W" + std::to_string(state.node.value) + ":" +
+                   std::to_string(state.context) + ";";
+    for (const auto& invocation : result.invocations)
+        content += "I" + std::to_string(invocation.call.value) + ":" +
+                   std::to_string(invocation.parent) + ":" +
+                   std::to_string(invocation.owner.value) + ";";
+    const auto digest = cache::fingerprint(
+        "test.query-result",
+        {reinterpret_cast<const std::uint8_t*>(content.data()),
+         content.size()});
+    const auto& stats = task.stats();
+    std::cout << ",\"result\":\"" << digest.hex() << "\",\"work\":["
+              << stats.admitted_states << ',' << stats.visited_states << ','
+              << stats.scanned_edges << ',' << stats.visited_edges << ','
+              << stats.bindings << ',' << stats.witness_steps << ','
+              << stats.queue_peak << "],\"issues\":" << task.coverage().issues
+              << ",\"stage_runs\":0}" << '\n';
+}
+} // namespace
+int main(int argc, char** argv) {
+    try {
+        if (argc < 4)
+            return 2;
+        const std::string action = argv[1];
+        const fs::path directory = argv[2];
+        std::ifstream stream(argv[3], std::ios::binary);
+        if (!stream)
+            throw std::runtime_error("source missing");
+        auto source = source::SourceFile::from_text(
+            "input.pgs",
+            std::string(std::istreambuf_iterator<char>(stream), {}));
+        source::DiagnosticEngine diagnostics(source);
+        syntax::Lexer lexer(source, diagnostics);
+        const auto tokens = lexer.tokenize();
+        syntax::Parser parser(tokens, diagnostics);
+        const auto module = parser.parse_module();
+        sema::TypeChecker checker(diagnostics, 32);
+        if (!module || !checker.check(*module) || diagnostics.has_error())
+            throw std::runtime_error("source check failed");
+        auto identity =
+            build_cache_identity(*module, checker.types(), context());
+        if (!identity)
+            throw std::runtime_error("identity failed");
+        if (action == "prepare") {
+            StageAnalyzer analyzer(diagnostics, checker.types(), {}, context());
+            const auto staged = analyzer.analyze(*module);
+            if (!staged || diagnostics.has_error() ||
+                !FunctionEvidence::publish(
+                    cache::FileStore(directory / "evidence"),
+                    *staged->provenance, *identity, context()))
+                throw std::runtime_error("publication failed");
+            std::cout << "{\"stage_runs\":1}\n";
+            return 0;
+        }
+        // All other actions have no StageAnalyzer path.
+        auto closure = FunctionEvidence::load(
+            cache::FileStore(directory / "evidence"), *identity, context());
+        if (!closure)
+            throw std::runtime_error("closure unavailable");
+        auto view = FunctionEvidenceView::open(std::move(*closure), 0);
+        if (!view)
+            throw std::runtime_error("view unavailable");
+        auto binding = view->checkpoint_binding(source.text());
+        if (!binding || argc < 5)
+            return 2;
+        const bool witness = std::string_view(argv[4]) == "witness";
+        NodeId root;
+        for (const auto& item : view->roots())
+            if (item.name == "aa")
+                root = item.node;
+        const auto task_id = cache::fingerprint("probe.logical-query.1", {});
+        QueryTask task(*binding, task_id, root, QueryKind::Value, witness);
+        if (action == "resume") {
+            if (argc != 7)
+                return 2;
+            const cache::ObjectRef ref{cache::ObjectKind::QueryCheckpoint,
+                                       parse_digest(argv[5]),
+                                       std::stoull(argv[6])};
+            auto bytes = cache::FileStore(directory / "tasks").read_object(ref);
+            if (!bytes)
+                throw std::runtime_error("checkpoint object unavailable");
+            auto restored = QueryTask::restore(
+                *binding, task_id, root, QueryKind::Value, witness, *bytes);
+            if (!restored)
+                throw std::runtime_error("checkpoint cannot resume: " +
+                                         std::to_string(static_cast<unsigned>(
+                                             restored.error().code)));
+            task = std::move(*restored);
+        }
+        std::cout << "{\"pages\":[";
+        bool first = true;
+        if (action == "save") {
+            if (argc != 7)
+                return 2;
+            const auto steps = std::stoull(argv[5]);
+            const bool ack = std::string_view(argv[6]) == "ack";
+            for (std::uint64_t i = 0; i < steps; ++i) {
+                const auto page = task.advance({1, 1, 1, 1});
+                print_page(page, first);
+                if (page.sequence) {
+                    if (!ack)
+                        break;
+                    if (!task.acknowledge(page.sequence))
+                        throw std::runtime_error("ack failed");
+                }
+                if (page.progress == QueryProgress::Completed &&
+                    !page.pending_sources && !page.pending_witness)
+                    break;
+            }
+            auto bytes = task.checkpoint();
+            if (!bytes)
+                throw std::runtime_error("encode failed");
+            auto ref = cache::FileStore(directory / "tasks")
+                           .write_object(cache::ObjectKind::QueryCheckpoint,
+                                         std::move(*bytes));
+            if (!ref)
+                throw std::runtime_error("write failed");
+            std::cout << "],\"digest\":\"" << ref->digest.hex()
+                      << "\",\"size\":" << ref->size;
+        } else if (action == "resume" || action == "oracle") {
+            for (;;) {
+                // Different budgets from the saving process, including output.
+                const auto page = task.advance({17, 23, 19, 7});
+                print_page(page, first);
+                if (page.progress == QueryProgress::Failed)
+                    throw std::runtime_error("query failed");
+                if (page.sequence && !task.acknowledge(page.sequence))
+                    throw std::runtime_error("ack failed");
+                if (page.progress == QueryProgress::Completed &&
+                    !page.pending_sources && !page.pending_witness)
+                    break;
+            }
+            std::cout << ']';
+        } else
+            return 2;
+        print_result(task);
+        return 0;
+    } catch (const std::exception& error) {
+        std::cerr << error.what() << '\n';
+        return 1;
+    }
+}

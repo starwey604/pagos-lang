@@ -30,7 +30,8 @@ enum class ObjectKind : std::uint8_t {
     EvidenceBlock = 8,
     EvidenceRoot = 9,
     EvidenceSummary = 10,
-    EvidenceDetail = 11
+    EvidenceDetail = 11,
+    QueryCheckpoint = 12
 };
 enum class Error {
     UnsupportedType,

@@ -5,7 +5,45 @@
 #include <limits>
 #include <stop_token>
 
+namespace pagos::stage {
+class FunctionEvidenceView;
+}
 namespace pagos::stage::provenance {
+
+inline constexpr std::uint32_t query_checkpoint_version = 1;
+// Bump when traversal semantics or the function view's virtual ID layout
+// changes.
+inline constexpr std::uint32_t query_engine_version = 1;
+
+// Only a validated function snapshot adapter can create this binding. Its IDs
+// are portable solely inside the exact root closure, position map and source
+// revision. Retaining this handle also retains the view; no pointers go on
+// disk.
+class QueryCheckpointBinding {
+  private:
+    friend class pagos::stage::FunctionEvidenceView;
+    friend class QueryTask;
+    QueryCheckpointBinding(std::shared_ptr<const EvidenceView> view,
+                           cache::Digest closure, cache::Digest positions,
+                           cache::Digest revision)
+        : view_(std::move(view)), closure_(closure), positions_(positions),
+          revision_(revision) {}
+    std::shared_ptr<const EvidenceView> view_;
+    cache::Digest closure_, positions_, revision_;
+};
+enum class CheckpointErrorCode {
+    InvalidState,
+    IncompatibleVersion,
+    BindingMismatch,
+    Corrupt,
+    LimitExceeded,
+    UnavailableEvidence,
+    OutOfMemory
+};
+struct CheckpointError {
+    CheckpointErrorCode code;
+    std::optional<EvidenceError> evidence;
+};
 
 enum class QueryProgress { Running, Paused, Cancelled, Completed, Failed };
 enum class EvidencePrecision {
@@ -52,7 +90,10 @@ struct QueryStats {
     std::size_t formula_fallbacks{};
 };
 struct QueryPage {
-    // Zero means no records were delivered. Otherwise strictly increasing.
+    // Present for checkpointable tasks. Consumers deduplicate (task, sequence).
+    std::optional<cache::Digest> task;
+    // Zero means no records. New pages increase; an unconfirmed page replays
+    // with its original sequence when checkpointing is enabled.
     std::uint64_t sequence{};
     std::vector<Source> sources;
     std::vector<QueryState> witness;
@@ -73,6 +114,12 @@ class QueryTask {
     // Does not load cold blocks until advance admits the first state.
     QueryTask(std::shared_ptr<const EvidenceView> evidence, NodeId root,
               QueryKind kind = QueryKind::Value, bool witness = false);
+    // Explicit opt-in, stop-and-wait delivery: advance repeats the unconfirmed
+    // page without doing work until acknowledge succeeds. task_id is supplied
+    // by the caller and must be unique for a new logical query.
+    QueryTask(QueryCheckpointBinding binding, cache::Digest task_id,
+              NodeId root, QueryKind kind = QueryKind::Value,
+              bool witness = false);
     ~QueryTask();
     QueryTask(QueryTask&&) noexcept;
     QueryTask& operator=(QueryTask&&) noexcept;
@@ -81,6 +128,20 @@ class QueryTask {
 
     [[nodiscard]] QueryPage advance(QuerySlice slice = {},
                                     std::stop_token cancellation = {});
+    // Idempotently confirm through this page. Confirm only after committing
+    // consumer records/receipts. The watermark persists in the next checkpoint.
+    [[nodiscard]] bool acknowledge(std::uint64_t sequence);
+    // Pure encoding: no implicit disk writes or cursor changes. The caller may
+    // atomically publish these bytes as ObjectKind::QueryCheckpoint and retain
+    // its ObjectRef independently of the semantic query index.
+    [[nodiscard]] std::expected<cache::Bytes, CheckpointError>
+    checkpoint(cache::Limits limits = {}) const;
+    // Validate caller's expected task/root/channel/mode as well as snapshot
+    // binding. Does not run Stage, traverse edges or charge work again.
+    [[nodiscard]] static std::expected<QueryTask, CheckpointError>
+    restore(QueryCheckpointBinding binding, cache::Digest task_id, NodeId root,
+            QueryKind kind, bool witness, std::span<const std::uint8_t> bytes,
+            cache::Limits limits = {});
     // Legacy compatibility ceiling; unlike slices, it drops excess states.
     void legacy_limit(std::size_t limit);
     void suspend();

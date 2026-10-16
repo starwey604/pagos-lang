@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pagos/stage/function_evidence.h"
+#include "pagos/stage/provenance_query.h"
 
 namespace pagos::stage {
 // Owns the validated hot closure and a bounded, lease-backed SCC reader.
@@ -28,6 +29,12 @@ class FunctionEvidenceView {
     [[nodiscard]] std::size_t metadata_bytes_read() const {
         return closure_->metadata_bytes_read();
     }
+    // Pass the complete current source text used to build CacheIdentity.
+    // Whitespace-only edits deliberately invalidate saved query tasks too.
+    [[nodiscard]] std::expected<provenance::QueryCheckpointBinding,
+                                cache::Error>
+    checkpoint_binding(std::string_view source_text,
+                       cache::Limits limits = {}) const;
 
   private:
     std::shared_ptr<const FunctionEvidence> closure_;

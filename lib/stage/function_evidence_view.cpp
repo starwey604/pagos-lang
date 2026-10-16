@@ -97,6 +97,19 @@ struct Mapping {
     }
 };
 } // namespace
+std::expected<QueryCheckpointBinding, cache::Error>
+FunctionEvidenceView::checkpoint_binding(std::string_view source_text,
+                                         cache::Limits limits) const {
+    auto positions = closure_->position_fingerprint(limits);
+    if (!positions)
+        return std::unexpected(positions.error());
+    const auto revision = cache::fingerprint(
+        "pagos.query-source-revision.v1",
+        {reinterpret_cast<const std::uint8_t*>(source_text.data()),
+         source_text.size()});
+    return QueryCheckpointBinding(view_, closure_->root_object().digest,
+                                  *positions, revision);
+}
 std::expected<FunctionEvidenceView, EvidenceError>
 FunctionEvidenceView::open(FunctionEvidence evidence, std::size_t cache_bytes) {
     try {

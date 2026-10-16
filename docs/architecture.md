@@ -488,6 +488,10 @@ separate definition catalog, retained metadata accounting, working-table release
 lifetime locks and explicit dead-session reclamation. Independent Release runs
 confirm build-peak savings for a larger graph; smaller inputs have no stable net
 benefit. C4b experimental acceptance is complete; memory remains the default.
+[C4c1](provenance-checkpoint-c4c1.md) adds explicitly saved query snapshots bound
+to the verified function closure, positions and source revision, with acknowledged
+page redelivery across processes. Query tables still reside in memory; segmented
+task storage, task manifests and the main explain CLI integration remain.
 Existing graph reference/span lifetimes and the default one-shot query interface
 remain intact until their replacements are explicitly validated; snapshot
 serialization alone does not reduce build peaks.

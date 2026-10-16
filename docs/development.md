@@ -587,3 +587,21 @@ legacy directories require offline inspection. The CAS disk quota excludes the
 metadata/working-table capacity census; these capacities are not a total RSS
 limit. Large-graph peak savings meet C4b's experimental gate; no general speedup
 or small-task memory benefit is claimed.
+
+[C4c1](provenance-checkpoint-c4c1.md) exposes library-only query checkpoints on
+validated function evidence. Create a binding from the complete current source,
+construct the opt-in `QueryTask`, and explicitly encode/publish its dedicated
+`QueryCheckpoint` leaf object into a caller-owned task store. Consume pages
+with durable `(task, sequence)` receipts before acknowledgement; unconfirmed
+pages repeat until acknowledged. No `pagosc` checkpoint flags or automatic
+checkpoint files are introduced in this iteration.
+
+```sh
+ctest --test-dir build/debug -R 'QueryCheckpointTest|pagos-query-checkpoint-process' \
+  --output-on-failure
+```
+
+The process test saves and exits, then resumes the verified evidence with a
+new process and different slice budgets, without invoking StageAnalyzer.
+Query tables and encoded bytes remain fully resident and bounded by codec
+limits; C4c2 will add segmented task state and lifecycle management.

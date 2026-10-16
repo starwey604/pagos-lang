@@ -147,7 +147,10 @@ RuntimeTrace prefixes and adds independent Stage build/query measurements.
 [C4b3b](provenance-working-set-c4b3b.md) completes retained-work accounting,
 working-table release, real Stage crash/cleanup tests and large-graph build-peak
 acceptance. Spill remains explicit; small tasks show no stable net benefit.
-C4c is the next implementation step.
+[C4c1](provenance-checkpoint-c4c1.md) adds bounded query checkpoints with strict
+snapshot/source binding and acknowledged page redelivery across processes.
+C4c2/C4c3 still need segmented task storage, lifecycle management, measurements
+and the main explain CLI integration.
 C4b-C4e cover construction spill, persistent query checkpoints,
 finite-domain recursive explanations and pure detail replay. These extensions
 are explanation capabilities, not new Stage inference rules. Query work limits,

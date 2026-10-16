@@ -510,7 +510,9 @@ ProvenanceAnalysis 本身不拥有源码文本或文件名，不能隐式恢复�
 不会自动换成新源码上的同编号节点。LSP 对接是后续入口，不是当前已存在的
 语言服务能力。
 
-C4c 才支持跨进程 checkpoint 和查询临时空间卸载。checkpoint 记录 engine
+[C4c1](provenance-checkpoint-c4c1.md) 已支持原生来源/最短见证任务的
+有界跨进程 checkpoint 和显式确认重送；查询表分段卸载、任务 manifest
+与主解释 CLI 接入继续留给 C4c2/C4c3。checkpoint 记录 engine
 版本、查询目标、语义图 manifest/闭包指纹、位置对象/源码修订、稳定局部
 引用、frontier、去重/上下文状态、见证状态、交付序号及校验。原始指针、
 内存地址或单独一个 NodeId 不是可恢复身份。新增配额可改变 slice 策略，

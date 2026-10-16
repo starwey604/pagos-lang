@@ -62,7 +62,8 @@ bool valid_kind(ObjectKind kind) {
            kind == ObjectKind::EvidenceBlock ||
            kind == ObjectKind::EvidenceRoot ||
            kind == ObjectKind::EvidenceSummary ||
-           kind == ObjectKind::EvidenceDetail;
+           kind == ObjectKind::EvidenceDetail ||
+           kind == ObjectKind::QueryCheckpoint;
 }
 fs::path object_path(const fs::path& root, const Digest& digest) {
     const auto hex = digest.hex();

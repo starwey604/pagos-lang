@@ -671,6 +671,7 @@ FunctionEvidence::load(cache::FileStore store, CacheIdentity identity,
             return std::unexpected(bytes.error());
         require(cache::fingerprint("pagos.function-evidence-root.v1", *bytes) ==
                 candidate->semantic_result);
+        result.root_ = candidate->artifacts[0].object;
         ++result.metadata_objects_;
         result.metadata_bytes_ += bytes->size();
         Reader reader(*bytes, limits);
@@ -777,6 +778,26 @@ FunctionEvidence::member(const EvidenceCatalogEntry& entry) const {
     const auto& result = found->members[entry.member];
     require(key_digest(result.key) == entry.key);
     return result;
+}
+
+std::expected<cache::Digest, Error>
+FunctionEvidence::position_fingerprint(cache::Limits limits) const {
+    Writer writer(limits);
+    writer.raw(identity_.module_fingerprint.bytes);
+    writer.count(identity_.sites.size());
+    for (const auto& site : identity_.sites) {
+        auto anchor = encode_source_anchor(site.anchor, limits);
+        if (!anchor)
+            return std::unexpected(anchor.error());
+        writer.count(anchor->size());
+        writer.raw(*anchor);
+        writer.u64(site.span.begin);
+        writer.u64(site.span.end);
+    }
+    auto bytes = writer.finish();
+    if (!bytes)
+        return std::unexpected(bytes.error());
+    return cache::fingerprint("pagos.function-evidence-positions.v1", *bytes);
 }
 
 std::expected<std::vector<EvidenceMemberDetail>, cache::StoreError>

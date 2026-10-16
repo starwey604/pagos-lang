@@ -32,7 +32,7 @@ gtest_discover_tests(pagos_provenance_tests DISCOVERY_MODE PRE_TEST)
 add_executable(pagos_cache_tests
     unit/cache_codec_test.cpp unit/cache_key_test.cpp unit/cache_store_test.cpp
     unit/stage_cache_test.cpp unit/evidence_view_test.cpp unit/function_evidence_test.cpp
-    unit/stage_spill_test.cpp)
+    unit/stage_spill_test.cpp unit/query_checkpoint_test.cpp)
 target_link_libraries(pagos_cache_tests
     PRIVATE Pagos::stage Pagos::mir GTest::gtest_main pagos_project_options)
 gtest_discover_tests(pagos_cache_tests DISCOVERY_MODE PRE_TEST)
@@ -59,6 +59,13 @@ add_test(NAME pagos-stage-spill-process
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/stage_spill_process.py
             $<TARGET_FILE:pagos_stage_spill_probe> $<TARGET_FILE:pagosc>)
 set_tests_properties(pagos-stage-spill-process PROPERTIES TIMEOUT 60)
+add_executable(pagos_query_checkpoint_probe query_checkpoint_probe.cpp)
+target_link_libraries(pagos_query_checkpoint_probe PRIVATE Pagos::stage pagos_project_options)
+add_test(NAME pagos-query-checkpoint-process
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/query_checkpoint_process.py
+            $<TARGET_FILE:pagos_query_checkpoint_probe>)
+# This matrix starts more than sixty compiler processes, including under ASan.
+set_tests_properties(pagos-query-checkpoint-process PROPERTIES TIMEOUT 180)
 
 find_program(PAGOS_LIT NAMES lit llvm-lit HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
 find_program(PAGOS_FILECHECK NAMES FileCheck
