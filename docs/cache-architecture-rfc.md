@@ -513,8 +513,11 @@ ProvenanceAnalysis 本身不拥有源码文本或文件名，不能隐式恢复�
 [C4c1](provenance-checkpoint-c4c1.md) 已支持原生来源/最短见证任务的
 有界跨进程 checkpoint 和显式确认重送。
 [C4c2a](provenance-task-store-c4c2a.md) 加入分段编码、原子任务 head、
-暂停后释放查询表容量、配额和显式清理；活动期间分段驻留/磁盘索引
-与主解释 CLI 接入继续留给 C4c2b/C4c3。checkpoint 记录 engine
+暂停后释放查询表容量、配额和显式清理；
+[C4c2b](provenance-query-paging-c4c2b.md) 实现活动任务六表分页、排序 run
+索引和有界解码缓存；恢复流式校验，目录和兼容物化结果单独计量，不承诺
+总 RSS 或恒定恢复时间。符号拓扑 checkpoint、正式测量与主解释 CLI
+接入留给 C4c3。checkpoint 记录 engine
 版本、查询目标、语义图 manifest/闭包指纹、位置对象/源码修订、稳定局部
 引用、frontier、去重/上下文状态、见证状态、交付序号及校验。原始指针、
 内存地址或单独一个 NodeId 不是可恢复身份。新增配额可改变 slice 策略，

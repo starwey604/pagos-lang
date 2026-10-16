@@ -2,14 +2,14 @@
 #include "../cache/wire.h"
 #include "pagos/stage/provenance_snapshot.h"
 #include "pagos/stage/provenance_topology.h"
-
-#include <llvm/ADT/DenseMap.h>
+#include "query_storage.h"
 
 #include <algorithm>
 #include <array>
 #include <new>
 #include <optional>
 #include <stdexcept>
+#include <tuple>
 #include <utility>
 
 namespace pagos::stage::provenance {
@@ -81,10 +81,7 @@ void query_counters(QueryStats& stats, Function function) {
 } // namespace
 
 struct QueryTask::Impl {
-    struct Visit {
-        QueryState state;
-        std::size_t predecessor;
-    };
+    using Visit = detail::QueryVisit;
     enum class Phase {
         Parameter,
         ParameterEdge,
@@ -100,6 +97,7 @@ struct QueryTask::Impl {
          QueryKind channel, bool witness)
         : evidence(std::move(snapshot)), root(entry), kind(channel),
           shortest(witness) {
+        contexts.push_back({});
         if (!evidence || !root.value || root.value > evidence->node_count())
             throw std::out_of_range("invalid provenance query root");
     }
@@ -123,18 +121,18 @@ struct QueryTask::Impl {
     QueryProgress progress{QueryProgress::Running};
     QueryStats stats;
     std::uint32_t issues{};
-    std::vector<Invocation> contexts{Invocation{}};
-    llvm::DenseMap<std::uint64_t, std::uint32_t> context_ids;
-    llvm::DenseMap<std::uint64_t, std::size_t> visited;
-    std::vector<Visit> queue;
+    detail::QueryVector<Invocation> contexts{0};
+    detail::QueryIndex context_ids{5};
+    detail::QueryIndex visited{4};
+    detail::QueryVector<Visit> queue{1};
     std::size_t cursor{};
     Phase phase{Phase::Done};
     std::uint32_t frame{};
     NodeId summary_target;
     std::size_t edge_cursor{};
     const DependencyFormula* formula{};
-    std::vector<Source> sources;
-    std::vector<QueryState> reversed_witness;
+    detail::QueryVector<Source> sources{2};
+    detail::QueryVector<QueryState> reversed_witness{3};
     std::size_t witness_cursor{no_predecessor};
     std::size_t delivered_sources{};
     std::size_t delivered_witness{};
@@ -156,18 +154,70 @@ struct QueryTask::Impl {
         cache::TaskHead head;
         cache::Limits limits;
         EvidenceCoverage coverage;
+        std::optional<QueryPagingConfig> paging{};
     };
     std::optional<Offloaded> offloaded;
     std::optional<CheckpointError> state_failure;
 
+    std::shared_ptr<detail::QueryStorage> pages;
+    std::optional<CheckpointError> paging_failure;
+    std::optional<QueryProgress> storage_resume;
+    std::vector<Invocation> compatibility_contexts;
+    void attach_pages(std::shared_ptr<detail::QueryStorage> storage,
+                      bool import = false) {
+        pages = std::move(storage);
+        contexts.attach(pages, import);
+        queue.attach(pages, import);
+        sources.attach(pages, import);
+        reversed_witness.attach(pages, import);
+        visited.attach(pages);
+        context_ids.attach(pages);
+    }
+    QueryProgress logical_progress() const {
+        return storage_resume.value_or(progress);
+    }
+    QueryPage pause_storage(CheckpointError error) {
+        if (!storage_resume)
+            storage_resume = progress;
+        paging_failure = std::move(error);
+        progress = QueryProgress::Paused;
+        QueryPage page;
+        page.task = task_id;
+        page.progress = progress;
+        page.coverage = coverage();
+        page.details = DetailAvailability::Unavailable;
+        page.delivered_sources = delivered_sources;
+        page.pending_sources = sources.size() - delivered_sources;
+        page.pending_witness = delivered_witness < reversed_witness.size();
+        return page;
+    }
+    bool checked_step(QuerySlice& slice) {
+        if (!pages)
+            return step(slice);
+        pages->prepare();
+        const auto marker = pages->mark();
+        auto state = std::tuple{
+            seeded,         active,      recursive,      all_sources,  progress,
+            stats,          issues,      cursor,         phase,        frame,
+            summary_target, edge_cursor, witness_cursor, current_lease};
+        const auto budget = slice;
+        try {
+            return step(slice);
+        } catch (...) {
+            pages->rollback(marker);
+            slice = budget;
+            std::tie(seeded, active, recursive, all_sources, progress, stats,
+                     issues, cursor, phase, frame, summary_target, edge_cursor,
+                     witness_cursor, current_lease) = std::move(state);
+            throw;
+        }
+    }
     QueryPage redeliver() const {
         QueryPage page;
         page.task = task_id;
         page.sequence = sequence;
-        page.sources.assign(
-            sources.begin() +
-                static_cast<std::ptrdiff_t>(unconfirmed->source_begin),
-            sources.begin() + static_cast<std::ptrdiff_t>(delivered_sources));
+        for (auto i = unconfirmed->source_begin; i < delivered_sources; ++i)
+            page.sources.push_back(sources[i]);
         for (auto i = unconfirmed->witness_begin; i < delivered_witness; ++i)
             page.witness.push_back(
                 reversed_witness[reversed_witness.size() - 1 - i]);
@@ -191,7 +241,7 @@ struct QueryTask::Impl {
         writer.u32(root.value);
         writer.u8(static_cast<std::uint8_t>(kind));
         writer.boolean(shortest);
-        writer.u8(static_cast<std::uint8_t>(progress));
+        writer.u8(static_cast<std::uint8_t>(logical_progress()));
         writer.boolean(seeded);
         writer.boolean(active);
         writer.boolean(recursive);
@@ -233,13 +283,17 @@ struct QueryTask::Impl {
         }
         const auto position = queue.size();
         queue.push_back({state, predecessor});
-        visited[key] = position;
+        (void)visited.insert(key, position);
         ++stats.admitted_states;
         stats.queue_peak = std::max(stats.queue_peak, queue.size() - cursor);
     }
     EvidenceCoverage coverage() const {
         if (offloaded)
             return offloaded->coverage;
+        if (paging_failure)
+            return {.precision = EvidencePrecision::Unresolved,
+                    .issues = issues | static_cast<std::uint32_t>(
+                                           CoverageIssue::UnavailableEvidence)};
         return {.precision = !all_sources ? EvidencePrecision::Unresolved
                              : issues
                                  ? EvidencePrecision::Conservative
@@ -345,6 +399,8 @@ struct QueryTask::Impl {
             return true;
         }
         const auto state = queue[cursor].state;
+        if (!current_lease)
+            current_lease = pin(state.node);
         const auto& current = current_lease->node();
         switch (phase) {
         case Phase::Parameter:
@@ -396,12 +452,12 @@ struct QueryTask::Impl {
                 return false;
             const auto key = state_key(state);
             const auto found = context_ids.find(key);
-            if (found != context_ids.end())
-                frame = found->second;
+            if (found)
+                frame = context_id(*found);
             else {
                 const auto id = context_id(contexts.size());
                 contexts.push_back({state.node, frame, {current.payload}});
-                context_ids[key] = id;
+                (void)context_ids.insert(key, id);
                 frame = id;
             }
             phase = Phase::Summary;
@@ -485,11 +541,12 @@ void QueryTask::Impl::validate_restored() {
         const auto call = pin(context.call);
         require_checkpoint(call.node().rule == Rule::Call &&
                            call.node().payload == context.owner.value);
-        require_checkpoint(
-            context_ids
-                .try_emplace(state_key({context.call, context.parent}),
-                             static_cast<std::uint32_t>(i))
-                .second);
+        if (pages)
+            require_checkpoint(context_ids.find(state_key(
+                                   {context.call, context.parent})) == i);
+        else
+            require_checkpoint(context_ids.insert(
+                state_key({context.call, context.parent}), i));
     }
     require_checkpoint(
         cursor <= queue.size() && (!active || cursor < queue.size()) &&
@@ -507,8 +564,10 @@ void QueryTask::Impl::validate_restored() {
                           visit.state == QueryState{root, 0}
                     : visit.predecessor < i &&
                           visit.predecessor < stats.visited_states));
-        require_checkpoint(
-            visited.try_emplace(state_key(visit.state), i).second);
+        if (pages)
+            require_checkpoint(visited.find(state_key(visit.state)) == i);
+        else
+            require_checkpoint(visited.insert(state_key(visit.state), i));
     }
     require_checkpoint(seeded == !queue.empty());
     if (!seeded)
@@ -561,11 +620,10 @@ void QueryTask::Impl::validate_restored() {
         require_checkpoint(valid_state({source.node, source.context}));
         const auto found =
             visited.find(state_key({source.node, source.context}));
-        require_checkpoint(found != visited.end() &&
-                           found->second < stats.visited_states &&
-                           (previous_source == no_predecessor ||
-                            previous_source < found->second));
-        previous_source = found->second;
+        require_checkpoint(
+            found.has_value() && *found < stats.visited_states &&
+            (previous_source == no_predecessor || previous_source < *found));
+        previous_source = *found;
         const auto lease = pin(source.node);
         require_checkpoint(lease.node().site == source.site &&
                            (kind == QueryKind::Value
@@ -631,7 +689,11 @@ QueryTask FrozenGraph::begin_query(NodeId root, QueryKind kind,
                                    bool witness) const {
     return QueryTask(*this, root, kind, witness);
 }
-void QueryTask::legacy_limit(std::size_t limit) { impl_->limit = limit; }
+void QueryTask::legacy_limit(std::size_t limit) {
+    if (impl_->pages || (impl_->offloaded && impl_->offloaded->paging))
+        throw std::invalid_argument("paged query cannot drop states");
+    impl_->limit = limit;
+}
 void QueryTask::formulas(std::shared_ptr<const FormulaIndex> index) {
     impl_->formula_index = std::move(index);
 }
@@ -654,18 +716,35 @@ const std::optional<EvidenceError>& QueryTask::failure() const {
 std::span<const Invocation> QueryTask::invocations() const {
     if (!ensure_resident())
         throw std::runtime_error("query state unavailable");
-    return impl_->contexts;
+    if (impl_->pages) {
+        try {
+            if (impl_->compatibility_contexts.empty())
+                impl_->compatibility_contexts = impl_->contexts.materialize();
+            return impl_->compatibility_contexts;
+        } catch (const CheckpointError& error) {
+            (void)impl_->pause_storage(error);
+            throw std::runtime_error("query contexts unavailable");
+        }
+    }
+    return impl_->contexts.resident_span();
 }
 void QueryTask::suspend() {
     if (impl_->progress == QueryProgress::Running)
         impl_->progress = QueryProgress::Paused;
 }
 void QueryTask::cancel() {
+    if (impl_->storage_resume)
+        impl_->storage_resume = QueryProgress::Cancelled;
     if (impl_->progress == QueryProgress::Running ||
         impl_->progress == QueryProgress::Paused)
         impl_->progress = QueryProgress::Cancelled;
 }
 void QueryTask::resume() {
+    if (impl_->storage_resume) {
+        impl_->progress = *impl_->storage_resume;
+        impl_->storage_resume.reset();
+        impl_->paging_failure.reset();
+    }
     if (impl_->progress == QueryProgress::Paused ||
         impl_->progress == QueryProgress::Cancelled)
         impl_->progress = QueryProgress::Running;
@@ -674,36 +753,59 @@ QueryPage QueryTask::advance(QuerySlice slice, std::stop_token cancellation) {
     if (!ensure_resident()) {
         QueryPage page;
         page.task = impl_->task_id;
-        page.progress = QueryProgress::Failed;
+        page.progress = impl_->progress;
         page.coverage = impl_->coverage();
         page.details = DetailAvailability::Unavailable;
         return page;
     }
     auto& task = *impl_;
+    std::vector<Invocation>{}.swap(task.compatibility_contexts);
+    if (task.paging_failure && task.progress == QueryProgress::Cancelled) {
+        QueryPage page;
+        page.task = task.task_id;
+        page.progress = QueryProgress::Cancelled;
+        page.coverage = task.coverage();
+        page.details = DetailAvailability::Unavailable;
+        return page;
+    }
+    if (task.paging_failure)
+        resume();
     if (task.unconfirmed) {
         if (cancellation.stop_requested())
             cancel();
-        return task.redeliver();
+        try {
+            return task.redeliver();
+        } catch (const CheckpointError& error) {
+            return task.pause_storage(error);
+        }
     }
     if (task.progress == QueryProgress::Paused)
         resume();
     if (task.progress == QueryProgress::Running) {
         ++task.stats.slices;
         try {
-            while (!cancellation.stop_requested() && task.step(slice)) {
+            while (!cancellation.stop_requested() && task.checked_step(slice)) {
             }
             if (cancellation.stop_requested())
                 cancel();
             else if (task.progress == QueryProgress::Running)
                 suspend();
+        } catch (const CheckpointError& error) {
+            return task.pause_storage(error);
         } catch (const EvidenceReadFailure& failure) {
             task.failure = failure.error;
             task.gap(CoverageIssue::UnavailableEvidence);
             task.current_lease.reset();
             task.progress = QueryProgress::Failed;
         } catch (const std::bad_alloc&) {
+            if (task.pages)
+                return task.pause_storage(
+                    {CheckpointErrorCode::OutOfMemory, {}});
             task.progress = QueryProgress::Failed;
         } catch (const std::length_error&) {
+            if (task.pages)
+                return task.pause_storage(
+                    {CheckpointErrorCode::LimitExceeded, {}});
             task.progress = QueryProgress::Failed;
         }
     }
@@ -737,7 +839,11 @@ QueryPage QueryTask::advance(QuerySlice slice, std::stop_token cancellation) {
             task.delivered_sources = delivered_sources;
             task.delivered_witness = delivered_witness;
         }
+    } catch (const CheckpointError& error) {
+        return task.pause_storage(error);
     } catch (const std::bad_alloc&) {
+        if (task.pages)
+            return task.pause_storage({CheckpointErrorCode::OutOfMemory, {}});
         task.progress = QueryProgress::Failed;
         page.sources.clear();
         page.witness.clear();
@@ -829,6 +935,8 @@ QueryTask::checkpoint(cache::Limits limits) const {
         bytes->insert(bytes->end(), checksum.bytes.begin(),
                       checksum.bytes.end());
         return std::move(*bytes);
+    } catch (const CheckpointError& error) {
+        return std::unexpected(error);
     } catch (const std::bad_alloc&) {
         return std::unexpected(
             CheckpointError{CheckpointErrorCode::OutOfMemory, {}});
@@ -982,6 +1090,222 @@ QueryTask::restore(QueryCheckpointBinding binding, cache::Digest task_id,
     }
 }
 
+std::expected<QueryTask, CheckpointError>
+QueryTask::begin_paged(QueryCheckpointBinding binding,
+                       const cache::TaskStore& store, NodeId root,
+                       QueryKind kind, bool witness, QueryPagingConfig config,
+                       cache::Limits limits) {
+    try {
+        if (!binding.view_ || !root.value ||
+            root.value > binding.view_->node_count() ||
+            (kind != QueryKind::Value && kind != QueryKind::Effects))
+            throw CheckpointError{CheckpointErrorCode::InvalidState, {}};
+        auto previous = store.head();
+        if (!previous)
+            throw checkpoint_storage_error(previous.error());
+        if (*previous)
+            throw CheckpointError{CheckpointErrorCode::InvalidState, {}};
+        QueryTask task(std::move(binding), store.task(), root, kind, witness);
+        task.impl_->attach_pages(
+            std::make_shared<detail::QueryStorage>(store, config, limits),
+            true);
+        return task;
+    } catch (const CheckpointError& error) {
+        return std::unexpected(error);
+    } catch (const std::bad_alloc&) {
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::OutOfMemory, {}});
+    } catch (const std::length_error&) {
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::LimitExceeded, {}});
+    }
+}
+const std::optional<CheckpointError>& QueryTask::storage_failure() const {
+    return impl_->paging_failure ? impl_->paging_failure : impl_->state_failure;
+}
+QueryPagingStats QueryTask::paging_stats() const {
+    return impl_->pages ? impl_->pages->stats() : QueryPagingStats{};
+}
+void QueryTask::evict_state_cache() const {
+    if (impl_->pages)
+        impl_->pages->evict();
+}
+std::expected<void, CheckpointError>
+QueryTask::resume_with_storage(const cache::TaskStore& store) {
+    if (auto loaded = ensure_resident(); !loaded)
+        return loaded;
+    if (!impl_->pages)
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::InvalidState, {}});
+    try {
+        impl_->pages->rebind(store);
+        resume();
+        return {};
+    } catch (const CheckpointError& error) {
+        return std::unexpected(error);
+    }
+}
+std::expected<cache::TaskHead, CheckpointError>
+QueryTask::save_paged(const cache::TaskStore& store, std::uint64_t generation,
+                      cache::Limits limits) const {
+    auto& task = *impl_;
+    if (!task.checkpoint_binding || task.progress == QueryProgress::Failed ||
+        task.limit || task.formula_index || !task.initial_calls.empty())
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::InvalidState, {}});
+    try {
+        task.pages->check_store(store);
+        cache::wire::Writer control(limits);
+        cache::wire::header(control, cache::ObjectKind::QueryTaskManifest);
+        control.u32(2);
+        task.write_control(control);
+        auto prefix = control.finish();
+        if (!prefix)
+            throw checkpoint_error(prefix.error());
+        auto metadata_bytes = prefix->size();
+        const auto tails = task.pages->mark();
+        for (unsigned table = 0; table < 6; ++table) {
+            const auto segments = task.pages->directory()[table].size() +
+                                  (tails[table] ? 1U : 0U);
+            const auto width = table < 4 ? 49U : 65U;
+            if (task.pages->size(table) > limits.elements ||
+                limits.bytes - metadata_bytes < 8 ||
+                segments > (limits.bytes - metadata_bytes - 8) / width)
+                throw CheckpointError{CheckpointErrorCode::LimitExceeded, {}};
+            metadata_bytes += 8 + segments * width;
+        }
+        auto transaction = store.begin(generation);
+        if (!transaction)
+            throw checkpoint_storage_error(transaction.error());
+        const auto previous = store.head();
+        if (!previous)
+            throw checkpoint_storage_error(previous.error());
+        if (*previous) {
+            auto bytes = store.read((**previous).manifest);
+            if (!bytes)
+                throw checkpoint_storage_error(bytes.error());
+            cache::wire::Reader reader(*bytes, limits);
+            cache::wire::header(reader, cache::ObjectKind::QueryTaskManifest);
+            if (reader.u32() != 2)
+                throw CheckpointError{CheckpointErrorCode::IncompatibleVersion,
+                                      {}};
+            (void)read_control(*task.checkpoint_binding, task.task_id,
+                               task.root, task.kind, task.shortest, reader);
+        }
+        task.pages->seal(*transaction);
+        cache::wire::Writer manifest(limits);
+        manifest.raw(*prefix);
+        for (unsigned table = 0; table < 6; ++table) {
+            manifest.count(task.pages->size(table));
+            const auto& directory = task.pages->directory()[table];
+            manifest.count(directory.size());
+            for (const auto& segment : directory) {
+                manifest.u32(segment.first);
+                manifest.u32(segment.count);
+                manifest.u8(static_cast<std::uint8_t>(segment.object.kind));
+                manifest.raw(segment.object.digest.bytes);
+                manifest.u64(segment.object.size);
+                if (table >= 4) {
+                    manifest.u64(segment.minimum);
+                    manifest.u64(segment.maximum);
+                }
+            }
+        }
+        auto bytes = manifest.finish();
+        if (!bytes)
+            throw checkpoint_error(bytes.error());
+        auto object = transaction->write(cache::ObjectKind::QueryTaskManifest,
+                                         std::move(*bytes));
+        if (!object)
+            throw checkpoint_storage_error(object.error());
+        const bool pending =
+            task.unconfirmed || task.delivered_sources < task.sources.size() ||
+            task.delivered_witness < task.reversed_witness.size();
+        auto head = transaction->commit(
+            *object, task_status(task.logical_progress(), pending));
+        if (!head)
+            throw checkpoint_storage_error(head.error());
+        return *head;
+    } catch (const CheckpointError& error) {
+        return std::unexpected(error);
+    } catch (const std::bad_alloc&) {
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::OutOfMemory, {}});
+    } catch (const std::length_error&) {
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::LimitExceeded, {}});
+    }
+}
+std::expected<QueryTask, CheckpointError> QueryTask::restore_paged(
+    QueryCheckpointBinding binding, const cache::TaskStore& store,
+    const cache::TaskHead& head, NodeId root, QueryKind kind, bool witness,
+    QueryPagingConfig config, cache::Limits limits) {
+    try {
+        require_checkpoint(head.generation &&
+                           head.manifest.kind ==
+                               cache::ObjectKind::QueryTaskManifest &&
+                           head.manifest.size <= limits.bytes);
+        auto bytes = store.read(head.manifest);
+        if (!bytes)
+            throw checkpoint_storage_error(bytes.error());
+        cache::wire::Reader reader(*bytes, limits);
+        cache::wire::header(reader, cache::ObjectKind::QueryTaskManifest);
+        if (reader.u32() != 2)
+            throw CheckpointError{CheckpointErrorCode::IncompatibleVersion, {}};
+        auto task = read_control(std::move(binding), store.task(), root, kind,
+                                 witness, reader);
+        detail::QueryStorage::Directory directory;
+        detail::QueryStorage::Sizes totals{};
+        for (unsigned table = 0; table < 6; ++table) {
+            totals[table] = reader.count(0);
+            const auto segments = reader.count(table < 4 ? 49 : 65);
+            if (!reader.good())
+                throw checkpoint_error(reader.finish().error());
+            require_checkpoint(segments <= totals[table]);
+            for (std::uint32_t i = 0; i < segments; ++i) {
+                detail::QuerySegment segment;
+                segment.first = reader.u32();
+                segment.count = reader.u32();
+                segment.object = {static_cast<cache::ObjectKind>(reader.u8()),
+                                  read_digest(reader), reader.u64()};
+                if (table >= 4) {
+                    segment.minimum = reader.u64();
+                    segment.maximum = reader.u64();
+                }
+                if (!reader.good())
+                    throw checkpoint_error(reader.finish().error());
+                directory[table].push_back(segment);
+            }
+        }
+        if (auto status = reader.finish(); !status)
+            throw checkpoint_error(status.error());
+        auto pages =
+            std::make_shared<detail::QueryStorage>(store, config, limits);
+        pages->restore(std::move(directory), totals);
+        auto& state = *task.impl_;
+        const bool pending = state.unconfirmed ||
+                             state.delivered_sources < totals[2] ||
+                             state.delivered_witness < totals[3];
+        require_checkpoint(task_status(state.progress, pending) == head.status);
+        state.attach_pages(std::move(pages));
+        // Stream cross-table validation and index bijections, retaining only
+        // the configured read cache. No in-memory visited map is rebuilt.
+        state.validate_restored();
+        return task;
+    } catch (const CheckpointError& error) {
+        return std::unexpected(error);
+    } catch (const EvidenceReadFailure& error) {
+        return std::unexpected(CheckpointError{
+            CheckpointErrorCode::UnavailableEvidence, error.error});
+    } catch (const std::bad_alloc&) {
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::OutOfMemory, {}});
+    } catch (const std::length_error&) {
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::LimitExceeded, {}});
+    }
+}
+
 std::expected<cache::TaskHead, CheckpointError>
 QueryTask::save(const cache::TaskStore& store,
                 std::uint64_t expected_generation, std::size_t segment_bytes,
@@ -989,6 +1313,8 @@ QueryTask::save(const cache::TaskStore& store,
     if (auto loaded = ensure_resident(); !loaded)
         return std::unexpected(loaded.error());
     const auto& task = *impl_;
+    if (task.pages)
+        return save_paged(store, expected_generation, limits);
     if (!task.checkpoint_binding || task.progress == QueryProgress::Failed ||
         task.formula_index || task.limit || !task.initial_calls.empty() ||
         store.task() != task.task_id)
@@ -1150,7 +1476,11 @@ QueryTask::restore(QueryCheckpointBinding binding,
             throw checkpoint_storage_error(bytes.error());
         cache::wire::Reader reader(*bytes, limits);
         cache::wire::header(reader, cache::ObjectKind::QueryTaskManifest);
-        if (reader.u32() != 1)
+        const auto version = reader.u32();
+        if (version == 2)
+            return restore_paged(std::move(binding), store, head, root, kind,
+                                 witness, {}, limits);
+        if (version != 1)
             throw CheckpointError{CheckpointErrorCode::IncompatibleVersion, {}};
         auto result = read_control(std::move(binding), store.task(), root, kind,
                                    witness, reader);
@@ -1265,14 +1595,18 @@ QueryTask::offload(const cache::TaskStore& store,
     if (!saved)
         return std::unexpected(saved.error());
     auto& task = *impl_;
-    task.offloaded = Impl::Offloaded{store, *saved, limits, task.coverage()};
-    std::vector<Invocation>{}.swap(task.contexts);
-    std::vector<Impl::Visit>{}.swap(task.queue);
-    std::vector<Source>{}.swap(task.sources);
-    std::vector<QueryState>{}.swap(task.reversed_witness);
-    decltype(task.visited){}.swap(task.visited);
-    decltype(task.context_ids){}.swap(task.context_ids);
+    task.offloaded = Impl::Offloaded{
+        store, *saved, limits, task.coverage(),
+        task.pages ? std::optional(task.pages->config()) : std::nullopt};
+    task.contexts.release();
+    task.queue.release();
+    task.sources.release();
+    task.reversed_witness.release();
+    task.visited.release();
+    task.context_ids.release();
     task.current_lease.reset();
+    task.pages.reset();
+    std::vector<Invocation>{}.swap(task.compatibility_contexts);
     return *saved;
 }
 std::expected<void, CheckpointError> QueryTask::ensure_resident() const {
@@ -1282,9 +1616,25 @@ std::expected<void, CheckpointError> QueryTask::ensure_resident() const {
     if (task.state_failure)
         return std::unexpected(*task.state_failure);
     const auto& state = *task.offloaded;
-    auto restored = restore(*task.checkpoint_binding, state.store, state.head,
-                            task.root, task.kind, task.shortest, state.limits);
+    auto restored =
+        state.paging
+            ? restore_paged(*task.checkpoint_binding, state.store, state.head,
+                            task.root, task.kind, task.shortest, *state.paging,
+                            state.limits)
+            : restore(*task.checkpoint_binding, state.store, state.head,
+                      task.root, task.kind, task.shortest, state.limits);
     if (!restored) {
+        if (state.paging) {
+            if (!task.storage_resume)
+                task.storage_resume = task.progress;
+            task.paging_failure = restored.error();
+            task.progress = QueryProgress::Paused;
+            task.offloaded->coverage.precision = EvidencePrecision::Unresolved;
+            task.offloaded->coverage.issues |=
+                static_cast<std::uint32_t>(CoverageIssue::UnavailableEvidence);
+            task.offloaded->coverage.all_sources = false;
+            return std::unexpected(restored.error());
+        }
         task.state_failure = restored.error();
         task.failure = restored.error().evidence.value_or(EvidenceError{
             EvidenceErrorCode::IoFailure, restored.error().storage, {}});
@@ -1296,49 +1646,60 @@ std::expected<void, CheckpointError> QueryTask::ensure_resident() const {
         return std::unexpected(restored.error());
     }
     const auto progress =
-        task.progress; // Preserve cancel/resume while offloaded.
+        task.logical_progress(); // Preserve cancel/resume while offloaded.
     task = std::move(*restored->impl_);
     task.progress = progress;
     return {};
 }
 QueryStateMemory QueryTask::state_memory() const {
     const auto& task = *impl_;
-    return {task.queue.capacity() * sizeof(Impl::Visit),
-            task.visited.getMemorySize(),
-            task.contexts.capacity() * sizeof(Invocation),
-            task.context_ids.getMemorySize(),
-            task.sources.capacity() * sizeof(Source),
-            task.reversed_witness.capacity() * sizeof(QueryState),
-            task.offloaded.has_value()};
+    return {task.queue.bytes(),
+            task.visited.bytes(),
+            task.contexts.bytes(),
+            task.context_ids.bytes(),
+            task.sources.bytes(),
+            task.reversed_witness.bytes(),
+            task.offloaded.has_value(),
+            task.pages ? task.pages->cached_bytes() : 0,
+            task.pages ? task.pages->directory_bytes() : 0,
+            task.compatibility_contexts.capacity() * sizeof(Invocation),
+            task.pages ? task.pages->peak_buffers() : 0,
+            task.pages != nullptr};
 }
 
 QueryResult QueryTask::result() const {
     if (!ensure_resident())
         throw std::runtime_error("query state unavailable");
-    const auto& task = *impl_;
-    QueryResult result{
-        .sources = task.sources,
-        .witness = {},
-        .invocations = task.contexts,
-        .visited_states = task.stats.visited_states,
-        .visited_edges = task.stats.visited_edges,
-        .contexts = task.contexts.size() - 1,
-        .complete = task.all_sources && !task.issues,
-        .recursive_call_cut =
-            (task.issues &
-             static_cast<std::uint32_t>(CoverageIssue::RecursiveCall)) != 0};
-    if (task.progress == QueryProgress::Completed)
-        result.witness.assign(task.reversed_witness.rbegin(),
-                              task.reversed_witness.rend());
-    std::ranges::sort(result.sources,
-                      [](const Source& left, const Source& right) {
-                          if (left.site != right.site)
-                              return left.site < right.site;
-                          if (left.context != right.context)
-                              return left.context < right.context;
-                          return left.node.value < right.node.value;
-                      });
-    return result;
+    try {
+        const auto& task = *impl_;
+        QueryResult result{
+            .sources = task.sources.materialize(),
+            .witness = {},
+            .invocations = task.contexts.materialize(),
+            .visited_states = task.stats.visited_states,
+            .visited_edges = task.stats.visited_edges,
+            .contexts = task.contexts.size() - 1,
+            .complete = task.coverage().all_sources && !task.coverage().issues,
+            .recursive_call_cut =
+                (task.issues & static_cast<std::uint32_t>(
+                                   CoverageIssue::RecursiveCall)) != 0};
+        if (task.progress == QueryProgress::Completed) {
+            result.witness = task.reversed_witness.materialize();
+            std::ranges::reverse(result.witness);
+        }
+        std::ranges::sort(result.sources,
+                          [](const Source& left, const Source& right) {
+                              if (left.site != right.site)
+                                  return left.site < right.site;
+                              if (left.context != right.context)
+                                  return left.context < right.context;
+                              return left.node.value < right.node.value;
+                          });
+        return result;
+    } catch (const CheckpointError& error) {
+        (void)impl_->pause_storage(error);
+        throw std::runtime_error("query result unavailable");
+    }
 }
 
 } // namespace pagos::stage::provenance

@@ -616,3 +616,14 @@ ctest --test-dir build/debug \
   -R 'TaskStoreTest|QueryCheckpointTest|pagos-query-task-process' \
   --output-on-failure
 ```
+
+[C4c2b](provenance-query-paging-c4c2b.md) adds explicit `begin_paged` and
+`restore_paged` for active-query paging. Set `QueryPagingConfig` to bound six
+append tails plus the decoded cache; segment directories, codec scratch, evidence
+leases and detached results are separate. Restore scans and validates all state
+without building full query vectors or hash indexes. Storage errors pause with
+`storage_failure()`; `resume_with_storage` explicitly rebinds the same namespace
+to a writable or larger-quota store. Read-only restoration makes no writes and
+pauses when continued traversal needs to seal a segment. The task process test
+also checks separate-process paged continuation and unconfirmed delivery replay.
+Topology checkpoints, performance acceptance and main-driver flags remain C4c3.

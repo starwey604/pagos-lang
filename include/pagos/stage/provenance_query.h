@@ -54,6 +54,18 @@ struct QueryStateMemory {
     std::size_t queue{}, visited{}, contexts{}, context_index{}, sources{},
         witness{};
     bool offloaded{};
+    std::size_t cached{}, directory{}, compatibility{}, peak_buffers{};
+    bool paged{};
+};
+struct QueryPagingConfig {
+    std::size_t segment_bytes{16 * 1024};
+    // Owned append buffers + decoded read cache, excluding directory, CAS
+    // codec scratch, graph leases and explicit detached compatibility results.
+    std::size_t resident_bytes{256 * 1024};
+    std::size_t cache_bytes{64 * 1024};
+};
+struct QueryPagingStats {
+    std::size_t reads{}, hits{}, writes{}, bytes_read{}, bytes_written{};
 };
 
 enum class QueryProgress { Running, Paused, Cancelled, Completed, Failed };
@@ -132,6 +144,26 @@ class QueryTask {
     QueryTask(QueryCheckpointBinding binding, cache::Digest task_id,
               NodeId root, QueryKind kind = QueryKind::Value,
               bool witness = false);
+    [[nodiscard]] static std::expected<QueryTask, CheckpointError>
+    begin_paged(QueryCheckpointBinding binding, const cache::TaskStore& store,
+                NodeId root, QueryKind kind = QueryKind::Value,
+                bool witness = false, QueryPagingConfig config = {},
+                cache::Limits limits = {});
+    // Stream validation with bounded buffers; does not rebuild full tables or
+    // hash indexes. Version 2 paged snapshots only (v1 keeps its old restore).
+    [[nodiscard]] static std::expected<QueryTask, CheckpointError>
+    restore_paged(QueryCheckpointBinding binding, const cache::TaskStore& store,
+                  const cache::TaskHead& head, NodeId root, QueryKind kind,
+                  bool witness, QueryPagingConfig config = {},
+                  cache::Limits limits = {});
+    [[nodiscard]] const std::optional<CheckpointError>& storage_failure() const;
+    // Physical counters for the current loaded backend, reset on restoration.
+    [[nodiscard]] QueryPagingStats paging_stats() const;
+    void evict_state_cache() const;
+    // Same namespace/task only, e.g. explicit read-only -> writable transition
+    // or increased disk quota. Does not advance work or publish a new head.
+    [[nodiscard]] std::expected<void, CheckpointError>
+    resume_with_storage(const cache::TaskStore& store);
     ~QueryTask();
     QueryTask(QueryTask&&) noexcept;
     QueryTask& operator=(QueryTask&&) noexcept;
@@ -200,6 +232,9 @@ class QueryTask {
                                   cache::Digest task, NodeId root,
                                   QueryKind kind, bool witness,
                                   cache::wire::Reader& reader);
+    [[nodiscard]] std::expected<cache::TaskHead, CheckpointError>
+    save_paged(const cache::TaskStore& store, std::uint64_t generation,
+               cache::Limits limits) const;
     std::unique_ptr<Impl> impl_;
 };
 

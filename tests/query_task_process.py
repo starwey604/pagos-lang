@@ -58,6 +58,22 @@ with tempfile.TemporaryDirectory(prefix="pagos-query-task-process-") as temporar
             if ack == "unacked" and saved["pages"]:
                 assert saved["pages"][-1] == restored["pages"][0]
             assert run("seg-cleanup-all", directory, source)["reclaimed"] == 1
+    # Active paging resumes in another process with bounded append/read buffers.
+    # Use both a mid-traversal cut and a completed or unconfirmed delivery cut.
+    for mode in ("sources", "witness"):
+        oracle = run("oracle", directory, source, mode)
+        for steps in (7, 10000):
+            for ack in ("ack", "unacked"):
+                saved = run("page-save", directory, source, mode, steps, ack)
+                assert saved["released"] and saved["paged"]
+                restored = run("page-resume", directory, source, mode)
+                assert restored["paged"] and restored["reads"] > 0
+                assert restored["result"] == oracle["result"]
+                assert restored["work"] == oracle["work"]
+                assert restored["stage_runs"] == 0
+                if ack == "unacked" and saved["pages"]:
+                    assert saved["pages"][-1] == restored["pages"][0]
+                assert run("seg-cleanup-all", directory, source)["reclaimed"] == 1
     oracle = run("oracle", directory, source, "sources")
     for boundary in ("before", "after"):
         initial = run("seg-save", directory, source, "sources", 1, "ack")
@@ -110,4 +126,4 @@ with tempfile.TemporaryDirectory(prefix="pagos-query-task-process-") as temporar
     assert run("seg-cleanup-all", directory, source)["reclaimed"] == 1
     assert files(directory / "evidence") == semantic_files
     assert not list((directory / "sessions").rglob("queries"))
-print("segmented task offload, atomic heads, process death and lifetime cleanup passed")
+print("segmented and paged tasks, atomic heads, process death and lifetime cleanup passed")

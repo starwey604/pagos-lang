@@ -728,4 +728,439 @@ TEST_F(QueryCheckpointTest,
                   .code,
               CheckpointErrorCode::LimitExceeded);
 }
+const QueryPagingConfig tiny_pages{
+    .segment_bytes = 86, .resident_bytes = 1024, .cache_bytes = 256};
+void paging_memory(const QueryTask& task, QueryPagingConfig config) {
+    const auto memory = task.state_memory();
+    EXPECT_TRUE(memory.paged);
+    EXPECT_LE(state_bytes(memory) + memory.cached, config.resident_bytes);
+    EXPECT_LE(memory.cached, config.cache_bytes);
+    EXPECT_LE(memory.peak_buffers, config.resident_bytes);
+}
+QueryPage finish_paged(QueryTask& task, QueryPagingConfig config,
+                       QuerySlice slice = {1, 1, 1, 1}) {
+    for (unsigned step = 0; step < 100000; ++step) {
+        auto page = task.advance(slice);
+        paging_memory(task, config);
+        if (task.storage_failure())
+            return page;
+        if (page.sequence) {
+            EXPECT_TRUE(task.acknowledge(page.sequence));
+        }
+        if (page.progress == QueryProgress::Completed &&
+            !page.pending_sources && !page.pending_witness)
+            return page;
+        if (page.progress == QueryProgress::Failed)
+            return page;
+    }
+    ADD_FAILURE() << "paged task did not finish";
+    return {};
+}
+TEST_F(QueryCheckpointTest,
+       PagedCallsRecursionEffectsAndWitnessMatchResidentQueries) {
+    publish();
+    auto view = open(1024 * 1024);
+    for (const auto name : {"aa", "rr"}) {
+        for (const auto kind : {QueryKind::Value, QueryKind::Effects}) {
+            for (const bool witness : {false, true}) {
+                auto id = task_id;
+                id.bytes[0] = static_cast<std::uint8_t>(
+                    (name == std::string_view("aa") ? 0 : 4) +
+                    static_cast<unsigned>(kind) * 2 + (witness ? 1 : 0));
+                auto store = cache::TaskStore::open(
+                    directory / "paged", id, cache::TaskAccess::ReadWrite);
+                ASSERT_TRUE(store);
+                const auto selected = root(view, name);
+                QueryTask oracle(view.view(), selected, kind, witness);
+                (void)oracle.advance(QuerySlice::unlimited());
+                auto task = QueryTask::begin_paged(
+                    binding(view), *store, selected, kind, witness, tiny_pages);
+                ASSERT_TRUE(task);
+                EXPECT_EQ(finish_paged(*task, tiny_pages).progress,
+                          QueryProgress::Completed);
+                ASSERT_FALSE(task->storage_failure());
+                equal_result(*task, oracle);
+                paging_memory(*task, tiny_pages);
+                EXPECT_GT(task->paging_stats().writes, 0U);
+                const auto encoded = task->checkpoint();
+                ASSERT_TRUE(encoded);
+                auto old = QueryTask::restore(binding(view), id, selected, kind,
+                                              witness, *encoded);
+                ASSERT_TRUE(old);
+                equal_result(*old, oracle);
+            }
+        }
+    }
+}
+TEST_F(QueryCheckpointTest,
+       PagedEverySliceRestoresBoundedTablesAndUnconfirmedPages) {
+    publish();
+    auto view = open(1024 * 1024);
+    const auto selected = root(view);
+    auto store = cache::TaskStore::open(directory / "paged", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    QueryTask oracle(view.view(), selected, QueryKind::Value, true);
+    (void)oracle.advance(QuerySlice::unlimited());
+    auto task = QueryTask::begin_paged(binding(view), *store, selected,
+                                       QueryKind::Value, true, tiny_pages);
+    ASSERT_TRUE(task);
+    std::uint64_t generation{};
+    for (unsigned step = 0; step < 1000; ++step) {
+        const auto page = task->advance({1, 1, 1, 1});
+        ASSERT_FALSE(task->storage_failure());
+        const auto work = task->stats();
+        const auto saved = task->offload(*store, generation);
+        ASSERT_TRUE(saved) << static_cast<int>(saved.error().code);
+        generation = saved->generation;
+        EXPECT_EQ(state_bytes(task->state_memory()), 0U);
+        EXPECT_EQ(task->state_memory().cached, 0U);
+        auto restored =
+            QueryTask::restore_paged(binding(view), *store, *saved, selected,
+                                     QueryKind::Value, true, tiny_pages);
+        ASSERT_TRUE(restored) << static_cast<int>(restored.error().code);
+        task = std::move(restored);
+        paging_memory(*task, tiny_pages);
+        EXPECT_EQ(task->stats().scanned_edges, work.scanned_edges);
+        EXPECT_EQ(task->stats().slices, work.slices);
+        if (page.sequence) {
+            const auto repeated = task->advance({0, 0, 0, 0});
+            EXPECT_EQ(repeated.sequence, page.sequence);
+            EXPECT_EQ(repeated.sources, page.sources);
+            EXPECT_EQ(repeated.witness, page.witness);
+            ASSERT_TRUE(task->acknowledge(page.sequence));
+        }
+        if (page.progress == QueryProgress::Completed &&
+            !page.pending_sources && !page.pending_witness)
+            break;
+        ASSERT_LT(step, 999U);
+    }
+    equal_result(*task, oracle);
+    const auto invocations = task->invocations();
+    EXPECT_EQ(invocations.size(), task->result().invocations.size());
+    EXPECT_GT(task->state_memory().compatibility, 0U);
+    (void)task->advance({0, 0, 0, 0});
+    EXPECT_EQ(task->state_memory().compatibility, 0U);
+}
+std::string wide_program(unsigned count, bool repeat = false) {
+    std::string text;
+    for (unsigned i = 0; i < count; ++i)
+        text += "let a" + std::to_string(i) + " = external_input(); ";
+    text += "let aa = [a0";
+    for (unsigned i = 1; i < count; ++i)
+        text += ", a" + std::to_string(i);
+    return text + (repeat ? ", a0];" : "];");
+}
+NodeId aggregate_root(const FunctionEvidenceView& view, NodeId selected) {
+    while (view.view()->pin(selected)->edges().size() == 1)
+        selected = view.view()->pin(selected)->edges().front().target;
+    return selected;
+}
+TEST_F(QueryCheckpointTest,
+       PagedLargeFrontierAndRestoredIndexesStayWithinOwnedBufferBudget) {
+    publish(wide_program(257));
+    auto view = open(8 * 1024 * 1024);
+    const auto selected = aggregate_root(view, root(view));
+    const QueryPagingConfig config{
+        .segment_bytes = 256, .resident_bytes = 2048, .cache_bytes = 512};
+    auto store = cache::TaskStore::open(directory / "paged", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    auto task = QueryTask::begin_paged(binding(view), *store, selected,
+                                       QueryKind::Value, false, config);
+    ASSERT_TRUE(task);
+    (void)task->advance({1, 128, 0, 0});
+    ASSERT_FALSE(task->storage_failure());
+    EXPECT_EQ(task->stats().admitted_states, 129U);
+    paging_memory(*task, config);
+    EXPECT_LE(task->state_memory().queue + task->state_memory().visited, 384U);
+    EXPECT_GT(task->state_memory().directory, 0U);
+    const auto saved = task->offload(*store, 0);
+    ASSERT_TRUE(saved);
+    const auto progress = task->advance({0, 0, 0, 0});
+    ASSERT_FALSE(task->storage_failure());
+    EXPECT_EQ(progress.progress, QueryProgress::Paused);
+    paging_memory(*task, config);
+    EXPECT_EQ(task->stats().admitted_states, 129U);
+    EXPECT_EQ(finish_paged(*task, config, {17, 23, 19, 7}).progress,
+              QueryProgress::Completed);
+    QueryTask oracle(view.view(), selected);
+    (void)oracle.advance(QuerySlice::unlimited());
+    equal_result(*task, oracle);
+    EXPECT_GT(task->paging_stats().reads, 10U);
+}
+TEST_F(QueryCheckpointTest,
+       PagedReadFailureRollsBackEdgeCursorAndWorkBeforeRetry) {
+    publish(wide_program(64, true));
+    auto view = open(4 * 1024 * 1024);
+    const auto selected = aggregate_root(view, root(view));
+    const QueryPagingConfig config{
+        .segment_bytes = 256, .resident_bytes = 2048, .cache_bytes = 512};
+    bool fail = false;
+    cache::TaskStoreOptions options;
+    options.store.fault = [&](cache::IoOperation operation,
+                              const fs::path& path) {
+        return fail && operation == cache::IoOperation::ReadFile &&
+                       path.filename() != "head"
+                   ? std::make_error_code(std::errc::io_error)
+                   : std::error_code{};
+    };
+    auto store = cache::TaskStore::open(directory / "paged", task_id,
+                                        cache::TaskAccess::ReadWrite, options);
+    ASSERT_TRUE(store);
+    auto task = QueryTask::begin_paged(binding(view), *store, selected,
+                                       QueryKind::Value, false, config);
+    ASSERT_TRUE(task);
+    (void)task->advance({1, 64, 0, 0});
+    ASSERT_FALSE(task->storage_failure());
+    EXPECT_EQ(task->stats().scanned_edges, 64U);
+    const auto admitted = task->stats().admitted_states;
+    task->evict_state_cache();
+    fail = true;
+    const auto paused = task->advance({0, 1, 0, 0});
+    EXPECT_EQ(paused.progress, QueryProgress::Paused);
+    ASSERT_TRUE(task->storage_failure());
+    EXPECT_EQ(task->stats().scanned_edges, 64U);
+    EXPECT_EQ(task->stats().admitted_states, admitted);
+    EXPECT_FALSE(paused.coverage.all_sources);
+    fail = false;
+    EXPECT_EQ(finish_paged(*task, config, {17, 23, 19, 7}).progress,
+              QueryProgress::Completed);
+    QueryTask oracle(view.view(), selected);
+    (void)oracle.advance(QuerySlice::unlimited());
+    equal_result(*task, oracle);
+}
+TEST_F(QueryCheckpointTest,
+       PagedQuotaPauseRetainsDurableHeadAndResumesWithLargerQuota) {
+    publish(wide_program(64));
+    auto view = open(4 * 1024 * 1024);
+    const auto selected = aggregate_root(view, root(view));
+    cache::TaskStoreOptions limited;
+    limited.disk_bytes = 2048;
+    auto store = cache::TaskStore::open(directory / "paged", task_id,
+                                        cache::TaskAccess::ReadWrite, limited);
+    ASSERT_TRUE(store);
+    auto task = QueryTask::begin_paged(binding(view), *store, selected,
+                                       QueryKind::Value, false, tiny_pages);
+    ASSERT_TRUE(task);
+    const auto first = task->save(*store, 0);
+    ASSERT_TRUE(first);
+    const auto pause = task->advance(QuerySlice::unlimited());
+    EXPECT_EQ(pause.progress, QueryProgress::Paused);
+    ASSERT_TRUE(task->storage_failure());
+    EXPECT_EQ(task->storage_failure()->code,
+              CheckpointErrorCode::LimitExceeded);
+    EXPECT_EQ((**store->head()).generation, 1U);
+    auto larger = cache::TaskStore::open(directory / "paged", task_id,
+                                         cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(larger);
+    ASSERT_TRUE(task->resume_with_storage(*larger));
+    EXPECT_EQ(finish_paged(*task, tiny_pages, {17, 23, 19, 7}).progress,
+              QueryProgress::Completed);
+    QueryTask oracle(view.view(), selected);
+    (void)oracle.advance(QuerySlice::unlimited());
+    equal_result(*task, oracle);
+    const auto saved = task->save(*larger, 1);
+    ASSERT_TRUE(saved);
+    EXPECT_EQ(saved->generation, 2U);
+}
+TEST_F(QueryCheckpointTest,
+       PagedReadOnlyRestorePausesWithoutWritesAndAllowsExplicitRebind) {
+    publish(wide_program(64));
+    auto view = open(4 * 1024 * 1024);
+    const auto selected = aggregate_root(view, root(view));
+    auto store = cache::TaskStore::open(directory / "paged", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    auto task = QueryTask::begin_paged(binding(view), *store, selected,
+                                       QueryKind::Value, false, tiny_pages);
+    ASSERT_TRUE(task);
+    (void)task->advance({1, 17, 0, 0});
+    const auto saved = task->save(*store, 0);
+    ASSERT_TRUE(saved);
+    unsigned mutations{};
+    cache::TaskStoreOptions readonly;
+    readonly.store.fault = [&](cache::IoOperation operation, const fs::path&) {
+        if (operation != cache::IoOperation::ReadFile)
+            ++mutations;
+        return std::error_code{};
+    };
+    auto reader = cache::TaskStore::open(directory / "paged", task_id,
+                                         cache::TaskAccess::ReadOnly, readonly);
+    ASSERT_TRUE(reader);
+    EXPECT_EQ(task->save(*reader, saved->generation).error().storage->code,
+              cache::StoreErrorCode::ReadOnly);
+    // A failed save through a read-only handle must not rebind the live
+    // backend.
+    EXPECT_EQ(finish_paged(*task, tiny_pages, {17, 23, 19, 7}).progress,
+              QueryProgress::Completed);
+    auto restored =
+        QueryTask::restore_paged(binding(view), *reader, *saved, selected,
+                                 QueryKind::Value, false, tiny_pages);
+    ASSERT_TRUE(restored);
+    paging_memory(*restored, tiny_pages);
+    const auto paused = restored->advance(QuerySlice::unlimited());
+    EXPECT_EQ(paused.progress, QueryProgress::Paused);
+    ASSERT_TRUE(restored->storage_failure());
+    EXPECT_EQ(restored->storage_failure()->storage->code,
+              cache::StoreErrorCode::ReadOnly);
+    EXPECT_EQ(mutations, 0U);
+    restored->cancel();
+    EXPECT_EQ(restored->advance().progress, QueryProgress::Cancelled);
+    auto wrong = cache::TaskStore::open(directory / "other", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(wrong);
+    EXPECT_EQ(restored->resume_with_storage(*wrong).error().code,
+              CheckpointErrorCode::BindingMismatch);
+    ASSERT_TRUE(restored->resume_with_storage(*store));
+    EXPECT_EQ(finish_paged(*restored, tiny_pages, {17, 23, 19, 7}).progress,
+              QueryProgress::Completed);
+    QueryTask oracle(view.view(), selected);
+    (void)oracle.advance(QuerySlice::unlimited());
+    equal_result(*restored, oracle);
+}
+TEST_F(QueryCheckpointTest,
+       PagedDeliveryReadFailureRetainsSequenceAndRetriesOffloadedState) {
+    publish(wide_program(16));
+    auto view = open(4 * 1024 * 1024);
+    const auto selected = root(view);
+    bool fail = false;
+    cache::TaskStoreOptions options;
+    options.store.fault = [&](cache::IoOperation operation, const fs::path&) {
+        return fail && operation == cache::IoOperation::ReadFile
+                   ? std::make_error_code(std::errc::io_error)
+                   : std::error_code{};
+    };
+    auto store = cache::TaskStore::open(directory / "paged", task_id,
+                                        cache::TaskAccess::ReadWrite, options);
+    ASSERT_TRUE(store);
+    auto task = QueryTask::begin_paged(binding(view), *store, selected,
+                                       QueryKind::Value, false, tiny_pages);
+    ASSERT_TRUE(task);
+    const auto page = task->advance(QuerySlice::unlimited());
+    ASSERT_EQ(page.progress, QueryProgress::Completed);
+    ASSERT_TRUE(page.sequence);
+    const auto saved = task->save(*store, 0);
+    ASSERT_TRUE(saved);
+    task->evict_state_cache();
+    const auto work = task->stats();
+    fail = true;
+    const auto unavailable_export = task->checkpoint();
+    ASSERT_FALSE(unavailable_export);
+    EXPECT_EQ(unavailable_export.error().code,
+              CheckpointErrorCode::StorageFailure);
+    EXPECT_EQ(task->advance().progress, QueryProgress::Paused);
+    ASSERT_TRUE(task->storage_failure());
+    EXPECT_FALSE(task->coverage().all_sources);
+    EXPECT_EQ(task->stats().scanned_edges, work.scanned_edges);
+    fail = false;
+    const auto replay = task->advance({0, 0, 0, 0});
+    EXPECT_EQ(replay.sequence, page.sequence);
+    EXPECT_EQ(replay.sources, page.sources);
+    EXPECT_EQ(replay.progress, QueryProgress::Completed);
+    EXPECT_FALSE(task->storage_failure());
+    ASSERT_TRUE(task->offload(*store, 1));
+    fail = true;
+    EXPECT_EQ(task->advance().progress, QueryProgress::Paused);
+    EXPECT_FALSE(task->coverage().all_sources);
+    EXPECT_TRUE(task->state_memory().offloaded);
+    EXPECT_EQ(state_bytes(task->state_memory()), 0U);
+    fail = false;
+    const auto retried = task->advance({0, 0, 0, 0});
+    EXPECT_EQ(retried.progress, QueryProgress::Completed);
+    EXPECT_EQ(retried.sequence, page.sequence);
+    EXPECT_EQ(retried.sources, page.sources);
+    EXPECT_FALSE(task->storage_failure());
+    EXPECT_EQ(task->stats().scanned_edges, work.scanned_edges);
+    ASSERT_TRUE(task->acknowledge(page.sequence));
+    QueryTask oracle(view.view(), selected);
+    (void)oracle.advance(QuerySlice::unlimited());
+    equal_result(*task, oracle);
+}
+TEST_F(QueryCheckpointTest,
+       PagedRejectsResealedIndexBijectionOrderingAndRangeCorruption) {
+    publish(wide_program(16));
+    auto view = open(4 * 1024 * 1024);
+    const auto selected = aggregate_root(view, root(view));
+    auto store = cache::TaskStore::open(directory / "paged", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    auto task = QueryTask::begin_paged(binding(view), *store, selected,
+                                       QueryKind::Value, false, tiny_pages);
+    ASSERT_TRUE(task);
+    (void)task->advance({1, 10, 0, 0});
+    auto saved = task->save(*store, 0);
+    ASSERT_TRUE(saved);
+    const auto original = store->read(saved->manifest);
+    ASSERT_TRUE(original);
+    cache::wire::Reader reader(*original, {});
+    // Common control prefix without an unconfirmed delivery.
+    (void)reader.raw(9 + 4 + 301);
+    for (unsigned table = 0; table < 4; ++table) {
+        (void)reader.u32();
+        const auto segments = reader.u32();
+        (void)reader.raw(segments * 49);
+    }
+    (void)reader.u32();
+    ASSERT_GT(reader.u32(), 0U);
+    const auto descriptor = original->size() - reader.remaining();
+    EXPECT_EQ(reader.u32(), 0U);
+    ASSERT_EQ(reader.u32(), 2U);
+    cache::ObjectRef index;
+    index.kind = static_cast<cache::ObjectKind>(reader.u8());
+    const auto digest = reader.raw(32);
+    std::ranges::copy(digest, index.digest.bytes.begin());
+    index.size = reader.u64();
+    ASSERT_TRUE(reader.good());
+    const auto leaf = store->read(index);
+    ASSERT_TRUE(leaf);
+    for (unsigned corruption = 0; corruption < 3; ++corruption) {
+        SCOPED_TRACE(corruption);
+        auto manifest = *original;
+        auto bytes = *leaf;
+        if (corruption == 0) // In-range value, wrong queue/index bijection.
+            bytes[54 + 8] ^= 1;
+        else if (corruption == 1) // Duplicate key in a supposedly sorted run.
+            std::copy_n(bytes.begin() + 54, 8, bytes.begin() + 54 + 16);
+        else // Incorrect directory minimum, with authentic CAS checksums.
+            manifest[descriptor + 49] ^= 1;
+        auto writer = store->begin(saved->generation);
+        ASSERT_TRUE(writer);
+        auto ref = writer->write(cache::ObjectKind::QueryStateSegment,
+                                 std::move(bytes));
+        ASSERT_TRUE(ref);
+        std::ranges::copy(ref->digest.bytes,
+                          manifest.begin() +
+                              static_cast<std::ptrdiff_t>(descriptor + 9));
+        auto root_ref = writer->write(cache::ObjectKind::QueryTaskManifest,
+                                      std::move(manifest));
+        ASSERT_TRUE(root_ref);
+        const auto committed = writer->commit(*root_ref, saved->status);
+        ASSERT_TRUE(committed);
+        saved = *committed;
+        auto rejected =
+            QueryTask::restore_paged(binding(view), *store, *saved, selected,
+                                     QueryKind::Value, false, tiny_pages);
+        ASSERT_FALSE(rejected);
+        EXPECT_EQ(rejected.error().code, CheckpointErrorCode::Corrupt);
+    }
+}
+TEST_F(QueryCheckpointTest,
+       PagedRejectsInsufficientBuffersBeforeCreatingQueryObjects) {
+    publish();
+    auto view = open();
+    auto store = cache::TaskStore::open(directory / "paged", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    EXPECT_EQ(QueryTask::begin_paged(binding(view), *store, {}).error().code,
+              CheckpointErrorCode::InvalidState);
+    EXPECT_EQ(
+        QueryTask::begin_paged(
+            binding(view), *store, root(view), QueryKind::Value, false,
+            {.segment_bytes = 86, .resident_bytes = 100, .cache_bytes = 256})
+            .error()
+            .code,
+        CheckpointErrorCode::LimitExceeded);
+    EXPECT_FALSE(fs::exists(store->directory() / "objects"));
+}
 } // namespace

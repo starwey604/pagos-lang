@@ -90,9 +90,13 @@ int main(int argc, char** argv) {
         if (argc < 4)
             return 2;
         const std::string original_action = argv[1];
-        const bool segmented = original_action.starts_with("seg-");
-        std::string action =
-            segmented ? original_action.substr(4) : original_action;
+        const bool paged = original_action.starts_with("page-");
+        const bool segmented = paged || original_action.starts_with("seg-");
+        std::string action = paged       ? original_action.substr(5)
+                             : segmented ? original_action.substr(4)
+                                         : original_action;
+        const QueryPagingConfig paging{
+            .segment_bytes = 256, .resident_bytes = 4096, .cache_bytes = 512};
         const fs::path directory = argv[2];
         const auto task_id = cache::fingerprint("probe.logical-query.1", {});
         if (action == "cleanup" || action == "cleanup-all") {
@@ -150,8 +154,8 @@ int main(int argc, char** argv) {
             };
             auto opened = cache::TaskStore::open(
                 directory / "sessions", task_id,
-                action == "resume" ? cache::TaskAccess::ReadOnly
-                                   : cache::TaskAccess::ReadWrite,
+                action == "resume" && !paged ? cache::TaskAccess::ReadOnly
+                                             : cache::TaskAccess::ReadWrite,
                 options);
             if (!opened)
                 throw std::runtime_error("task unavailable");
@@ -205,12 +209,23 @@ int main(int argc, char** argv) {
             if (item.name == "aa")
                 root = item.node;
         QueryTask task(*binding, task_id, root, QueryKind::Value, witness);
+        if (paged && action == "save") {
+            auto started = QueryTask::begin_paged(
+                *binding, *task_store, root, QueryKind::Value, witness, paging);
+            if (!started)
+                throw std::runtime_error("paged query cannot start");
+            task = std::move(*started);
+        }
         if (action == "resume" && segmented) {
             const auto head = task_store->head();
             if (!head || !*head)
                 throw std::runtime_error("head unavailable");
-            auto restored = QueryTask::restore(*binding, *task_store, **head,
-                                               root, QueryKind::Value, witness);
+            auto restored =
+                paged ? QueryTask::restore_paged(*binding, *task_store, **head,
+                                                 root, QueryKind::Value,
+                                                 witness, paging)
+                      : QueryTask::restore(*binding, *task_store, **head, root,
+                                           QueryKind::Value, witness);
             if (!restored)
                 throw std::runtime_error("checkpoint cannot resume");
             task = std::move(*restored);
@@ -234,6 +249,19 @@ int main(int argc, char** argv) {
         }
         std::cout << "{\"pages\":[";
         bool first = true;
+        const auto check_buffers = [&] {
+            if (!paged)
+                return;
+            const auto memory = task.state_memory();
+            const auto buffers = memory.queue + memory.visited +
+                                 memory.contexts + memory.context_index +
+                                 memory.sources + memory.witness +
+                                 memory.cached;
+            if (task.storage_failure() || buffers > paging.resident_bytes ||
+                memory.peak_buffers > paging.resident_bytes ||
+                memory.cached > paging.cache_bytes)
+                throw std::runtime_error("paged query failed its buffer bound");
+        };
         if (action == "save") {
             if (argc != 7)
                 return 2;
@@ -241,6 +269,7 @@ int main(int argc, char** argv) {
             const bool ack = std::string_view(argv[6]) == "ack";
             for (std::uint64_t i = 0; i < steps; ++i) {
                 const auto page = task.advance({1, 1, 1, 1});
+                check_buffers();
                 print_page(page, first);
                 if (page.sequence) {
                     if (!ack)
@@ -263,7 +292,8 @@ int main(int argc, char** argv) {
                 if (!head)
                     throw std::runtime_error("offload failed");
                 const auto memory = task.state_memory();
-                const bool released = memory.offloaded &&
+                const bool released = memory.offloaded && memory.cached == 0 &&
+                                      memory.directory == 0 &&
                                       memory.queue + memory.visited +
                                               memory.contexts +
                                               memory.context_index +
@@ -291,6 +321,7 @@ int main(int argc, char** argv) {
             for (;;) {
                 // Different budgets from the saving process, including output.
                 const auto page = task.advance({17, 23, 19, 7});
+                check_buffers();
                 print_page(page, first);
                 if (page.progress == QueryProgress::Failed)
                     throw std::runtime_error("query failed");
@@ -303,6 +334,11 @@ int main(int argc, char** argv) {
             std::cout << ']';
         } else
             return 2;
+        if (paged) {
+            const auto stats = task.paging_stats();
+            std::cout << ",\"paged\":true,\"reads\":" << stats.reads
+                      << ",\"writes\":" << stats.writes;
+        }
         print_result(task);
         return 0;
     } catch (const std::exception& error) {

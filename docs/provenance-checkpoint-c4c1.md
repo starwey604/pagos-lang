@@ -124,4 +124,5 @@ Python 编译和 `git diff --check` 均通过。这些时长是正确性测试�
 不是 C4c 的性能或内存验收数据。
 
 后续 [C4c2a](provenance-task-store-c4c2a.md) 已加入分段任务存储、原子 head、
-暂停状态容量释放、配额与显式清理；活动查询分页仍待 C4c2b。
+暂停状态容量释放、配额与显式清理；
+[C4c2b](provenance-query-paging-c4c2b.md) 已加入活动分页与磁盘索引。

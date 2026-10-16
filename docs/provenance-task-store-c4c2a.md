@@ -145,3 +145,7 @@ auto memory = task.state_memory();
 ASan/UBSan 各 367/367 非 lit CTest。新增任务存储跨进程测试分别约
 2 秒和 6 秒完成；这些是正确性运行记录，不作为性能验收。C++ 格式、
 Python 编译、38 份 Markdown 的链接检查和 `git diff --check` 均通过。
+
+后续 [C4c2b](provenance-query-paging-c4c2b.md) 已实现显式活动查询分页、
+磁盘排序索引与有界解码缓存。v1 保持本页所述恢复行为；v2 流式校验全部
+状态但不物化完整表，目录和兼容物化结果不计入尾部/缓存预算。

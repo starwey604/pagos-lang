@@ -492,8 +492,11 @@ benefit. C4b experimental acceptance is complete; memory remains the default.
 to the verified function closure, positions and source revision, with acknowledged
 page redelivery across processes. [C4c2a](provenance-task-store-c4c2a.md) adds
 segmented snapshots, atomic task heads and explicit paused-state capacity release
-with quotas and lifecycle cleanup. Active queries and restore still materialize
-full tables; active-query paging/indexes and the main explain CLI remain.
+with quotas and lifecycle cleanup. [C4c2b](provenance-query-paging-c4c2b.md)
+adds opt-in active-query paging, sorted disk indexes and a bounded decoded cache.
+Restore streams full validation without materializing all tables; directories,
+codec scratch and compatibility results are outside the buffer budget. Topology
+checkpoints, formal measurements and the main explain CLI remain.
 Existing graph reference/span lifetimes and the default one-shot query interface
 remain intact until their replacements are explicitly validated; snapshot
 serialization alone does not reduce build peaks.

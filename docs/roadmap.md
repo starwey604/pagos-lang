@@ -150,8 +150,11 @@ acceptance. Spill remains explicit; small tasks show no stable net benefit.
 [C4c1](provenance-checkpoint-c4c1.md) adds bounded query checkpoints with strict
 snapshot/source binding and acknowledged page redelivery across processes.
 [C4c2a](provenance-task-store-c4c2a.md) adds segmented snapshots, atomic task
-heads, paused-state capacity release, quotas and lifecycle cleanup. C4c2b/C4c3
-still need active-query paging/indexes, measurements and the main explain CLI.
+heads, paused-state capacity release, quotas and lifecycle cleanup.
+[C4c2b](provenance-query-paging-c4c2b.md) adds active-query paging, sorted disk
+indexes and bounded append/read buffers. Restore validates all state with bounded
+buffers; directories and explicit compatibility results remain separate. C4c3
+still needs topology checkpoints, measurements and the main explain CLI.
 C4b-C4e cover construction spill, persistent query checkpoints,
 finite-domain recursive explanations and pure detail replay. These extensions
 are explanation capabilities, not new Stage inference rules. Query work limits,
