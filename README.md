@@ -134,7 +134,9 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
 - [Working sets C4b3b](docs/provenance-working-set-c4b3b.md): lifecycle cleanup,
   real Stage crash recovery and measured large-graph spill peak savings
 - [Query checkpoints C4c1](docs/provenance-checkpoint-c4c1.md): bound cross-process
-  query state and acknowledged page redelivery; segmented task storage remains
+  query state and acknowledged page redelivery
+- [Task storage C4c2a](docs/provenance-task-store-c4c2a.md): segmented snapshots,
+  atomic heads, paused-state release, quotas and explicit lifecycle cleanup
 - [Semantic examples](docs/semantic-examples.md): executable-design cases with
   expected stages, residual work, and errors
 - [Diagnostic conventions](docs/diagnostics.md): stable structure for stage and

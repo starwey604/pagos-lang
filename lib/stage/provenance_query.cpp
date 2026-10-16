@@ -6,6 +6,7 @@
 #include <llvm/ADT/DenseMap.h>
 
 #include <algorithm>
+#include <array>
 #include <new>
 #include <optional>
 #include <stdexcept>
@@ -37,6 +38,20 @@ CheckpointError checkpoint_error(cache::Error error) {
                 ? CheckpointErrorCode::LimitExceeded
                 : CheckpointErrorCode::Corrupt,
             {}};
+}
+CheckpointError checkpoint_storage_error(cache::StoreError error) {
+    return {error.code == cache::StoreErrorCode::LimitExceeded
+                ? CheckpointErrorCode::LimitExceeded
+                : CheckpointErrorCode::StorageFailure,
+            {},
+            error};
+}
+cache::TaskStatus task_status(QueryProgress progress, bool pending) {
+    return progress == QueryProgress::Completed && pending
+               ? cache::TaskStatus::AwaitingDelivery
+           : progress == QueryProgress::Completed ? cache::TaskStatus::Completed
+           : progress == QueryProgress::Cancelled ? cache::TaskStatus::Cancelled
+                                                  : cache::TaskStatus::Paused;
 }
 void require_checkpoint(bool condition) {
     if (!condition)
@@ -136,6 +151,15 @@ struct QueryTask::Impl {
     std::uint64_t acknowledged{};
     std::optional<Delivery> unconfirmed;
 
+    struct Offloaded {
+        cache::TaskStore store;
+        cache::TaskHead head;
+        cache::Limits limits;
+        EvidenceCoverage coverage;
+    };
+    std::optional<Offloaded> offloaded;
+    std::optional<CheckpointError> state_failure;
+
     QueryPage redeliver() const {
         QueryPage page;
         page.task = task_id;
@@ -155,6 +179,45 @@ struct QueryTask::Impl {
         return page;
     }
 
+    void write_control(cache::wire::Writer& writer) const {
+        writer.u32(query_checkpoint_version);
+        writer.u32(query_engine_version);
+        writer.u32(provenance_record_model);
+        const auto& binding = *checkpoint_binding;
+        writer.raw(binding.closure_.bytes);
+        writer.raw(binding.positions_.bytes);
+        writer.raw(binding.revision_.bytes);
+        writer.raw(task_id.bytes);
+        writer.u32(root.value);
+        writer.u8(static_cast<std::uint8_t>(kind));
+        writer.boolean(shortest);
+        writer.u8(static_cast<std::uint8_t>(progress));
+        writer.boolean(seeded);
+        writer.boolean(active);
+        writer.boolean(recursive);
+        writer.boolean(all_sources);
+        writer.u32(issues);
+        auto counters = stats;
+        query_counters(counters, [&](std::size_t value) { writer.u64(value); });
+        writer.u64(cursor);
+        writer.u8(static_cast<std::uint8_t>(phase));
+        writer.u32(frame);
+        writer.u32(summary_target.value);
+        writer.u64(edge_cursor);
+        writer.u64(witness_cursor == no_predecessor ? UINT64_MAX
+                                                    : witness_cursor);
+        writer.u64(delivered_sources);
+        writer.u64(delivered_witness);
+        writer.u64(sequence);
+        writer.u64(acknowledged);
+        writer.boolean(unconfirmed.has_value());
+        if (unconfirmed) {
+            writer.u64(unconfirmed->source_begin);
+            writer.u64(unconfirmed->witness_begin);
+            writer.u8(static_cast<std::uint8_t>(unconfirmed->progress));
+        }
+    }
+    void validate_restored();
     void gap(CoverageIssue issue) {
         issues |= static_cast<std::uint32_t>(issue);
     }
@@ -175,6 +238,8 @@ struct QueryTask::Impl {
         stats.queue_peak = std::max(stats.queue_peak, queue.size() - cursor);
     }
     EvidenceCoverage coverage() const {
+        if (offloaded)
+            return offloaded->coverage;
         return {.precision = !all_sources ? EvidencePrecision::Unresolved
                              : issues
                                  ? EvidencePrecision::Conservative
@@ -396,6 +461,157 @@ struct QueryTask::Impl {
     }
 };
 
+void QueryTask::Impl::validate_restored() {
+    // Validate every index before indexing/rebinding. No graph traversal is
+    // replayed: only context calls, reported sources and the active lease
+    // need cold detail validation. The frontier remains lazy.
+    require_checkpoint(
+        progress >= QueryProgress::Running &&
+        progress <= QueryProgress::Completed &&
+        phase >= Impl::Phase::Parameter && phase <= Impl::Phase::Witness &&
+        phase != Impl::Phase::Formula && (issues & ~std::uint32_t{31}) == 0 &&
+        !contexts.empty() && contexts[0] == Invocation{});
+    const auto valid_node = [&](NodeId node) {
+        return node.value && node.value <= evidence->node_count();
+    };
+    const auto valid_state = [&](QueryState state) {
+        return valid_node(state.node) && state.context < contexts.size();
+    };
+    for (std::size_t i = 1; i < contexts.size(); ++i) {
+        const auto& context = contexts[i];
+        require_checkpoint(valid_node(context.call) && context.parent < i &&
+                           context.owner.value &&
+                           context.owner.value <= evidence->summaries().size());
+        const auto call = pin(context.call);
+        require_checkpoint(call.node().rule == Rule::Call &&
+                           call.node().payload == context.owner.value);
+        require_checkpoint(
+            context_ids
+                .try_emplace(state_key({context.call, context.parent}),
+                             static_cast<std::uint32_t>(i))
+                .second);
+    }
+    require_checkpoint(
+        cursor <= queue.size() && (!active || cursor < queue.size()) &&
+        frame < contexts.size() && stats.admitted_states == queue.size() &&
+        stats.visited_states == cursor + (active ? 1U : 0U) &&
+        stats.visited_edges <= stats.scanned_edges &&
+        stats.queue_peak <= queue.size() &&
+        stats.bindings >= contexts.size() - 1 && !stats.formula_uses &&
+        !stats.formula_fallbacks);
+    for (std::size_t i = 0; i < queue.size(); ++i) {
+        const auto& visit = queue[i];
+        require_checkpoint(
+            valid_state(visit.state) &&
+            (i == 0 ? visit.predecessor == no_predecessor &&
+                          visit.state == QueryState{root, 0}
+                    : visit.predecessor < i &&
+                          visit.predecessor < stats.visited_states));
+        require_checkpoint(
+            visited.try_emplace(state_key(visit.state), i).second);
+    }
+    require_checkpoint(seeded == !queue.empty());
+    if (!seeded)
+        require_checkpoint(!active && contexts.size() == 1 &&
+                           phase == Impl::Phase::Done && !all_sources &&
+                           !issues);
+    if (!active)
+        require_checkpoint(phase == Impl::Phase::Done);
+    else {
+        current_lease = pin(queue[cursor].state.node);
+        const auto& current = current_lease->node();
+        require_checkpoint(edge_cursor <= current_lease->edges().size());
+        switch (phase) {
+        case Impl::Phase::Parameter:
+        case Impl::Phase::ParameterEdge:
+            require_checkpoint(current.rule == Rule::Parameter);
+            if (phase == Impl::Phase::ParameterEdge)
+                require_checkpoint(frame &&
+                                   contexts[frame].owner == current.owner);
+            break;
+        case Impl::Phase::CallSearch:
+        case Impl::Phase::CallFrame:
+        case Impl::Phase::Summary: {
+            require_checkpoint(current.rule == Rule::Call ||
+                               current.rule == Rule::SummaryRef);
+            require_checkpoint(edge_cursor == 0);
+            require_checkpoint(current.payload &&
+                               current.payload <= evidence->summaries().size());
+            const auto& summary = evidence->summary({current.payload});
+            require_checkpoint(
+                summary_target ==
+                (kind == QueryKind::Value ? summary.value : summary.effects));
+            break;
+        }
+        case Impl::Phase::Edges:
+            require_checkpoint(edge_cursor <= current_lease->edges().size());
+            break;
+        case Impl::Phase::Witness:
+            require_checkpoint(shortest && sources.size() == 1);
+            break;
+        case Impl::Phase::Done:
+            break;
+        case Impl::Phase::Formula:
+            require_checkpoint(false);
+            break;
+        }
+    }
+    std::size_t previous_source = no_predecessor;
+    for (const auto& source : sources) {
+        require_checkpoint(valid_state({source.node, source.context}));
+        const auto found =
+            visited.find(state_key({source.node, source.context}));
+        require_checkpoint(found != visited.end() &&
+                           found->second < stats.visited_states &&
+                           (previous_source == no_predecessor ||
+                            previous_source < found->second));
+        previous_source = found->second;
+        const auto lease = pin(source.node);
+        require_checkpoint(lease.node().site == source.site &&
+                           (kind == QueryKind::Value
+                                ? lease.node().rule == Rule::Origin ||
+                                      lease.node().rule == Rule::RuntimeBoundary
+                                : lease.node().rule == Rule::Effect));
+    }
+    require_checkpoint(stats.witness_steps == reversed_witness.size());
+    if (phase == Impl::Phase::Witness) {
+        auto predecessor_index = cursor;
+        require_checkpoint(previous_source == cursor);
+        for (const auto& state : reversed_witness) {
+            require_checkpoint(predecessor_index != no_predecessor &&
+                               queue[predecessor_index].state == state);
+            predecessor_index = queue[predecessor_index].predecessor;
+        }
+        require_checkpoint(witness_cursor == predecessor_index &&
+                           !all_sources &&
+                           (progress != QueryProgress::Completed ||
+                            predecessor_index == no_predecessor));
+    } else
+        require_checkpoint(reversed_witness.empty() &&
+                           witness_cursor == no_predecessor);
+    if (all_sources)
+        require_checkpoint(progress == QueryProgress::Completed && !active &&
+                           cursor == queue.size());
+    if (progress == QueryProgress::Completed)
+        require_checkpoint(all_sources || phase == Impl::Phase::Witness);
+    require_checkpoint(
+        delivered_sources <= sources.size() &&
+        delivered_witness <= reversed_witness.size() &&
+        (!delivered_witness || progress == QueryProgress::Completed) &&
+        sequence < UINT64_MAX);
+    if (unconfirmed) {
+        require_checkpoint(acknowledged < UINT64_MAX &&
+                           sequence == acknowledged + 1 &&
+                           unconfirmed->source_begin <= delivered_sources &&
+                           unconfirmed->witness_begin <= delivered_witness &&
+                           (unconfirmed->source_begin < delivered_sources ||
+                            unconfirmed->witness_begin < delivered_witness) &&
+                           unconfirmed->progress >= QueryProgress::Running &&
+                           unconfirmed->progress <= QueryProgress::Completed);
+    } else
+        require_checkpoint(sequence == acknowledged);
+}
+
 QueryTask::QueryTask(FrozenGraph graph, NodeId root, QueryKind kind,
                      bool witness)
     : QueryTask(EvidenceView::memory(std::move(graph)), root, kind, witness) {}
@@ -436,6 +652,8 @@ const std::optional<EvidenceError>& QueryTask::failure() const {
     return impl_->failure;
 }
 std::span<const Invocation> QueryTask::invocations() const {
+    if (!ensure_resident())
+        throw std::runtime_error("query state unavailable");
     return impl_->contexts;
 }
 void QueryTask::suspend() {
@@ -453,6 +671,14 @@ void QueryTask::resume() {
         impl_->progress = QueryProgress::Running;
 }
 QueryPage QueryTask::advance(QuerySlice slice, std::stop_token cancellation) {
+    if (!ensure_resident()) {
+        QueryPage page;
+        page.task = impl_->task_id;
+        page.progress = QueryProgress::Failed;
+        page.coverage = impl_->coverage();
+        page.details = DetailAvailability::Unavailable;
+        return page;
+    }
     auto& task = *impl_;
     if (task.unconfirmed) {
         if (cancellation.stop_requested())
@@ -540,6 +766,8 @@ QueryPage QueryTask::advance(QuerySlice slice, std::stop_token cancellation) {
     return page;
 }
 bool QueryTask::acknowledge(std::uint64_t sequence) {
+    if (!ensure_resident())
+        return false;
     auto& task = *impl_;
     if (!task.checkpoint_binding)
         return false;
@@ -553,6 +781,8 @@ bool QueryTask::acknowledge(std::uint64_t sequence) {
 }
 std::expected<cache::Bytes, CheckpointError>
 QueryTask::checkpoint(cache::Limits limits) const {
+    if (auto loaded = ensure_resident(); !loaded)
+        return std::unexpected(loaded.error());
     const auto& task = *impl_;
     if (!task.checkpoint_binding || task.progress == QueryProgress::Failed ||
         task.formula_index || task.limit || !task.initial_calls.empty())
@@ -561,42 +791,7 @@ QueryTask::checkpoint(cache::Limits limits) const {
     try {
         cache::wire::Writer writer(limits);
         cache::wire::header(writer, cache::ObjectKind::QueryCheckpoint);
-        writer.u32(query_checkpoint_version);
-        writer.u32(query_engine_version);
-        writer.u32(provenance_record_model);
-        const auto& binding = *task.checkpoint_binding;
-        writer.raw(binding.closure_.bytes);
-        writer.raw(binding.positions_.bytes);
-        writer.raw(binding.revision_.bytes);
-        writer.raw(task.task_id.bytes);
-        writer.u32(task.root.value);
-        writer.u8(static_cast<std::uint8_t>(task.kind));
-        writer.boolean(task.shortest);
-        writer.u8(static_cast<std::uint8_t>(task.progress));
-        writer.boolean(task.seeded);
-        writer.boolean(task.active);
-        writer.boolean(task.recursive);
-        writer.boolean(task.all_sources);
-        writer.u32(task.issues);
-        auto stats = task.stats;
-        query_counters(stats, [&](std::size_t value) { writer.u64(value); });
-        writer.u64(task.cursor);
-        writer.u8(static_cast<std::uint8_t>(task.phase));
-        writer.u32(task.frame);
-        writer.u32(task.summary_target.value);
-        writer.u64(task.edge_cursor);
-        writer.u64(task.witness_cursor == no_predecessor ? UINT64_MAX
-                                                         : task.witness_cursor);
-        writer.u64(task.delivered_sources);
-        writer.u64(task.delivered_witness);
-        writer.u64(task.sequence);
-        writer.u64(task.acknowledged);
-        writer.boolean(task.unconfirmed.has_value());
-        if (task.unconfirmed) {
-            writer.u64(task.unconfirmed->source_begin);
-            writer.u64(task.unconfirmed->witness_begin);
-            writer.u8(static_cast<std::uint8_t>(task.unconfirmed->progress));
-        }
+        task.write_control(writer);
         writer.count(task.contexts.size());
         for (const auto& context : task.contexts) {
             writer.u32(context.call.value);
@@ -643,6 +838,83 @@ QueryTask::checkpoint(cache::Limits limits) const {
     }
 }
 
+QueryTask QueryTask::read_control(QueryCheckpointBinding binding,
+                                  cache::Digest task_id, NodeId root,
+                                  QueryKind kind, bool witness,
+                                  cache::wire::Reader& reader) {
+    const auto finish = [&] {
+        if (auto status = reader.finish(); !status)
+            throw checkpoint_error(status.error());
+    };
+    if (reader.u32() != query_checkpoint_version ||
+        reader.u32() != query_engine_version ||
+        reader.u32() != provenance_record_model)
+        reader.fail(cache::Error::IncompatibleVersion);
+    if (!reader.good())
+        finish();
+    const auto closure = read_digest(reader);
+    const auto positions = read_digest(reader);
+    const auto revision = read_digest(reader);
+    const auto saved_task = read_digest(reader);
+    const auto saved_root = reader.u32();
+    const auto saved_kind = reader.u8();
+    const auto saved_witness = reader.boolean();
+    if (!reader.good())
+        finish();
+    if (closure != binding.closure_ || positions != binding.positions_ ||
+        revision != binding.revision_ || saved_task != task_id ||
+        saved_root != root.value || saved_kind != static_cast<unsigned>(kind) ||
+        saved_witness != witness)
+        throw CheckpointError{CheckpointErrorCode::BindingMismatch, {}};
+    require_checkpoint(
+        binding.view_ && root.value &&
+        root.value <= binding.view_->node_count() &&
+        (kind == QueryKind::Value || kind == QueryKind::Effects));
+    QueryTask result(std::move(binding), task_id, root, kind, witness);
+    auto& task = *result.impl_;
+    const auto size = [&]() -> std::size_t {
+        const auto value = reader.u64();
+        if (value > std::numeric_limits<std::size_t>::max())
+            reader.fail(cache::Error::LimitExceeded);
+        return static_cast<std::size_t>(value);
+    };
+    const auto predecessor = [&]() -> std::size_t {
+        const auto value = reader.u64();
+        if (value == UINT64_MAX)
+            return no_predecessor;
+        if (value >= std::numeric_limits<std::size_t>::max())
+            reader.fail(cache::Error::LimitExceeded);
+        return static_cast<std::size_t>(value);
+    };
+    task.progress = static_cast<QueryProgress>(reader.u8());
+    task.seeded = reader.boolean();
+    task.active = reader.boolean();
+    task.recursive = reader.boolean();
+    task.all_sources = reader.boolean();
+    task.issues = reader.u32();
+    query_counters(task.stats, [&](std::size_t& value) { value = size(); });
+    task.cursor = size();
+    task.phase = static_cast<Impl::Phase>(reader.u8());
+    task.frame = reader.u32();
+    task.summary_target = {reader.u32()};
+    task.edge_cursor = size();
+    task.witness_cursor = predecessor();
+    task.delivered_sources = size();
+    task.delivered_witness = size();
+    task.sequence = reader.u64();
+    task.acknowledged = reader.u64();
+    if (reader.boolean()) {
+        const auto source_begin = size();
+        const auto witness_begin = size();
+        task.unconfirmed =
+            Impl::Delivery{source_begin, witness_begin,
+                           static_cast<QueryProgress>(reader.u8())};
+    }
+    if (!reader.good())
+        finish();
+    return result;
+}
+
 std::expected<QueryTask, CheckpointError>
 QueryTask::restore(QueryCheckpointBinding binding, cache::Digest task_id,
                    NodeId root, QueryKind kind, bool witness,
@@ -662,40 +934,9 @@ QueryTask::restore(QueryCheckpointBinding binding, cache::Digest task_id,
             if (auto status = reader.finish(); !status)
                 throw checkpoint_error(status.error());
         };
-        if (reader.u32() != query_checkpoint_version ||
-            reader.u32() != query_engine_version ||
-            reader.u32() != provenance_record_model)
-            reader.fail(cache::Error::IncompatibleVersion);
-        if (!reader.good())
-            finish();
-        const auto closure = read_digest(reader);
-        const auto positions = read_digest(reader);
-        const auto revision = read_digest(reader);
-        const auto saved_task = read_digest(reader);
-        const auto saved_root = reader.u32();
-        const auto saved_kind = reader.u8();
-        const auto saved_witness = reader.boolean();
-        if (!reader.good())
-            finish();
-        if (closure != binding.closure_ || positions != binding.positions_ ||
-            revision != binding.revision_ || saved_task != task_id ||
-            saved_root != root.value ||
-            saved_kind != static_cast<unsigned>(kind) ||
-            saved_witness != witness)
-            return std::unexpected(
-                CheckpointError{CheckpointErrorCode::BindingMismatch, {}});
-        require_checkpoint(
-            binding.view_ && root.value &&
-            root.value <= binding.view_->node_count() &&
-            (kind == QueryKind::Value || kind == QueryKind::Effects));
-        QueryTask result(std::move(binding), task_id, root, kind, witness);
+        auto result = read_control(std::move(binding), task_id, root, kind,
+                                   witness, reader);
         auto& task = *result.impl_;
-        const auto size = [&]() -> std::size_t {
-            const auto value = reader.u64();
-            if (value > std::numeric_limits<std::size_t>::max())
-                reader.fail(cache::Error::LimitExceeded);
-            return static_cast<std::size_t>(value);
-        };
         const auto predecessor = [&]() -> std::size_t {
             const auto value = reader.u64();
             if (value == UINT64_MAX)
@@ -704,30 +945,6 @@ QueryTask::restore(QueryCheckpointBinding binding, cache::Digest task_id,
                 reader.fail(cache::Error::LimitExceeded);
             return static_cast<std::size_t>(value);
         };
-        task.progress = static_cast<QueryProgress>(reader.u8());
-        task.seeded = reader.boolean();
-        task.active = reader.boolean();
-        task.recursive = reader.boolean();
-        task.all_sources = reader.boolean();
-        task.issues = reader.u32();
-        query_counters(task.stats, [&](std::size_t& value) { value = size(); });
-        task.cursor = size();
-        task.phase = static_cast<Impl::Phase>(reader.u8());
-        task.frame = reader.u32();
-        task.summary_target = {reader.u32()};
-        task.edge_cursor = size();
-        task.witness_cursor = predecessor();
-        task.delivered_sources = size();
-        task.delivered_witness = size();
-        task.sequence = reader.u64();
-        task.acknowledged = reader.u64();
-        if (reader.boolean()) {
-            const auto source_begin = size();
-            const auto witness_begin = size();
-            task.unconfirmed =
-                Impl::Delivery{source_begin, witness_begin,
-                               static_cast<QueryProgress>(reader.u8())};
-        }
         auto count = reader.count(12);
         task.contexts.clear();
         for (std::uint32_t i = 0; i < count && reader.good(); ++i)
@@ -749,173 +966,7 @@ QueryTask::restore(QueryCheckpointBinding binding, cache::Digest task_id,
             task.reversed_witness.push_back({{reader.u32()}, reader.u32()});
         finish();
 
-        // Validate every index before indexing/rebinding. No graph traversal is
-        // replayed: only context calls, reported sources and the active lease
-        // need cold detail validation. The frontier remains lazy.
-        require_checkpoint(task.progress >= QueryProgress::Running &&
-                           task.progress <= QueryProgress::Completed &&
-                           task.phase >= Impl::Phase::Parameter &&
-                           task.phase <= Impl::Phase::Witness &&
-                           task.phase != Impl::Phase::Formula &&
-                           (task.issues & ~std::uint32_t{31}) == 0 &&
-                           !task.contexts.empty() &&
-                           task.contexts[0] == Invocation{});
-        const auto valid_node = [&](NodeId node) {
-            return node.value && node.value <= task.evidence->node_count();
-        };
-        const auto valid_state = [&](QueryState state) {
-            return valid_node(state.node) &&
-                   state.context < task.contexts.size();
-        };
-        for (std::size_t i = 1; i < task.contexts.size(); ++i) {
-            const auto& context = task.contexts[i];
-            require_checkpoint(valid_node(context.call) && context.parent < i &&
-                               context.owner.value &&
-                               context.owner.value <=
-                                   task.evidence->summaries().size());
-            const auto call = task.pin(context.call);
-            require_checkpoint(call.node().rule == Rule::Call &&
-                               call.node().payload == context.owner.value);
-            require_checkpoint(
-                task.context_ids
-                    .try_emplace(state_key({context.call, context.parent}),
-                                 static_cast<std::uint32_t>(i))
-                    .second);
-        }
-        require_checkpoint(
-            task.cursor <= task.queue.size() &&
-            (!task.active || task.cursor < task.queue.size()) &&
-            task.frame < task.contexts.size() &&
-            task.stats.admitted_states == task.queue.size() &&
-            task.stats.visited_states ==
-                task.cursor + (task.active ? 1U : 0U) &&
-            task.stats.visited_edges <= task.stats.scanned_edges &&
-            task.stats.queue_peak <= task.queue.size() &&
-            task.stats.bindings >= task.contexts.size() - 1 &&
-            !task.stats.formula_uses && !task.stats.formula_fallbacks);
-        for (std::size_t i = 0; i < task.queue.size(); ++i) {
-            const auto& visit = task.queue[i];
-            require_checkpoint(
-                valid_state(visit.state) &&
-                (i == 0 ? visit.predecessor == no_predecessor &&
-                              visit.state == QueryState{root, 0}
-                        : visit.predecessor < i &&
-                              visit.predecessor < task.stats.visited_states));
-            require_checkpoint(
-                task.visited.try_emplace(state_key(visit.state), i).second);
-        }
-        require_checkpoint(task.seeded == !task.queue.empty());
-        if (!task.seeded)
-            require_checkpoint(!task.active && task.contexts.size() == 1 &&
-                               task.phase == Impl::Phase::Done &&
-                               !task.all_sources && !task.issues);
-        if (!task.active)
-            require_checkpoint(task.phase == Impl::Phase::Done);
-        else {
-            task.current_lease = task.pin(task.queue[task.cursor].state.node);
-            const auto& current = task.current_lease->node();
-            require_checkpoint(task.edge_cursor <=
-                               task.current_lease->edges().size());
-            switch (task.phase) {
-            case Impl::Phase::Parameter:
-            case Impl::Phase::ParameterEdge:
-                require_checkpoint(current.rule == Rule::Parameter);
-                if (task.phase == Impl::Phase::ParameterEdge)
-                    require_checkpoint(task.frame &&
-                                       task.contexts[task.frame].owner ==
-                                           current.owner);
-                break;
-            case Impl::Phase::CallSearch:
-            case Impl::Phase::CallFrame:
-            case Impl::Phase::Summary: {
-                require_checkpoint(current.rule == Rule::Call ||
-                                   current.rule == Rule::SummaryRef);
-                require_checkpoint(task.edge_cursor == 0);
-                require_checkpoint(current.payload &&
-                                   current.payload <=
-                                       task.evidence->summaries().size());
-                const auto& summary = task.evidence->summary({current.payload});
-                require_checkpoint(task.summary_target ==
-                                   (kind == QueryKind::Value
-                                        ? summary.value
-                                        : summary.effects));
-                break;
-            }
-            case Impl::Phase::Edges:
-                require_checkpoint(task.edge_cursor <=
-                                   task.current_lease->edges().size());
-                break;
-            case Impl::Phase::Witness:
-                require_checkpoint(witness && task.sources.size() == 1);
-                break;
-            case Impl::Phase::Done:
-                break;
-            case Impl::Phase::Formula:
-                require_checkpoint(false);
-                break;
-            }
-        }
-        std::size_t previous_source = no_predecessor;
-        for (const auto& source : task.sources) {
-            require_checkpoint(valid_state({source.node, source.context}));
-            const auto found =
-                task.visited.find(state_key({source.node, source.context}));
-            require_checkpoint(found != task.visited.end() &&
-                               found->second < task.stats.visited_states &&
-                               (previous_source == no_predecessor ||
-                                previous_source < found->second));
-            previous_source = found->second;
-            const auto lease = task.pin(source.node);
-            require_checkpoint(
-                lease.node().site == source.site &&
-                (kind == QueryKind::Value
-                     ? lease.node().rule == Rule::Origin ||
-                           lease.node().rule == Rule::RuntimeBoundary
-                     : lease.node().rule == Rule::Effect));
-        }
-        require_checkpoint(task.stats.witness_steps ==
-                           task.reversed_witness.size());
-        if (task.phase == Impl::Phase::Witness) {
-            auto predecessor_index = task.cursor;
-            require_checkpoint(previous_source == task.cursor);
-            for (const auto& state : task.reversed_witness) {
-                require_checkpoint(predecessor_index != no_predecessor &&
-                                   task.queue[predecessor_index].state ==
-                                       state);
-                predecessor_index = task.queue[predecessor_index].predecessor;
-            }
-            require_checkpoint(task.witness_cursor == predecessor_index &&
-                               !task.all_sources &&
-                               (task.progress != QueryProgress::Completed ||
-                                predecessor_index == no_predecessor));
-        } else
-            require_checkpoint(task.reversed_witness.empty() &&
-                               task.witness_cursor == no_predecessor);
-        if (task.all_sources)
-            require_checkpoint(task.progress == QueryProgress::Completed &&
-                               !task.active &&
-                               task.cursor == task.queue.size());
-        if (task.progress == QueryProgress::Completed)
-            require_checkpoint(task.all_sources ||
-                               task.phase == Impl::Phase::Witness);
-        require_checkpoint(task.delivered_sources <= task.sources.size() &&
-                           task.delivered_witness <=
-                               task.reversed_witness.size() &&
-                           (!task.delivered_witness ||
-                            task.progress == QueryProgress::Completed) &&
-                           task.sequence < UINT64_MAX);
-        if (task.unconfirmed) {
-            require_checkpoint(
-                task.acknowledged < UINT64_MAX &&
-                task.sequence == task.acknowledged + 1 &&
-                task.unconfirmed->source_begin <= task.delivered_sources &&
-                task.unconfirmed->witness_begin <= task.delivered_witness &&
-                (task.unconfirmed->source_begin < task.delivered_sources ||
-                 task.unconfirmed->witness_begin < task.delivered_witness) &&
-                task.unconfirmed->progress >= QueryProgress::Running &&
-                task.unconfirmed->progress <= QueryProgress::Completed);
-        } else
-            require_checkpoint(task.sequence == task.acknowledged);
+        task.validate_restored();
         return result;
     } catch (const CheckpointError& error) {
         return std::unexpected(error);
@@ -931,7 +982,339 @@ QueryTask::restore(QueryCheckpointBinding binding, cache::Digest task_id,
     }
 }
 
+std::expected<cache::TaskHead, CheckpointError>
+QueryTask::save(const cache::TaskStore& store,
+                std::uint64_t expected_generation, std::size_t segment_bytes,
+                cache::Limits limits) const {
+    if (auto loaded = ensure_resident(); !loaded)
+        return std::unexpected(loaded.error());
+    const auto& task = *impl_;
+    if (!task.checkpoint_binding || task.progress == QueryProgress::Failed ||
+        task.formula_index || task.limit || !task.initial_calls.empty() ||
+        store.task() != task.task_id)
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::InvalidState, {}});
+    try {
+        constexpr std::size_t header_bytes = 54;
+        if (segment_bytes < header_bytes + 16 || segment_bytes > limits.bytes)
+            throw CheckpointError{CheckpointErrorCode::LimitExceeded, {}};
+        const std::array counts{task.contexts.size(), task.queue.size(),
+                                task.sources.size(),
+                                task.reversed_witness.size()};
+        constexpr std::array widths{12U, 16U, 12U, 8U};
+        cache::wire::Writer control(limits);
+        cache::wire::header(control, cache::ObjectKind::QueryTaskManifest);
+        control.u32(1);
+        task.write_control(control);
+        auto prefix = control.finish();
+        if (!prefix)
+            throw checkpoint_error(prefix.error());
+        auto directory_bytes = prefix->size();
+        // Reject an unpublishable directory before emitting any leaf objects.
+        for (unsigned table = 0; table < 4; ++table) {
+            const auto capacity =
+                (segment_bytes - header_bytes) / widths[table];
+            const auto segments = counts[table] / capacity +
+                                  (counts[table] % capacity != 0 ? 1U : 0U);
+            if (counts[table] > limits.elements || counts[table] > UINT32_MAX ||
+                limits.bytes - directory_bytes < 8 ||
+                segments > (limits.bytes - directory_bytes - 8) / 49)
+                throw CheckpointError{CheckpointErrorCode::LimitExceeded, {}};
+            directory_bytes += 8 + segments * 49;
+        }
+        auto transaction = store.begin(expected_generation);
+        if (!transaction)
+            throw checkpoint_storage_error(transaction.error());
+        // A namespace is one logical query. A caller may not reuse its task
+        // ID to move a head onto a different root, revision, channel or engine.
+        const auto previous = store.head();
+        if (!previous)
+            throw checkpoint_storage_error(previous.error());
+        if (*previous) {
+            auto old = store.read((**previous).manifest);
+            if (!old)
+                throw checkpoint_storage_error(old.error());
+            cache::wire::Reader reader(*old, limits);
+            cache::wire::header(reader, cache::ObjectKind::QueryTaskManifest);
+            if (reader.u32() != 1)
+                throw CheckpointError{CheckpointErrorCode::IncompatibleVersion,
+                                      {}};
+            (void)read_control(*task.checkpoint_binding, task.task_id,
+                               task.root, task.kind, task.shortest, reader);
+        }
+        cache::wire::Writer manifest(limits);
+        manifest.raw(*prefix);
+        for (unsigned table = 0; table < 4; ++table) {
+            manifest.count(counts[table]);
+            const auto capacity =
+                (segment_bytes - header_bytes) / widths[table];
+            const auto segments = counts[table] / capacity +
+                                  (counts[table] % capacity != 0 ? 1U : 0U);
+            manifest.count(segments);
+            for (std::size_t first = 0; first < counts[table];) {
+                const auto count = std::min(capacity, counts[table] - first);
+                cache::wire::Writer segment(
+                    {.bytes = segment_bytes, .elements = limits.elements});
+                cache::wire::header(segment,
+                                    cache::ObjectKind::QueryStateSegment);
+                segment.u32(1);
+                segment.raw(task.task_id.bytes);
+                segment.u8(static_cast<std::uint8_t>(table));
+                segment.count(first);
+                segment.count(count);
+                for (std::size_t i = first; i < first + count; ++i) {
+                    switch (table) {
+                    case 0: {
+                        const auto& context = task.contexts[i];
+                        segment.u32(context.call.value);
+                        segment.u32(context.parent);
+                        segment.u32(context.owner.value);
+                        break;
+                    }
+                    case 1: {
+                        const auto& visit = task.queue[i];
+                        segment.u32(visit.state.node.value);
+                        segment.u32(visit.state.context);
+                        segment.u64(visit.predecessor == no_predecessor
+                                        ? UINT64_MAX
+                                        : visit.predecessor);
+                        break;
+                    }
+                    case 2: {
+                        const auto& source = task.sources[i];
+                        segment.u32(source.node.value);
+                        segment.u32(source.context);
+                        segment.u32(source.site);
+                        break;
+                    }
+                    case 3:
+                        segment.u32(task.reversed_witness[i].node.value);
+                        segment.u32(task.reversed_witness[i].context);
+                        break;
+                    }
+                }
+                auto bytes = segment.finish();
+                if (!bytes)
+                    throw checkpoint_error(bytes.error());
+                auto ref = transaction->write(
+                    cache::ObjectKind::QueryStateSegment, std::move(*bytes));
+                if (!ref)
+                    throw checkpoint_storage_error(ref.error());
+                manifest.count(first);
+                manifest.count(count);
+                manifest.u8(static_cast<std::uint8_t>(ref->kind));
+                manifest.raw(ref->digest.bytes);
+                manifest.u64(ref->size);
+                first += count;
+            }
+        }
+        auto bytes = manifest.finish();
+        if (!bytes)
+            throw checkpoint_error(bytes.error());
+        auto root = transaction->write(cache::ObjectKind::QueryTaskManifest,
+                                       std::move(*bytes));
+        if (!root)
+            throw checkpoint_storage_error(root.error());
+        const bool pending =
+            task.unconfirmed || task.delivered_sources < task.sources.size() ||
+            task.delivered_witness < task.reversed_witness.size();
+        auto head =
+            transaction->commit(*root, task_status(task.progress, pending));
+        if (!head)
+            throw checkpoint_storage_error(head.error());
+        return *head;
+    } catch (const CheckpointError& error) {
+        return std::unexpected(error);
+    } catch (const std::bad_alloc&) {
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::OutOfMemory, {}});
+    } catch (const std::length_error&) {
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::LimitExceeded, {}});
+    }
+}
+
+std::expected<QueryTask, CheckpointError>
+QueryTask::restore(QueryCheckpointBinding binding,
+                   const cache::TaskStore& store, const cache::TaskHead& head,
+                   NodeId root, QueryKind kind, bool witness,
+                   cache::Limits limits) {
+    try {
+        require_checkpoint(head.generation &&
+                           head.manifest.kind ==
+                               cache::ObjectKind::QueryTaskManifest &&
+                           head.manifest.size <= limits.bytes &&
+                           head.status <= cache::TaskStatus::Completed);
+        auto bytes = store.read(head.manifest);
+        if (!bytes)
+            throw checkpoint_storage_error(bytes.error());
+        cache::wire::Reader reader(*bytes, limits);
+        cache::wire::header(reader, cache::ObjectKind::QueryTaskManifest);
+        if (reader.u32() != 1)
+            throw CheckpointError{CheckpointErrorCode::IncompatibleVersion, {}};
+        auto result = read_control(std::move(binding), store.task(), root, kind,
+                                   witness, reader);
+        auto& task = *result.impl_;
+        struct Segment {
+            unsigned table;
+            std::uint32_t first, count;
+            cache::ObjectRef ref;
+        };
+        std::vector<Segment> directory;
+        constexpr std::array widths{12U, 16U, 12U, 8U};
+        std::array<std::uint32_t, 4> totals{};
+        for (unsigned table = 0; table < 4; ++table) {
+            const auto total = reader.count(0);
+            const auto count = reader.count(49);
+            if (!reader.good())
+                throw checkpoint_error(reader.finish().error());
+            require_checkpoint(reader.good() && count <= total);
+            std::uint32_t next{};
+            for (std::uint32_t i = 0; i < count; ++i) {
+                const auto first = reader.u32(), records = reader.u32();
+                cache::ObjectRef ref{
+                    static_cast<cache::ObjectKind>(reader.u8()),
+                    read_digest(reader), reader.u64()};
+                require_checkpoint(
+                    reader.good() && records && first == next &&
+                    records <= total - next &&
+                    ref.kind == cache::ObjectKind::QueryStateSegment &&
+                    ref.size == 54 + std::uint64_t{records} * widths[table] &&
+                    ref.size <= limits.bytes);
+                next += records;
+                directory.push_back({table, first, records, ref});
+            }
+            require_checkpoint(next == total);
+            totals[table] = total;
+        }
+        if (auto status = reader.finish(); !status)
+            throw checkpoint_error(status.error());
+        const bool pending = task.unconfirmed ||
+                             task.delivered_sources < totals[2] ||
+                             task.delivered_witness < totals[3];
+        require_checkpoint(task_status(task.progress, pending) == head.status);
+        task.contexts.clear();
+        for (const auto& entry : directory) {
+            auto payload = store.read(entry.ref);
+            if (!payload)
+                throw checkpoint_storage_error(payload.error());
+            cache::wire::Reader segment(*payload, limits);
+            cache::wire::header(segment, cache::ObjectKind::QueryStateSegment);
+            if (segment.u32() != 1)
+                throw CheckpointError{CheckpointErrorCode::IncompatibleVersion,
+                                      {}};
+            require_checkpoint(read_digest(segment) == task.task_id &&
+                               segment.u8() == entry.table &&
+                               segment.u32() == entry.first &&
+                               segment.u32() == entry.count);
+            for (std::uint32_t i = 0; i < entry.count; ++i) {
+                const auto node = segment.u32(), context = segment.u32();
+                switch (entry.table) {
+                case 0:
+                    task.contexts.push_back({{node}, context, {segment.u32()}});
+                    break;
+                case 1: {
+                    const auto predecessor = segment.u64();
+                    if (predecessor != UINT64_MAX &&
+                        predecessor >= std::numeric_limits<std::size_t>::max())
+                        throw CheckpointError{
+                            CheckpointErrorCode::LimitExceeded, {}};
+                    task.queue.push_back(
+                        {{{node}, context},
+                         predecessor == UINT64_MAX
+                             ? no_predecessor
+                             : static_cast<std::size_t>(predecessor)});
+                    break;
+                }
+                case 2:
+                    task.sources.push_back({{node}, segment.u32(), context});
+                    break;
+                case 3:
+                    task.reversed_witness.push_back({{node}, context});
+                    break;
+                }
+            }
+            if (auto status = segment.finish(); !status)
+                throw checkpoint_error(status.error());
+        }
+        require_checkpoint(task.contexts.size() == totals[0] &&
+                           task.queue.size() == totals[1] &&
+                           task.sources.size() == totals[2] &&
+                           task.reversed_witness.size() == totals[3]);
+        task.validate_restored();
+        return result;
+    } catch (const CheckpointError& error) {
+        return std::unexpected(error);
+    } catch (const EvidenceReadFailure& error) {
+        return std::unexpected(CheckpointError{
+            CheckpointErrorCode::UnavailableEvidence, error.error});
+    } catch (const std::bad_alloc&) {
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::OutOfMemory, {}});
+    } catch (const std::length_error&) {
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::LimitExceeded, {}});
+    }
+}
+
+std::expected<cache::TaskHead, CheckpointError>
+QueryTask::offload(const cache::TaskStore& store,
+                   std::uint64_t expected_generation, std::size_t segment_bytes,
+                   cache::Limits limits) {
+    const auto saved = save(store, expected_generation, segment_bytes, limits);
+    if (!saved)
+        return std::unexpected(saved.error());
+    auto& task = *impl_;
+    task.offloaded = Impl::Offloaded{store, *saved, limits, task.coverage()};
+    std::vector<Invocation>{}.swap(task.contexts);
+    std::vector<Impl::Visit>{}.swap(task.queue);
+    std::vector<Source>{}.swap(task.sources);
+    std::vector<QueryState>{}.swap(task.reversed_witness);
+    decltype(task.visited){}.swap(task.visited);
+    decltype(task.context_ids){}.swap(task.context_ids);
+    task.current_lease.reset();
+    return *saved;
+}
+std::expected<void, CheckpointError> QueryTask::ensure_resident() const {
+    auto& task = *impl_;
+    if (!task.offloaded)
+        return {};
+    if (task.state_failure)
+        return std::unexpected(*task.state_failure);
+    const auto& state = *task.offloaded;
+    auto restored = restore(*task.checkpoint_binding, state.store, state.head,
+                            task.root, task.kind, task.shortest, state.limits);
+    if (!restored) {
+        task.state_failure = restored.error();
+        task.failure = restored.error().evidence.value_or(EvidenceError{
+            EvidenceErrorCode::IoFailure, restored.error().storage, {}});
+        task.progress = QueryProgress::Failed;
+        task.offloaded->coverage.precision = EvidencePrecision::Unresolved;
+        task.offloaded->coverage.issues |=
+            static_cast<std::uint32_t>(CoverageIssue::UnavailableEvidence);
+        task.offloaded->coverage.all_sources = false;
+        return std::unexpected(restored.error());
+    }
+    const auto progress =
+        task.progress; // Preserve cancel/resume while offloaded.
+    task = std::move(*restored->impl_);
+    task.progress = progress;
+    return {};
+}
+QueryStateMemory QueryTask::state_memory() const {
+    const auto& task = *impl_;
+    return {task.queue.capacity() * sizeof(Impl::Visit),
+            task.visited.getMemorySize(),
+            task.contexts.capacity() * sizeof(Invocation),
+            task.context_ids.getMemorySize(),
+            task.sources.capacity() * sizeof(Source),
+            task.reversed_witness.capacity() * sizeof(QueryState),
+            task.offloaded.has_value()};
+}
+
 QueryResult QueryTask::result() const {
+    if (!ensure_resident())
+        throw std::runtime_error("query state unavailable");
     const auto& task = *impl_;
     QueryResult result{
         .sources = task.sources,

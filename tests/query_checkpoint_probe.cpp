@@ -89,8 +89,76 @@ int main(int argc, char** argv) {
     try {
         if (argc < 4)
             return 2;
-        const std::string action = argv[1];
+        const std::string original_action = argv[1];
+        const bool segmented = original_action.starts_with("seg-");
+        std::string action =
+            segmented ? original_action.substr(4) : original_action;
         const fs::path directory = argv[2];
+        const auto task_id = cache::fingerprint("probe.logical-query.1", {});
+        if (action == "cleanup" || action == "cleanup-all") {
+            const auto cleaned = cache::reclaim_tasks(
+                directory / "sessions",
+                action == "cleanup" ? cache::TaskCleanupPolicy::TerminalOnly
+                                    : cache::TaskCleanupPolicy::AllInactive);
+            if (!cleaned)
+                throw std::runtime_error("cleanup failed");
+            std::cout << "{\"reclaimed\":" << cleaned->reclaimed
+                      << ",\"active\":" << cleaned->active
+                      << ",\"skipped\":" << cleaned->skipped << "}\n";
+            return 0;
+        }
+        if (action == "head" || action == "hold-reader") {
+            auto store = cache::TaskStore::open(directory / "sessions", task_id,
+                                                cache::TaskAccess::ReadOnly);
+            if (!store)
+                throw std::runtime_error("task unavailable");
+            if (action == "hold-reader") {
+                {
+                    auto another =
+                        cache::TaskStore::open(directory / "sessions", task_id,
+                                               cache::TaskAccess::ReadOnly);
+                    if (!another)
+                        throw std::runtime_error("second reader failed");
+                }
+                std::ofstream(directory / "ready") << "reader";
+                (void)std::cin.get();
+            }
+            const auto head = store->head();
+            if (!head || !*head)
+                throw std::runtime_error("head unavailable");
+            std::cout << "{\"generation\":" << (**head).generation << "}\n";
+            return 0;
+        }
+        const bool crashing =
+            action == "crash-before" || action == "crash-after";
+        const bool cancelled = action == "cancel";
+        std::optional<cache::TaskStore> task_store;
+        if (segmented) {
+            cache::TaskStoreOptions options;
+            options.store.fault = [&](cache::IoOperation operation,
+                                      const fs::path& path) {
+                const auto selected =
+                    original_action == "seg-crash-before"
+                        ? cache::IoOperation::PublishManifest
+                        : cache::IoOperation::ManifestPublished;
+                if (crashing && path.filename() == "head" &&
+                    operation == selected) {
+                    std::ofstream(directory / "ready") << "publishing";
+                    (void)std::cin.get();
+                }
+                return std::error_code{};
+            };
+            auto opened = cache::TaskStore::open(
+                directory / "sessions", task_id,
+                action == "resume" ? cache::TaskAccess::ReadOnly
+                                   : cache::TaskAccess::ReadWrite,
+                options);
+            if (!opened)
+                throw std::runtime_error("task unavailable");
+            task_store = std::move(*opened);
+            if (crashing || cancelled)
+                action = "save";
+        }
         std::ifstream stream(argv[3], std::ios::binary);
         if (!stream)
             throw std::runtime_error("source missing");
@@ -136,9 +204,18 @@ int main(int argc, char** argv) {
         for (const auto& item : view->roots())
             if (item.name == "aa")
                 root = item.node;
-        const auto task_id = cache::fingerprint("probe.logical-query.1", {});
         QueryTask task(*binding, task_id, root, QueryKind::Value, witness);
-        if (action == "resume") {
+        if (action == "resume" && segmented) {
+            const auto head = task_store->head();
+            if (!head || !*head)
+                throw std::runtime_error("head unavailable");
+            auto restored = QueryTask::restore(*binding, *task_store, **head,
+                                               root, QueryKind::Value, witness);
+            if (!restored)
+                throw std::runtime_error("checkpoint cannot resume");
+            task = std::move(*restored);
+            task.resume();
+        } else if (action == "resume") {
             if (argc != 7)
                 return 2;
             const cache::ObjectRef ref{cache::ObjectKind::QueryCheckpoint,
@@ -175,16 +252,41 @@ int main(int argc, char** argv) {
                     !page.pending_sources && !page.pending_witness)
                     break;
             }
-            auto bytes = task.checkpoint();
-            if (!bytes)
-                throw std::runtime_error("encode failed");
-            auto ref = cache::FileStore(directory / "tasks")
-                           .write_object(cache::ObjectKind::QueryCheckpoint,
-                                         std::move(*bytes));
-            if (!ref)
-                throw std::runtime_error("write failed");
-            std::cout << "],\"digest\":\"" << ref->digest.hex()
-                      << "\",\"size\":" << ref->size;
+            if (segmented) {
+                if (cancelled)
+                    task.cancel();
+                const auto previous = task_store->head();
+                if (!previous)
+                    throw std::runtime_error("head unavailable");
+                const auto generation = *previous ? (**previous).generation : 0;
+                auto head = task.offload(*task_store, generation, 256);
+                if (!head)
+                    throw std::runtime_error("offload failed");
+                const auto memory = task.state_memory();
+                const bool released = memory.offloaded &&
+                                      memory.queue + memory.visited +
+                                              memory.contexts +
+                                              memory.context_index +
+                                              memory.sources + memory.witness ==
+                                          0;
+                if (!released)
+                    throw std::runtime_error("state capacity retained");
+                std::cout << "],\"digest\":\"" << head->manifest.digest.hex()
+                          << "\",\"size\":" << head->manifest.size
+                          << ",\"generation\":" << head->generation
+                          << ",\"released\":true";
+            } else {
+                auto bytes = task.checkpoint();
+                if (!bytes)
+                    throw std::runtime_error("encode failed");
+                auto ref = cache::FileStore(directory / "tasks")
+                               .write_object(cache::ObjectKind::QueryCheckpoint,
+                                             std::move(*bytes));
+                if (!ref)
+                    throw std::runtime_error("write failed");
+                std::cout << "],\"digest\":\"" << ref->digest.hex()
+                          << "\",\"size\":" << ref->size;
+            }
         } else if (action == "resume" || action == "oracle") {
             for (;;) {
                 // Different budgets from the saving process, including output.

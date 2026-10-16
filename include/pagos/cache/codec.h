@@ -31,7 +31,9 @@ enum class ObjectKind : std::uint8_t {
     EvidenceRoot = 9,
     EvidenceSummary = 10,
     EvidenceDetail = 11,
-    QueryCheckpoint = 12
+    QueryCheckpoint = 12,
+    QueryStateSegment = 13,
+    QueryTaskManifest = 14
 };
 enum class Error {
     UnsupportedType,

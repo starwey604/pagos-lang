@@ -24,7 +24,9 @@ enum class StoreErrorCode {
     IoFailure,
     LockBusy,
     DeterminismConflict,
-    OutOfMemory
+    OutOfMemory,
+    ReadOnly,
+    StaleGeneration
 };
 struct StoreError {
     StoreErrorCode code;

@@ -102,7 +102,8 @@ target_include_directories(pagos_hir PUBLIC include)
 target_link_libraries(pagos_hir PUBLIC Pagos::source Pagos::values pagos_project_options)
 
 # Versioned, target-independent cache protocols; LLVM Support stays private.
-add_library(pagos_cache lib/cache/codec.cpp lib/cache/key.cpp lib/cache/store.cpp)
+add_library(pagos_cache lib/cache/codec.cpp lib/cache/key.cpp lib/cache/store.cpp
+    lib/cache/task_store.cpp)
 add_library(Pagos::cache ALIAS pagos_cache)
 target_include_directories(pagos_cache PUBLIC include)
 target_include_directories(pagos_cache SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})

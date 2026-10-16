@@ -50,13 +50,14 @@ class QueryCheckpointTest : public ::testing::Test {
             cache::FileStore(directory / "evidence"), *module->provenance,
             identity, cache_test::context()));
     }
-    FunctionEvidenceView open() {
+    FunctionEvidenceView open(std::size_t cache_bytes = 0) {
         auto closure =
             FunctionEvidence::load(cache::FileStore(directory / "evidence"),
                                    identity, cache_test::context());
         if (!closure)
             throw std::runtime_error("closure missing");
-        auto view = FunctionEvidenceView::open(std::move(*closure), 0);
+        auto view =
+            FunctionEvidenceView::open(std::move(*closure), cache_bytes);
         if (!view)
             throw std::runtime_error("view missing");
         return std::move(*view);
@@ -424,5 +425,307 @@ TEST_F(QueryCheckpointTest,
     ASSERT_TRUE(lazy);
     EXPECT_EQ(lazy->advance().progress, QueryProgress::Failed);
     EXPECT_EQ(lazy->coverage().precision, EvidencePrecision::Unresolved);
+}
+TEST_F(QueryCheckpointTest, SegmentedSnapshotsResumeEveryPhaseWithTinyBlocks) {
+    publish();
+    auto view = open();
+    for (const auto kind : {QueryKind::Value, QueryKind::Effects}) {
+        for (const bool witness : {false, true}) {
+            auto id = task_id;
+            id.bytes[0] = static_cast<std::uint8_t>(
+                static_cast<unsigned>(kind) * 2 + (witness ? 1 : 0));
+            auto opened = cache::TaskStore::open(directory / "tasks", id,
+                                                 cache::TaskAccess::ReadWrite);
+            ASSERT_TRUE(opened);
+            auto store = *opened;
+            const auto selected = root(view);
+            QueryTask oracle(view.view(), selected, kind, witness);
+            (void)oracle.advance(QuerySlice::unlimited());
+            QueryTask task(binding(view), id, selected, kind, witness);
+            std::uint64_t generation{};
+            std::size_t deliveries{};
+            for (unsigned step = 0; step < 1000; ++step) {
+                auto head = task.save(store, generation, 70);
+                ASSERT_TRUE(head) << static_cast<int>(head.error().code);
+                generation = head->generation;
+                auto reader = cache::TaskStore::open(
+                    directory / "tasks", id, cache::TaskAccess::ReadOnly);
+                ASSERT_TRUE(reader);
+                auto restored = QueryTask::restore(
+                    binding(open()), *reader, *head, selected, kind, witness);
+                ASSERT_TRUE(restored)
+                    << static_cast<int>(restored.error().code);
+                EXPECT_EQ(restored->stats().slices, task.stats().slices);
+                task = std::move(*restored);
+                const auto page = task.advance({1, 1, 1, 1});
+                ASSERT_NE(page.progress, QueryProgress::Failed);
+                if (page.sequence) {
+                    // Persist unconfirmed ranges in their own generation.
+                    const auto unconfirmed =
+                        task.offload(store, generation, 70);
+                    ASSERT_TRUE(unconfirmed);
+                    generation = unconfirmed->generation;
+                    const auto replay = task.advance({0, 0, 0, 0});
+                    EXPECT_EQ(replay.sources, page.sources);
+                    EXPECT_EQ(replay.witness, page.witness);
+                    EXPECT_EQ(replay.sequence, page.sequence);
+                    deliveries += page.sources.size() + page.witness.size();
+                    ASSERT_TRUE(task.acknowledge(page.sequence));
+                }
+                if (page.progress == QueryProgress::Completed &&
+                    !page.pending_sources && !page.pending_witness)
+                    break;
+                ASSERT_LT(step, 999U);
+            }
+            equal_result(task, oracle);
+            EXPECT_EQ(deliveries, oracle.result().sources.size() +
+                                      oracle.result().witness.size());
+        }
+    }
+}
+std::size_t state_bytes(const QueryStateMemory& memory) {
+    return memory.queue + memory.visited + memory.contexts +
+           memory.context_index + memory.sources + memory.witness;
+}
+TEST_F(QueryCheckpointTest,
+       OffloadActuallyReleasesWideFrontierAndVisitedCapacity) {
+    std::string text;
+    for (unsigned i = 0; i < 2049; ++i)
+        text += "let a" + std::to_string(i) + " = external_input(); ";
+    text += "let aa = [a0";
+    for (unsigned i = 1; i < 2049; ++i)
+        text += ", a" + std::to_string(i);
+    publish(text + "];");
+    auto view = open(8 * 1024 * 1024);
+    auto selected = root(view);
+    while (view.view()->pin(selected)->edges().size() == 1)
+        selected = view.view()->pin(selected)->edges().front().target;
+    QueryTask oracle(view.view(), selected);
+    (void)oracle.advance(QuerySlice::unlimited());
+    QueryTask task(binding(view), task_id, selected);
+    (void)task.advance({1, 1024, 1, 0});
+    const auto work = task.stats();
+    const auto before = task.state_memory();
+    EXPECT_GT(before.queue, 16'000U);
+    EXPECT_GT(before.visited, 16'000U);
+    std::optional<cache::TaskStore> store;
+    store = *cache::TaskStore::open(directory / "tasks", task_id,
+                                    cache::TaskAccess::ReadWrite);
+    const auto head = task.offload(*store, 0, 256);
+    ASSERT_TRUE(head);
+    EXPECT_TRUE(task.state_memory().offloaded);
+    EXPECT_EQ(state_bytes(task.state_memory()), 0U);
+    EXPECT_EQ(task.stats().scanned_edges, work.scanned_edges);
+    const auto path = store->directory();
+    store.reset();
+    EXPECT_EQ(cache::reclaim_tasks(directory / "tasks",
+                                   cache::TaskCleanupPolicy::AllInactive)
+                  ->active,
+              1U);
+    task.cancel();
+    EXPECT_EQ(task.progress(), QueryProgress::Cancelled);
+    const auto paused = task.advance(); // Loads tables but does no query work.
+    EXPECT_EQ(paused.progress, QueryProgress::Cancelled);
+    EXPECT_EQ(task.stats().scanned_edges, work.scanned_edges);
+    EXPECT_FALSE(task.state_memory().offloaded);
+    task.resume();
+    (void)task.advance(QuerySlice::unlimited());
+    equal_result(task, oracle);
+    EXPECT_TRUE(
+        fs::exists(path)); // Unloading/closing never deletes checkpoints.
+}
+TEST_F(QueryCheckpointTest,
+       OffloadReleasesContextsSourcesAndWitnessThenReplaysDelivery) {
+    publish();
+    auto view = open();
+    const auto selected = root(view);
+    QueryTask task(binding(view), task_id, selected, QueryKind::Value, true);
+    const auto page = task.advance({1000, 1000, 1000, 1});
+    ASSERT_EQ(page.progress, QueryProgress::Completed);
+    ASSERT_TRUE(page.sequence);
+    const auto before = task.state_memory();
+    EXPECT_GT(before.contexts, 0U);
+    EXPECT_GT(before.context_index, 0U);
+    EXPECT_GT(before.sources, 0U);
+    EXPECT_GT(before.witness, 0U);
+    auto store = cache::TaskStore::open(directory / "tasks", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    const auto head = task.offload(*store, 0, 128);
+    ASSERT_TRUE(head);
+    EXPECT_EQ(head->status, cache::TaskStatus::AwaitingDelivery);
+    EXPECT_EQ(state_bytes(task.state_memory()), 0U);
+    EXPECT_TRUE(task.coverage().witness_found);
+    const auto replay = task.advance({0, 0, 0, 0});
+    EXPECT_EQ(replay.sources, page.sources);
+    EXPECT_EQ(replay.sequence, page.sequence);
+    EXPECT_EQ(task.state_memory().contexts, before.contexts);
+    QueryTask oracle(view.view(), selected, QueryKind::Value, true);
+    (void)oracle.advance(QuerySlice::unlimited());
+    equal_result(task, oracle);
+}
+TEST_F(QueryCheckpointTest,
+       FailedPublicationQuotaReadOnlyAndStaleHeadDoNotDiscardCursor) {
+    publish();
+    auto view = open();
+    const auto selected = root(view);
+    QueryTask task(binding(view), task_id, selected);
+    (void)task.advance({5, 7, 5, 0});
+    const auto before = state_bytes(task.state_memory());
+    auto bounded = cache::TaskStore::open(directory / "bounded", task_id,
+                                          cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(bounded);
+    EXPECT_EQ(task.save(*bounded, 0, 70, {.bytes = 400}).error().code,
+              CheckpointErrorCode::LimitExceeded);
+    EXPECT_FALSE(fs::exists(bounded->directory() / "objects"));
+    auto store = cache::TaskStore::open(directory / "tasks", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    auto head = task.save(*store, 0, 70);
+    ASSERT_TRUE(head);
+    const auto stale = task.offload(*store, 0, 70);
+    ASSERT_FALSE(stale);
+    EXPECT_EQ(stale.error().storage->code,
+              cache::StoreErrorCode::StaleGeneration);
+    auto reader = cache::TaskStore::open(directory / "tasks", task_id,
+                                         cache::TaskAccess::ReadOnly);
+    ASSERT_TRUE(reader);
+    const auto readonly = task.offload(*reader, 1, 70);
+    ASSERT_FALSE(readonly);
+    EXPECT_EQ(readonly.error().storage->code, cache::StoreErrorCode::ReadOnly);
+    cache::TaskStoreOptions quota;
+    quota.disk_bytes = 256;
+    auto limited = cache::TaskStore::open(directory / "limited", task_id,
+                                          cache::TaskAccess::ReadWrite, quota);
+    ASSERT_TRUE(limited);
+    EXPECT_EQ(task.offload(*limited, 0, 70).error().code,
+              CheckpointErrorCode::LimitExceeded);
+    cache::TaskStoreOptions failed;
+    failed.store.fault = [](cache::IoOperation operation,
+                            const fs::path& path) {
+        return operation == cache::IoOperation::PublishManifest &&
+                       path.filename() == "head"
+                   ? std::make_error_code(std::errc::no_space_on_device)
+                   : std::error_code{};
+    };
+    auto faulty = cache::TaskStore::open(directory / "faulty", task_id,
+                                         cache::TaskAccess::ReadWrite, failed);
+    ASSERT_TRUE(faulty);
+    EXPECT_FALSE(task.offload(*faulty, 0, 70));
+    EXPECT_FALSE(*faulty->head());
+    EXPECT_EQ(state_bytes(task.state_memory()), before);
+    EXPECT_FALSE(task.state_memory().offloaded);
+    QueryTask oracle(view.view(), selected);
+    (void)oracle.advance(QuerySlice::unlimited());
+    (void)task.advance(QuerySlice::unlimited());
+    equal_result(task, oracle);
+}
+TEST_F(QueryCheckpointTest,
+       MissingSegmentFailsWithoutPublishingPartialResidentState) {
+    publish();
+    auto view = open();
+    const auto selected = root(view);
+    QueryTask task(binding(view), task_id, selected);
+    (void)task.advance({5, 7, 5, 0});
+    auto store = cache::TaskStore::open(directory / "tasks", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    const auto head = task.offload(*store, 0, 70);
+    ASSERT_TRUE(head);
+    for (const auto& entry :
+         fs::recursive_directory_iterator(store->directory() / "objects")) {
+        if (!entry.is_regular_file())
+            continue;
+        std::ifstream input(entry.path(), std::ios::binary);
+        std::array<char, 9> bytes{};
+        input.read(bytes.data(), bytes.size());
+        if (static_cast<unsigned char>(bytes[8]) ==
+            static_cast<unsigned>(cache::ObjectKind::QueryStateSegment))
+            fs::remove(entry.path());
+    }
+    const auto page = task.advance();
+    EXPECT_EQ(page.progress, QueryProgress::Failed);
+    EXPECT_EQ(page.coverage.precision, EvidencePrecision::Unresolved);
+    EXPECT_FALSE(page.coverage.all_sources);
+    ASSERT_TRUE(task.failure());
+    EXPECT_EQ(task.failure()->storage->code,
+              cache::StoreErrorCode::MissingObject);
+    EXPECT_EQ(state_bytes(task.state_memory()), 0U);
+    EXPECT_THROW((void)task.result(), std::runtime_error);
+    EXPECT_FALSE(QueryTask::restore(binding(open()), *store, *head, selected,
+                                    QueryKind::Value, false));
+}
+TEST_F(QueryCheckpointTest,
+       RejectsMalformedSegmentDirectoryAndBindingBeforeAcceptingTask) {
+    publish();
+    auto view = open();
+    const auto selected = root(view);
+    QueryTask task(binding(view), task_id, selected);
+    (void)task.advance({1, 1, 1, 0});
+    auto store = cache::TaskStore::open(directory / "tasks", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    auto head = task.save(*store, 0, 70);
+    ASSERT_TRUE(head);
+    EXPECT_EQ(QueryTask::restore(*view.checkpoint_binding(source_text + " "),
+                                 *store, *head, selected, QueryKind::Value,
+                                 false)
+                  .error()
+                  .code,
+              CheckpointErrorCode::BindingMismatch);
+    auto bytes = store->read(head->manifest);
+    ASSERT_TRUE(bytes);
+    // Unconfirmed=false control prefix is 301 bytes after header+directory
+    // version.
+    constexpr unsigned first_segment = 9 + 4 + 301 + 8;
+    (*bytes)[first_segment] = 1; // First segment must start at record zero.
+    auto transaction = store->begin(1);
+    ASSERT_TRUE(transaction);
+    const auto bad = transaction->write(cache::ObjectKind::QueryTaskManifest,
+                                        std::move(*bytes));
+    ASSERT_TRUE(bad);
+    const auto bad_head = transaction->commit(*bad, cache::TaskStatus::Paused);
+    ASSERT_TRUE(bad_head);
+    const auto restored = QueryTask::restore(binding(open()), *store, *bad_head,
+                                             selected, QueryKind::Value, false);
+    ASSERT_FALSE(restored);
+    EXPECT_EQ(restored.error().code, CheckpointErrorCode::Corrupt);
+}
+TEST_F(QueryCheckpointTest,
+       ReusesUnchangedImmutableSegmentsAndRootAcrossGenerations) {
+    publish();
+    auto view = open();
+    const auto selected = root(view);
+    QueryTask task(binding(view), task_id, selected);
+    (void)task.advance({3, 3, 3, 0});
+    bool forbid_leaf_writes = false;
+    cache::TaskStoreOptions options;
+    options.store.fault = [&](cache::IoOperation operation,
+                              const fs::path& path) {
+        return forbid_leaf_writes &&
+                       operation == cache::IoOperation::WriteTemporary &&
+                       path.filename() != "head"
+                   ? std::make_error_code(std::errc::no_space_on_device)
+                   : std::error_code{};
+    };
+    auto store = cache::TaskStore::open(directory / "tasks", task_id,
+                                        cache::TaskAccess::ReadWrite, options);
+    ASSERT_TRUE(store);
+    const auto first = task.save(*store, 0, 70);
+    ASSERT_TRUE(first);
+    forbid_leaf_writes = true;
+    const auto second = task.save(*store, 1, 70);
+    ASSERT_TRUE(second);
+    EXPECT_EQ(second->generation, 2U);
+    EXPECT_EQ(second->manifest, first->manifest);
+    QueryTask other_root(binding(view), task_id, root(view, "rr"));
+    EXPECT_EQ(other_root.save(*store, 2, 70).error().code,
+              CheckpointErrorCode::BindingMismatch);
+    EXPECT_EQ((**store->head()).generation, 2U);
+    EXPECT_EQ(QueryTask::restore(binding(view), *store, *second, selected,
+                                 QueryKind::Value, false, {.elements = 0})
+                  .error()
+                  .code,
+              CheckpointErrorCode::LimitExceeded);
 }
 } // namespace

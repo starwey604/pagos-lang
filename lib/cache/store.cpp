@@ -1,4 +1,5 @@
 #include "pagos/cache/store.h"
+#include "storage_io.h"
 #include "wire.h"
 
 #include <llvm/ADT/SmallString.h>
@@ -63,7 +64,9 @@ bool valid_kind(ObjectKind kind) {
            kind == ObjectKind::EvidenceRoot ||
            kind == ObjectKind::EvidenceSummary ||
            kind == ObjectKind::EvidenceDetail ||
-           kind == ObjectKind::QueryCheckpoint;
+           kind == ObjectKind::QueryCheckpoint ||
+           kind == ObjectKind::QueryStateSegment ||
+           kind == ObjectKind::QueryTaskManifest;
 }
 fs::path object_path(const fs::path& root, const Digest& digest) {
     const auto hex = digest.hex();
@@ -764,4 +767,23 @@ FileStore::publish(const QueryKey& key, const Digest& verified_inputs,
             error(StoreErrorCode::IoFailure, failure.code()));
     }
 }
+namespace detail {
+ObjectRef object_reference(ObjectKind kind,
+                           std::span<const std::uint8_t> bytes) {
+    return {kind, object_digest(kind, bytes), bytes.size()};
+}
+std::expected<Bytes, StoreError> read_file(const StoreOptions& options,
+                                           const fs::path& path,
+                                           std::size_t maximum) {
+    return pagos::cache::read_file(options, path, maximum,
+                                   StoreErrorCode::CorruptManifest);
+}
+std::expected<void, StoreError>
+replace_file(const fs::path& root, const StoreOptions& options,
+             const fs::path& destination, std::span<const std::uint8_t> bytes) {
+    if (auto ready = directories(options, root / "tmp"); !ready)
+        return ready;
+    return atomic_file(root, options, destination, bytes, false);
+}
+} // namespace detail
 } // namespace pagos::cache

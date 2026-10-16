@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pagos/cache/task_store.h"
 #include "pagos/stage/evidence_view.h"
 
 #include <limits>
@@ -7,6 +8,9 @@
 
 namespace pagos::stage {
 class FunctionEvidenceView;
+}
+namespace pagos::cache::wire {
+class Reader;
 }
 namespace pagos::stage::provenance {
 
@@ -38,11 +42,18 @@ enum class CheckpointErrorCode {
     Corrupt,
     LimitExceeded,
     UnavailableEvidence,
-    OutOfMemory
+    OutOfMemory,
+    StorageFailure
 };
 struct CheckpointError {
     CheckpointErrorCode code;
     std::optional<EvidenceError> evidence;
+    std::optional<cache::StoreError> storage{};
+};
+struct QueryStateMemory {
+    std::size_t queue{}, visited{}, contexts{}, context_index{}, sources{},
+        witness{};
+    bool offloaded{};
 };
 
 enum class QueryProgress { Running, Paused, Cancelled, Completed, Failed };
@@ -108,7 +119,8 @@ struct QueryPage {
 // Single-threaded, move-only task. stop_token may be requested concurrently.
 // Pages contain graph-local/context IDs. Keep the task, or retain its graph
 // and owned result, while resolving them; invocations() spans remain valid
-// until the next advance.
+// until the next advance or offload. invocations()/result() explicitly restore
+// offloaded tables and throw runtime_error if query state cannot be loaded.
 class QueryTask {
   public:
     // Does not load cold blocks until advance admits the first state.
@@ -131,11 +143,28 @@ class QueryTask {
     // Idempotently confirm through this page. Confirm only after committing
     // consumer records/receipts. The watermark persists in the next checkpoint.
     [[nodiscard]] bool acknowledge(std::uint64_t sequence);
-    // Pure encoding: no implicit disk writes or cursor changes. The caller may
+    // Encoding with no implicit disk writes or cursor changes; offloaded tables
+    // are read back first. The caller may
     // atomically publish these bytes as ObjectKind::QueryCheckpoint and retain
     // its ObjectRef independently of the semantic query index.
     [[nodiscard]] std::expected<cache::Bytes, CheckpointError>
     checkpoint(cache::Limits limits = {}) const;
+    // Stream fixed-size table segments and publish the task head last. CAS
+    // objects from earlier generations remain until explicit task maintenance.
+    [[nodiscard]] std::expected<cache::TaskHead, CheckpointError>
+    save(const cache::TaskStore& store, std::uint64_t expected_generation,
+         std::size_t segment_bytes = 64 * 1024,
+         cache::Limits limits = {}) const;
+    // Same publication, then actually release vector/hash capacity and active
+    // evidence lease. Next advance (or result/invocations) restores the tables.
+    [[nodiscard]] std::expected<cache::TaskHead, CheckpointError>
+    offload(const cache::TaskStore& store, std::uint64_t expected_generation,
+            std::size_t segment_bytes = 64 * 1024, cache::Limits limits = {});
+    [[nodiscard]] QueryStateMemory state_memory() const;
+    [[nodiscard]] static std::expected<QueryTask, CheckpointError>
+    restore(QueryCheckpointBinding binding, const cache::TaskStore& store,
+            const cache::TaskHead& head, NodeId root, QueryKind kind,
+            bool witness, cache::Limits limits = {});
     // Validate caller's expected task/root/channel/mode as well as snapshot
     // binding. Does not run Stage, traverse edges or charge work again.
     [[nodiscard]] static std::expected<QueryTask, CheckpointError>
@@ -166,6 +195,11 @@ class QueryTask {
     QueryTask(FrozenGraph graph, NodeId root, QueryKind kind, bool witness);
     void formulas(std::shared_ptr<const FormulaIndex> index);
     void invocation_path(std::span<const NodeId> calls);
+    [[nodiscard]] std::expected<void, CheckpointError> ensure_resident() const;
+    static QueryTask read_control(QueryCheckpointBinding binding,
+                                  cache::Digest task, NodeId root,
+                                  QueryKind kind, bool witness,
+                                  cache::wire::Reader& reader);
     std::unique_ptr<Impl> impl_;
 };
 

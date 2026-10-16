@@ -603,5 +603,16 @@ ctest --test-dir build/debug -R 'QueryCheckpointTest|pagos-query-checkpoint-proc
 
 The process test saves and exits, then resumes the verified evidence with a
 new process and different slice budgets, without invoking StageAnalyzer.
-Query tables and encoded bytes remain fully resident and bounded by codec
-limits; C4c2 will add segmented task state and lifecycle management.
+C4c1 uses fully resident query tables and a bounded single checkpoint object.
+[C4c2a](provenance-task-store-c4c2a.md) adds `TaskStore` for segmented snapshots,
+optimistic generation updates, paused-state release and explicit task maintenance.
+Use `save` to retain tables or `offload` to release them after atomic publication;
+subsequent querying restores all tables. `reclaim_tasks` preserves paused and
+AwaitingDelivery tasks by default; AllInactive is an explicit discard operation.
+No main-driver query checkpoint flags are added yet.
+
+```sh
+ctest --test-dir build/debug \
+  -R 'TaskStoreTest|QueryCheckpointTest|pagos-query-task-process' \
+  --output-on-failure
+```
