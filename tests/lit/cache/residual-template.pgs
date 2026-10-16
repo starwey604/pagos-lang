@@ -1,0 +1,6 @@
+// RUN: %run_cache %s %t.cache 64 5 7 9
+fn scale(k: u32, x: u32) -> u32 { k * x }
+fn known() -> u32 { external_input(); 4 }
+let a = scale(known(), external_input());
+let b = scale(4, external_input());
+let result = a + b;

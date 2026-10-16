@@ -6,6 +6,9 @@
 #include "pagos/hir/hir.h"
 #include "pagos/sema/type_checker.h"
 #include "pagos/source/diagnostic.h"
+#include "pagos/stage/cache_config.h"
+#include "pagos/stage/evidence_builder.h"
+#include "pagos/stage/memory_stats.h"
 #include "pagos/syntax/ast.h"
 
 #include <cstddef>
@@ -19,6 +22,8 @@
 namespace pagos::stage {
 
 class ProvenanceRecorder;
+class ScalarCache;
+struct ResourceCapture;
 
 struct AnalysisLimits {
     std::size_t fuel{1'000'000};
@@ -51,12 +56,20 @@ class StageAnalyzer {
     StageAnalyzer(
         source::DiagnosticEngine& diagnostics, const sema::TypeTable& types,
         AnalysisLimits limits = {},
-        std::optional<cache::QueryContext> query_context = std::nullopt);
+        std::optional<cache::QueryContext> query_context = std::nullopt,
+        CacheConfig cache_config = {},
+        provenance::EvidenceBuildConfig evidence_config = {});
     ~StageAnalyzer();
 
     [[nodiscard]] std::unique_ptr<hir::Module>
     analyze(const syntax::Module& module);
     [[nodiscard]] const AnalysisStats& stats() const noexcept { return stats_; }
+    [[nodiscard]] const CacheTelemetry& cache_telemetry() const noexcept {
+        return cache_telemetry_;
+    }
+    [[nodiscard]] const StageMemoryStats& memory_stats() const noexcept {
+        return memory_stats_;
+    }
     [[nodiscard]] const cache::QueryContext* query_context() const noexcept {
         return query_context_ ? &*query_context_ : nullptr;
     }
@@ -168,11 +181,19 @@ class StageAnalyzer {
     specialization_key(const syntax::Function& function,
                        const std::vector<hir::ExprPtr>& arguments) const;
 
+    void release_working_state();
+    [[nodiscard]] StageWorkingMemory working_memory() const;
+    StageMemoryStats memory_stats_;
     source::DiagnosticEngine& diagnostics_;
     std::unordered_map<std::string, const syntax::Module::Record*> records_;
     const sema::TypeTable& types_;
     AnalysisLimits limits_;
     const std::optional<cache::QueryContext> query_context_;
+    const CacheConfig cache_config_;
+    const provenance::EvidenceBuildConfig evidence_config_;
+    CacheTelemetry cache_telemetry_;
+    std::unique_ptr<ScalarCache> scalar_cache_;
+    ResourceCapture* fuel_capture_{};
     AnalysisStats stats_;
     std::unordered_map<std::string, const syntax::Function*> functions_;
     std::vector<Scope> scopes_;

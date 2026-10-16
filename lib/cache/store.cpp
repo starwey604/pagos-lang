@@ -54,7 +54,15 @@ bool valid_name(std::string_view name) {
 }
 bool valid_kind(ObjectKind kind) {
     return kind == ObjectKind::Value || kind == ObjectKind::QueryKey ||
-           kind == ObjectKind::SourceAnchor;
+           kind == ObjectKind::SourceAnchor ||
+           kind == ObjectKind::ResourceRecipe ||
+           kind == ObjectKind::ProvenanceSnapshot ||
+           kind == ObjectKind::ProvenancePositions ||
+           kind == ObjectKind::ResidualTemplate ||
+           kind == ObjectKind::EvidenceBlock ||
+           kind == ObjectKind::EvidenceRoot ||
+           kind == ObjectKind::EvidenceSummary ||
+           kind == ObjectKind::EvidenceDetail;
 }
 fs::path object_path(const fs::path& root, const Digest& digest) {
     const auto hex = digest.hex();
@@ -259,9 +267,9 @@ Digest object_digest(ObjectKind kind, std::span<const std::uint8_t> bytes) {
     writer.raw(bytes);
     return fingerprint("pagos.cas-object.v1", *writer.finish());
 }
-std::expected<Bytes, StoreError> read_object(const fs::path& root,
-                                             const StoreOptions& options,
-                                             const ObjectRef& reference) {
+std::expected<Bytes, StoreError> read_cas_object(const fs::path& root,
+                                                 const StoreOptions& options,
+                                                 const ObjectRef& reference) {
     if (reference.size > options.object_bytes)
         return std::unexpected(error(StoreErrorCode::LimitExceeded));
     const auto bytes = read_file(options, object_path(root, reference.digest),
@@ -402,7 +410,7 @@ std::expected<void, StoreError> load_artifacts(Manifest& manifest,
                                                const fs::path& root,
                                                const StoreOptions& options) {
     for (auto& artifact : manifest.artifacts) {
-        auto bytes = read_object(root, options, artifact.object);
+        auto bytes = read_cas_object(root, options, artifact.object);
         if (!bytes) {
             if (artifact.required)
                 return std::unexpected(bytes.error());
@@ -499,7 +507,7 @@ std::expected<void, StoreError> publish_object(const fs::path& root,
                                                const ArtifactInput& artifact,
                                                const ObjectRef& reference) {
     const auto destination = object_path(root, reference.digest);
-    auto old = read_object(root, options, reference);
+    auto old = read_cas_object(root, options, reference);
     if (old) {
         if (*old != artifact.bytes)
             return std::unexpected(error(StoreErrorCode::CorruptObject));
@@ -525,7 +533,7 @@ std::expected<void, StoreError> publish_object(const fs::path& root,
         !result)
         return result;
     // An independent writer may have won the no-replace link. Verify it too.
-    old = read_object(root, options, reference);
+    old = read_cas_object(root, options, reference);
     if (!old)
         return std::unexpected(old.error());
     if (*old != artifact.bytes)
@@ -554,6 +562,58 @@ FileStore::FileStore(fs::path root, StoreOptions options)
 
 std::expected<Candidate, StoreError>
 FileStore::lookup(const QueryKey& key, const Digest& verified_inputs) const {
+    return lookup_candidate(key, verified_inputs, true);
+}
+
+std::expected<Bytes, StoreError>
+FileStore::read_object(const ObjectRef& reference) const {
+    try {
+        if (!valid_kind(reference.kind))
+            return std::unexpected(error(StoreErrorCode::InvalidRequest));
+        return read_cas_object(root_, options_, reference);
+    } catch (const std::bad_alloc&) {
+        return std::unexpected(error(StoreErrorCode::OutOfMemory));
+    } catch (const std::system_error& failure) {
+        return std::unexpected(
+            error(StoreErrorCode::IoFailure, failure.code()));
+    }
+}
+
+std::expected<ObjectRef, StoreError>
+FileStore::write_object(ObjectKind kind, Bytes bytes) const {
+    try {
+        if (!valid_options(options_, root_))
+            return std::unexpected(error(StoreErrorCode::InvalidRequest));
+        if (const auto checked = payload_header(kind, bytes, options_);
+            !checked)
+            return std::unexpected(checked.error());
+        const ObjectRef reference{kind, object_digest(kind, bytes),
+                                  bytes.size()};
+        if (const auto ready = directories(options_, root_ / "tmp"); !ready)
+            return std::unexpected(ready.error());
+        const ArtifactInput artifact{"object", kind, std::move(bytes), true};
+        if (const auto written =
+                publish_object(root_, options_, artifact, reference);
+            !written)
+            return std::unexpected(written.error());
+        return reference;
+    } catch (const std::bad_alloc&) {
+        return std::unexpected(error(StoreErrorCode::OutOfMemory));
+    } catch (const std::system_error& failure) {
+        return std::unexpected(
+            error(StoreErrorCode::IoFailure, failure.code()));
+    }
+}
+
+std::expected<Candidate, StoreError>
+FileStore::lookup_references(const QueryKey& key,
+                             const Digest& verified_inputs) const {
+    return lookup_candidate(key, verified_inputs, false);
+}
+
+std::expected<Candidate, StoreError>
+FileStore::lookup_candidate(const QueryKey& key, const Digest& verified_inputs,
+                            bool load_objects) const {
     try {
         const auto bytes = canonical_key(key, options_, root_);
         if (!bytes)
@@ -573,9 +633,14 @@ FileStore::lookup(const QueryKey& key, const Digest& verified_inputs) const {
             return std::unexpected(manifest.error());
         if (manifest->conflict)
             return std::unexpected(error(StoreErrorCode::DeterminismConflict));
-        if (const auto result = load_artifacts(*manifest, root_, options_);
-            !result)
-            return std::unexpected(result.error());
+        // Keep the eager lookup's original lock boundary. The reference-only
+        // path releases it after validating metadata; CAS payloads are
+        // immutable.
+        if (load_objects) {
+            if (const auto result = load_artifacts(*manifest, root_, options_);
+                !result)
+                return std::unexpected(result.error());
+        }
         return Candidate{key, verified_inputs, manifest->result,
                          std::move(manifest->artifacts)};
     } catch (const std::bad_alloc&) {

@@ -1,0 +1,33 @@
+// RUN: %pagosc explain-provenance %s > %t.legacy
+// RUN: %pagosc --provenance-query-stats explain-provenance %s > %t.legacystats 2> %t.legacytelemetry
+// RUN: diff %t.legacy %t.legacystats
+// RUN: FileCheck %s --check-prefix=LEGACY < %t.legacytelemetry
+// RUN: %pagosc --provenance-query=resumable --provenance-slice=1 --provenance-query-stats explain-provenance %s > %t.resumable 2> %t.stats
+// RUN: diff %t.legacy %t.resumable
+// RUN: FileCheck %s --check-prefix=STATS < %t.stats
+// RUN: %pagosc --provenance-query=compressed --provenance-slice=1 --provenance-query-stats explain-provenance %s > %t.compressed 2> %t.formulas
+// RUN: diff %t.legacy %t.compressed
+// RUN: FileCheck %s --check-prefix=FORMULAS < %t.formulas
+// RUN: %pagosc --provenance-query=topology --provenance-slice=1 explain-provenance %s | FileCheck %s --check-prefix=TOPOLOGY
+// RUN: not %pagosc --provenance-query=resumable --provenance-slice=0 explain-provenance %s 2>&1 | FileCheck %s --check-prefix=ZERO
+// RUN: not %pagosc --provenance-query=other explain-provenance %s 2>&1 | FileCheck %s --check-prefix=MODE
+// RUN: not %pagosc --provenance-query=resumable check %s 2>&1 | FileCheck %s --check-prefix=COMMAND
+// LEGACY: provenance-query mode=legacy channel=value states={{[0-9]+}} followed_edges={{[0-9]+}} contexts={{[0-9]+}}
+// STATS: provenance-query channel=value states={{[0-9]+}} scanned_edges={{[0-9]+}} bindings={{[0-9]+}} contexts={{[0-9]+}} queue_peak={{[0-9]+}} slices={{[0-9]+}}
+// FORMULAS: provenance-topology nodes={{[0-9]+}} edges={{[0-9]+}} summary_links={{[0-9]+}} formulas={{[0-9]+}} terms={{[0-9]+}} source_families={{[0-9]+}}
+// FORMULAS: formula_uses={{[1-9][0-9]*}}
+// TOPOLOGY: binding both: Runtime
+// TOPOLOGY: topology summary-link {{[0-9]+}} -> {{[0-9]+}} summary={{[0-9]+}} port=value
+// TOPOLOGY: topology summary-link {{[0-9]+}} -> {{[0-9]+}} summary={{[0-9]+}} port=effects
+// ZERO: error: provenance slice must be positive
+// MODE: error: invalid provenance query mode: other
+// COMMAND: error: provenance query options require explain-provenance
+fn scale(k: u32, x: u32) -> u32 { k * x }
+fn read() -> u32 { external_input() }
+let a = external_input();
+let b = external_input();
+let aa = scale(4, a);
+let bb = scale(4, b);
+let first = read();
+let second = read();
+let both = aa + bb + first + second;

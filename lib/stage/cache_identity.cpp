@@ -15,9 +15,10 @@ using cache::wire::Writer;
 class IdentityBuilder {
   public:
     IdentityBuilder(const syntax::Module& module, const sema::TypeTable& types,
-                    const cache::QueryContext& context, cache::Limits limits)
+                    const cache::QueryContext& context, cache::Limits limits,
+                    bool anchors = true)
         : module_(module), types_(types), context_(context), limits_(limits),
-          writer_(limits) {}
+          writer_(limits), anchors_(anchors) {}
 
     std::expected<CacheIdentity, Error> build() {
         output_.module = context_.module;
@@ -81,6 +82,7 @@ class IdentityBuilder {
         writer_ = Writer(limits_);
         current_ = {.id = {context_.module, kind, name}};
         sites_.clear();
+        current_sites_ = 0;
         writer_.u32(cache::query_protocol_version);
         writer_.u8(static_cast<std::uint8_t>(kind));
         writer_.string(name);
@@ -109,8 +111,7 @@ class IdentityBuilder {
         return true;
     }
     void site(source::Span span) {
-        if (output_.sites.size() + sites_.size() >= limits_.elements ||
-            sites_.size() >= UINT32_MAX) {
+        if (total_sites_ >= limits_.elements || current_sites_ >= UINT32_MAX) {
             writer_.fail(Error::LimitExceeded);
             return;
         }
@@ -118,7 +119,10 @@ class IdentityBuilder {
             writer_.fail(Error::InvalidAnchor);
             return;
         }
-        sites_.push_back(span);
+        ++total_sites_;
+        ++current_sites_;
+        if (anchors_)
+            sites_.push_back(span);
     }
     bool enter(std::size_t depth) {
         if (depth >= limits_.depth) {
@@ -351,6 +355,8 @@ class IdentityBuilder {
     cache::Limits limits_;
     Writer writer_;
     DefinitionIdentity current_;
+    bool anchors_;
+    std::size_t current_sites_{}, total_sites_{};
     std::vector<source::Span> sites_;
     std::unordered_set<std::string> definitions_;
     CacheIdentity output_;
@@ -416,6 +422,21 @@ build_cache_identity(const syntax::Module& module, const sema::TypeTable& types,
         context.budget_version != cache::budget_protocol_version)
         return std::unexpected(cache::Error::InvalidContext);
     return IdentityBuilder(module, types, context, limits).build();
+}
+std::expected<DefinitionCatalog, cache::Error> build_definition_catalog(
+    const syntax::Module& module, const sema::TypeTable& types,
+    const cache::QueryContext& context, cache::Limits limits) {
+    if (!cache::valid_context(context) ||
+        types.pointer_bits != context.target.pointer_bits ||
+        context.query_version != cache::query_protocol_version ||
+        context.budget_version != cache::budget_protocol_version)
+        return std::unexpected(cache::Error::InvalidContext);
+    auto identity =
+        IdentityBuilder(module, types, context, limits, false).build();
+    if (!identity)
+        return std::unexpected(identity.error());
+    return DefinitionCatalog{identity->module_fingerprint,
+                             std::move(identity->definitions)};
 }
 std::expected<cache::QueryKey, cache::Error>
 make_query_key(const DefinitionIdentity& function,

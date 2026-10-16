@@ -1,0 +1,6 @@
+fn table() -> [u32; 8192] {
+    [for i in 0..8192 { (i * 37) ^ (i >> 3) }]
+}
+comptime let data = table();
+let alias = table();
+let result = data[external_input()] + alias[0];

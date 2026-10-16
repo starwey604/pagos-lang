@@ -1,0 +1,8 @@
+// RUN: %run_cache %s %t 49
+fn square(x: u32) -> u32 { x * x }
+fn identity(x: u32) -> u32 { x }
+fn less(x: i8) -> bool { !(x < 0i8) }
+let a = square(7);
+let b = square(7);
+let flag = less(-3i8);
+let result = identity(if flag { a } else { b });

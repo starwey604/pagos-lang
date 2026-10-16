@@ -40,6 +40,19 @@ struct CacheIdentity {
     resolve(const SourceAnchor& anchor) const;
 };
 
+// Recorder only needs definitions. This distinct result cannot be mistaken for
+// a position-complete CacheIdentity by persistence/query adapters. Semantic
+// fingerprints, validation and site-count limits match the full builder.
+struct DefinitionCatalog {
+    cache::Digest module_fingerprint;
+    std::vector<DefinitionIdentity> definitions;
+};
+[[nodiscard]] std::expected<DefinitionCatalog, cache::Error>
+build_definition_catalog(const syntax::Module& module,
+                         const sema::TypeTable& types,
+                         const cache::QueryContext& context,
+                         cache::Limits limits = {});
+
 // Requires a successfully checked AST and the matching target's type table.
 // Missing semantic facts fail closed; no partial fingerprint is published.
 [[nodiscard]] std::expected<CacheIdentity, cache::Error>

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "pagos/global_storage.h"
+#include "pagos/hir/runtime_path.h"
 #include "pagos/sema/type.h"
 
 #include "pagos/source/span.h"
@@ -29,7 +30,7 @@ using Constant = pagos::Constant;
 struct RuntimeTrace {
     source::Span origin_span;
     std::string origin_name;
-    std::vector<std::string> path;
+    RuntimePath path;
     // Symbolic provenance inside a reusable residual definition.
     std::optional<std::size_t> parameter_id;
 };

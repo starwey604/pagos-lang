@@ -96,7 +96,7 @@ else()
     target_link_libraries(pagos_values PRIVATE ${PAGOS_SUPPORT_LIBRARIES})
 endif()
 
-add_library(pagos_hir lib/hir/hir.cpp)
+add_library(pagos_hir lib/hir/hir.cpp lib/hir/runtime_path.cpp)
 add_library(Pagos::hir ALIAS pagos_hir)
 target_include_directories(pagos_hir PUBLIC include)
 target_link_libraries(pagos_hir PUBLIC Pagos::source Pagos::values pagos_project_options)
@@ -109,12 +109,20 @@ target_include_directories(pagos_cache SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
 target_link_libraries(pagos_cache PUBLIC Pagos::values pagos_project_options)
 
 # Compact provenance storage; construction and immutable queries are separate.
-add_library(pagos_provenance lib/stage/provenance_graph.cpp)
+add_library(pagos_provenance lib/stage/provenance_graph.cpp
+    lib/stage/provenance_query.cpp lib/stage/provenance_topology.cpp
+    lib/stage/evidence_view.cpp lib/stage/evidence_topology.cpp
+    lib/stage/evidence_builder.cpp
+    lib/stage/evidence_session.cpp)
 add_library(Pagos::provenance ALIAS pagos_provenance)
 target_include_directories(pagos_provenance PUBLIC include)
 target_include_directories(pagos_provenance SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
 target_link_libraries(pagos_provenance
-    PUBLIC pagos_project_options PRIVATE Pagos::values)
+    PUBLIC pagos_project_options Pagos::cache PRIVATE Pagos::values)
+
+add_executable(pagos_provenance_query_bench tools/provenance_query_bench/main.cpp)
+target_link_libraries(pagos_provenance_query_bench
+    PRIVATE Pagos::provenance pagos_project_options)
 
 add_executable(pagos_provenance_bench tools/provenance_bench/main.cpp)
 target_link_libraries(pagos_provenance_bench
@@ -132,12 +140,17 @@ target_link_libraries(pagos_sema
     PUBLIC Pagos::syntax Pagos::values pagos_project_options)
 
 add_library(pagos_stage lib/stage/stage_analyzer.cpp
-    lib/stage/provenance_analysis.cpp lib/stage/cache_identity.cpp)
+    lib/stage/provenance_analysis.cpp lib/stage/provenance_snapshot.cpp lib/stage/cache_identity.cpp
+    lib/stage/function_evidence.cpp lib/stage/function_evidence_view.cpp
+    lib/stage/scalar_cache.cpp lib/stage/residual_template.cpp)
 add_library(Pagos::stage ALIAS pagos_stage)
 target_include_directories(pagos_stage PUBLIC include)
 target_link_libraries(pagos_stage
     PUBLIC Pagos::sema Pagos::hir Pagos::vm Pagos::provenance Pagos::cache pagos_project_options)
 target_include_directories(pagos_stage SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
+
+add_executable(pagos_snapshot_bench tools/snapshot_bench/main.cpp)
+target_link_libraries(pagos_snapshot_bench PRIVATE Pagos::stage pagos_project_options)
 
 add_library(pagos_mir
     lib/mir/lowering.cpp
@@ -204,6 +217,13 @@ string(APPEND PAGOS_IDENTITY_INPUT "|${PAGOS_CMAKE_DIGEST}")
 string(SHA256 PAGOS_CACHE_BUILD_ID "${PAGOS_IDENTITY_INPUT}")
 configure_file(tools/pagosc/build_identity.h.in generated/build_identity.h @ONLY)
 target_include_directories(pagosc PRIVATE "${CMAKE_BINARY_DIR}/generated")
+
+add_executable(pagos_function_evidence_bench tools/function_evidence_bench/main.cpp)
+target_include_directories(pagos_function_evidence_bench PRIVATE "${CMAKE_BINARY_DIR}/generated")
+target_link_libraries(pagos_function_evidence_bench PRIVATE Pagos::stage pagos_project_options)
+
+add_executable(pagos_stage_spill_bench tools/stage_spill_bench/main.cpp)
+target_link_libraries(pagos_stage_spill_bench PRIVATE Pagos::stage pagos_project_options)
 
 include(CTest)
 if(BUILD_TESTING)

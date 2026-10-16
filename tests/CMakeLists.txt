@@ -14,6 +14,7 @@ add_executable(pagos_unit_tests
     unit/parser_test.cpp
     unit/stage_test.cpp
     unit/stage_provenance_test.cpp
+    unit/provenance_snapshot_test.cpp
     unit/source_manager_test.cpp)
 target_link_libraries(pagos_unit_tests
     PRIVATE Pagos::syntax Pagos::vm Pagos::mir Pagos::stage Pagos::codegen GTest::gtest_main
@@ -22,15 +23,18 @@ target_link_libraries(pagos_unit_tests
 include(GoogleTest)
 gtest_discover_tests(pagos_unit_tests DISCOVERY_MODE PRE_TEST)
 
-add_executable(pagos_provenance_tests unit/provenance_test.cpp)
+add_executable(pagos_provenance_tests unit/provenance_test.cpp
+    unit/provenance_query_test.cpp unit/evidence_builder_test.cpp)
 target_link_libraries(pagos_provenance_tests
     PRIVATE Pagos::provenance GTest::gtest_main pagos_project_options)
 gtest_discover_tests(pagos_provenance_tests DISCOVERY_MODE PRE_TEST)
 
 add_executable(pagos_cache_tests
-    unit/cache_codec_test.cpp unit/cache_key_test.cpp unit/cache_store_test.cpp)
+    unit/cache_codec_test.cpp unit/cache_key_test.cpp unit/cache_store_test.cpp
+    unit/stage_cache_test.cpp unit/evidence_view_test.cpp unit/function_evidence_test.cpp
+    unit/stage_spill_test.cpp)
 target_link_libraries(pagos_cache_tests
-    PRIVATE Pagos::stage GTest::gtest_main pagos_project_options)
+    PRIVATE Pagos::stage Pagos::mir GTest::gtest_main pagos_project_options)
 gtest_discover_tests(pagos_cache_tests DISCOVERY_MODE PRE_TEST)
 
 add_executable(pagos_cache_identity_probe cache_identity_probe.cpp)
@@ -49,6 +53,13 @@ add_test(NAME pagos-cache-store-process
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/cache_store_process.py
             $<TARGET_FILE:pagos_cache_store_probe>)
 set_tests_properties(pagos-cache-store-process PROPERTIES TIMEOUT 60)
+add_executable(pagos_stage_spill_probe stage_spill_probe.cpp)
+target_link_libraries(pagos_stage_spill_probe PRIVATE Pagos::stage pagos_project_options)
+add_test(NAME pagos-stage-spill-process
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/stage_spill_process.py
+            $<TARGET_FILE:pagos_stage_spill_probe> $<TARGET_FILE:pagosc>)
+set_tests_properties(pagos-stage-spill-process PROPERTIES TIMEOUT 60)
+
 find_program(PAGOS_LIT NAMES lit llvm-lit HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
 find_program(PAGOS_FILECHECK NAMES FileCheck
     HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)

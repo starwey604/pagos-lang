@@ -450,13 +450,47 @@ recipes, and serialization precede residual-template persistence. Filesystem
 manifests, a CAS, and sectioned binary evidence snapshots are the default;
 an embedded database is optional and requires measured metadata bottlenecks.
 The [implementation plan](cache-implementation-plan.md) splits the first
-stages into six iterations. [C1a](cache-identity-c1a.md) implements canonical
+stages into independently verifiable iterations. [C1a](cache-identity-c1a.md)
+implements canonical
 bool/integer/scalar-array codecs, stable checked-AST fingerprints and source
 anchors. The driver supplies a resolved target and compiler compatibility
-identity in an immutable `QueryContext`. Analyzer evaluation still uses its
-existing caches. [C1b](cache-store-c1b.md) adds a filesystem manifest index and
-immutable CAS, with atomic publication, bounded validation, conflict markers,
-and crash/concurrency tests. Persistent evaluation reuse remains C2 work.
+identity in an immutable `QueryContext`. [C1b](cache-store-c1b.md) adds a
+filesystem manifest index and immutable CAS, with atomic publication,
+bounded validation, conflict markers,
+and crash/concurrency tests. [C2a](cache-scalar-c2a.md) adds experimental pure
+scalar reuse after session-local misses, exact budget replay, current source
+locations, and separate telemetry. [C2b](cache-array-c2b.md) extends this to fixed scalar arrays and arithmetic
+generators, with ordered construction/Fuel templates and off/cold/hot
+measurements. [C3a](provenance-snapshot-c3a.md) adds module evidence snapshots
+and separate source revisions; [C3b](cache-residual-c3b.md) restores closed scalar
+HIR templates with mandatory evidence and budget replay. The cache remains off
+by default.
+
+C3q1 adds resumable queries on the memory graph; C3q2 supplies shared dependency
+formulas and compressed call topology. C3a now persists the module graph and
+restores it fully. [C4a1](provenance-view-c4a1.md) adds pinned memory/disk views
+and native block reads. [C4a2](provenance-units-c4a2.md) captures actual
+specialization identities and freezes function Imports/SCCs with validated hot
+closures/decisions. [C4a3](provenance-function-queries-c4a3.md) maps function
+units to lazy query/topology views and an independent-process CLI. Evidence
+coverage, query progress, detail availability, and presentation are separate
+states. Query slices cannot alter Stage, diagnostics, or logical budgets.
+C4b-C4e then cover construction spill, query checkpoints,
+finite-domain recursive summaries, and deterministic pure detail replay.
+[C4b1](provenance-spill-c4b1.md) now supplies an independent segmented builder
+with temporary spill and auxiliary storage failures.
+[C4b2](provenance-recorder-spill-c4b2.md) integrates Recorder and explicit CLI,
+keeps native views until compatibility restoration is requested, and guards
+semantic publication on evidence availability. [C4b3a](provenance-trace-c4b3a.md)
+shares immutable RuntimeTrace prefixes; path representation savings are assessed
+separately from spill savings. [C4b3b](provenance-working-set-c4b3b.md) adds a
+separate definition catalog, retained metadata accounting, working-table release,
+lifetime locks and explicit dead-session reclamation. Independent Release runs
+confirm build-peak savings for a larger graph; smaller inputs have no stable net
+benefit. C4b experimental acceptance is complete; memory remains the default.
+Existing graph reference/span lifetimes and the default one-shot query interface
+remain intact until their replacements are explicitly validated; snapshot
+serialization alone does not reduce build peaks.
 
 ### Raw target memory
 

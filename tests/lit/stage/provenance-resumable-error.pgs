@@ -1,0 +1,12 @@
+// RUN: not %pagosc explain-provenance %s > %t.old 2> %t.diag
+// RUN: not %pagosc --provenance-query=resumable --provenance-slice=1 explain-provenance %s > %t.new 2> %t.newdiag
+// RUN: diff %t.old %t.new
+// RUN: diff %t.diag %t.newdiag
+// RUN: not %pagosc --provenance-query=compressed --provenance-slice=1 explain-provenance %s > %t.formula 2> %t.formuladiag
+// RUN: diff %t.old %t.formula
+// RUN: diff %t.diag %t.formuladiag
+fn require(x: u32) -> u32 {
+    comptime let local = if x == 0 { 7 } else { 7 };
+    local
+}
+let result = require(external_input());

@@ -1,0 +1,3 @@
+// RUN: %run_stage_spill %t.dir | %FileCheck %s
+// CHECK: stage spill: native queries, budgets, diagnostics, residual execution and publication guards verified
+let placeholder = 0;

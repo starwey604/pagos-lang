@@ -102,13 +102,37 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
 - [Cache Architecture RFC](docs/cache-architecture-rfc.md): proposed semantic
   query boundaries, stable keys, dependency validation, budget preservation,
   and staged experiments for persistent results and evidence
-- [Cache implementation plan](docs/cache-implementation-plan.md): six
-  iterations from stable keys and filesystem storage to reusable Comptime
-  results, binary provenance snapshots, and residual templates
+- [Cache implementation plan](docs/cache-implementation-plan.md): iterations
+  for reusable Comptime results, resumable queries, shared summaries, evidence
+  snapshots, residual templates, construction spill, and pure detail replay
 - [Cache identity C1a](docs/cache-identity-c1a.md): implemented canonical codecs,
   stable definition fingerprints, source anchors, and cross-process validation
 - [Cache store C1b](docs/cache-store-c1b.md): filesystem manifests, immutable CAS,
   atomic publication, conflict handling, and process recovery tests
+- [Cache scalar C2a](docs/cache-scalar-c2a.md): experimental pure scalar reuse,
+  budget replay, current source locations, and independent cache telemetry
+- [Cache array C2b](docs/cache-array-c2b.md): closed scalar-array reuse, ordered
+  construction/Fuel templates, runtime bounds equivalence, and measurements
+- [Provenance queries C3q1/C3q2](docs/provenance-query-c3q.md): resumable
+  queries, shared dependency formulas, explicit scopes, and compact topology
+- [Provenance snapshots C3a](docs/provenance-snapshot-c3a.md): sectioned module
+  evidence, independent source revisions and checked restoration
+- [Residual templates C3b](docs/cache-residual-c3b.md): closed scalar HIR reuse,
+  mandatory symbolic evidence and logical resource replay
+- [Evidence views C4a1](docs/provenance-view-c4a1.md): pinned memory/disk views,
+  block reads and native lazy queries
+- [Function evidence C4a2](docs/provenance-units-c4a2.md): actual specialization
+  identities, local IDs, Imports/SCCs and validated hot closures
+- [Function queries C4a3](docs/provenance-function-queries-c4a3.md): lazy SCC
+  queries, independent-process CLI and real Stage measurements
+- [Evidence construction C4b1](docs/provenance-spill-c4b1.md): segmented builder,
+  temporary spill, leases and capacity failures
+- [Recorder spill C4b2](docs/provenance-recorder-spill-c4b2.md): Stage/CLI
+  integration, native views, auxiliary failures and guarded cache publication
+- [Trace sharing C4b3a](docs/provenance-trace-c4b3a.md): persistent diagnostic
+  paths and independent real Stage build/query measurements
+- [Working sets C4b3b](docs/provenance-working-set-c4b3b.md): lifecycle cleanup,
+  real Stage crash recovery and measured large-graph spill peak savings
 - [Semantic examples](docs/semantic-examples.md): executable-design cases with
   expected stages, residual work, and errors
 - [Diagnostic conventions](docs/diagnostics.md): stable structure for stage and

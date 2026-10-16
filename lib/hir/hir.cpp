@@ -330,11 +330,12 @@ void explain_stages(const Module& module, std::ostream& output) {
         if (binding.trace) {
             const auto& trace = binding.trace.value();
             output << " (";
-            for (std::size_t index = 0; index < trace.path.size(); ++index) {
+            const auto path = trace.path.to_vector();
+            for (std::size_t index = 0; index < path.size(); ++index) {
                 if (index != 0) {
                     output << " -> ";
                 }
-                output << trace.path[index];
+                output << path[index];
             }
             output << ')';
         }

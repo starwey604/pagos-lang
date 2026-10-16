@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pagos/stage/cache_identity.h"
 #include "pagos/stage/provenance_analysis.h"
 
 #include <memory>
@@ -12,8 +13,10 @@ namespace pagos::stage {
 // residualization.
 class ProvenanceRecorder {
   public:
-    ProvenanceRecorder();
+    explicit ProvenanceRecorder(provenance::EvidenceBuildConfig config = {});
     ~ProvenanceRecorder();
+    void identity(const syntax::Module& module, const sema::TypeTable& types,
+                  const cache::QueryContext& context);
     void binding(const syntax::BindingStmt& binding, const hir::ExprPtr& value,
                  bool top_level);
     void storage(const syntax::Module::Global& global,
@@ -22,6 +25,10 @@ class ProvenanceRecorder {
         const std::shared_ptr<const hir::ResidualFunction>& callee,
         const std::unordered_map<const hir::Expr*, hir::ExprPtr>& arguments);
     void leave_call();
+    void
+    specialization(const std::shared_ptr<const hir::ResidualFunction>& callee,
+                   const syntax::Function& declaration,
+                   std::span<const hir::ExprPtr> arguments);
     void runtime_boundary(const hir::ExprPtr& value,
                           const hir::ExprPtr& initializer);
     void selection(const hir::ExprPtr& value, StageRule rule,

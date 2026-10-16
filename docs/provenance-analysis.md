@@ -6,7 +6,7 @@ Comptime 求值、Stage 推断或残留程序生成。
 
 这一步承接[独立原型实验](provenance-prototype.md)，先验证构建、查询和实际
 程序之间的对应关系。当前继续使用追加式存储和原有 `RuntimeTrace` 诊断；
-没有增加分支收敛规则、磁盘缓存或编译任务调度器。
+没有增加分支收敛规则；证据图可显式导出/恢复模块快照，编译任务调度器仍为后续工作。
 
 ## 决策点提供语义依据
 
@@ -202,10 +202,29 @@ Stage 错误时，命令先展示已经记录的根，再输出原有诊断，�
 将查询失效依赖与 Stage Provenance 分开，并定义精简证据、当前调用重新
 绑定及未来冷热分块的边界。现有 FrozenGraph 的连续池和稳定视图契约保持
 原状；真正卸载需要另行设计块句柄及读取生命周期。
-[实施计划](cache-implementation-plan.md)的 C3a 先验证模块级分段二进制
-快照与独立源码位置映射。它不等于完整增量分析或已经实现证据卸载。
+[C3a](provenance-snapshot-c3a.md)已实现模块级分段二进制
+快照与独立源码位置映射；[C3b](cache-residual-c3b.md)验证闭合标量模板的
+关联恢复。它不等于完整增量分析或已经实现证据卸载。
+已实现 C3q1，解决内存图查询的暂停/恢复和覆盖状态，C3q2 验证了
+共享函数摘要及压缩调用拓扑，见[实现记录](provenance-query-c3q.md)。
+C3a 格式已落地。[C4a1](provenance-view-c4a1.md) 已实现物理块读取视图、
+lease 和原生查询按需读取。[C4a2](provenance-units-c4a2.md) 捕获实际特化
+身份并冻结函数 Import/SCC、决策和必需摘要闭包；
+[C4a3](provenance-function-queries-c4a3.md) 已接入函数视图和跨进程实验 CLI，
+支持来源、见证、拓扑与热决策读取，并提供真实 Stage 大函数测量。
+[C4b1](provenance-spill-c4b1.md) 和 [C4b2](provenance-recorder-spill-c4b2.md)
+已接入同次编译临时 spill、原生视图及辅助失败/发布边界。
+[C4b3b](provenance-working-set-c4b3b.md) 完成工作集计量/释放、真实崩溃
+回收及大图构建峰值实验验收；默认仍为 memory。C4c–C4e 继续推进查询状态
+checkpoint、有限域
+递归解释和纯计算重放。默认同步入口保留一百万状态上限、旧 complete 与文本，
+实验任务可以分 slice 继续推进。RFC 区分记录模型/求解精度、任务进度、详情可用性及展示进度，
+说明每类步骤的保存位置，不把一次查询暂停或细节未展开变成 Stage 错误。
+P1 的有限 Comptime 规则需独立产生摘要，当前纯折叠常量没有完整操作历史，
+因此持久化现有图不能自行恢复这些历史。
 [C1a](cache-identity-c1a.md)已有 checked-AST 语义指纹和 SourceAnchor
-编解码/当前位置映射；当前 Provenance 图尚未使用它们持久化 NodeId 或位置。
+编解码/当前位置映射；C3a 使用它们独立于源码偏移持久化图内 NodeId 和位置
+关联。图内 ID 仍不承诺跨语义修订稳定。
 
 回归测试覆盖冻结与消费、并发只读查询、快照生命周期、多来源、缓存复用、
 成员精度、副作用、局部契约、返回控制和递归部分覆盖。见

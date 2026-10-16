@@ -1,0 +1,7 @@
+// RUN: %run_snapshot %s
+fn scale(k: u32, x: u32) -> u32 { k * x }
+fn read() -> u32 { external_input() }
+let a = scale(4, external_input());
+let b = read();
+let c = read();
+let result = a + b + c;

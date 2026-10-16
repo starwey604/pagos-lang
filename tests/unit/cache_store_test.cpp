@@ -477,3 +477,112 @@ TEST_F(CacheStore, NonRegularEntriesCannotBecomeCacheCandidates) {
               StoreErrorCode::IoFailure);
 }
 } // namespace
+
+namespace {
+TEST_F(CacheStore, ReferenceLookupDoesNotReadEvenRequiredObjects) {
+    FileStore store(root);
+    const std::array artifacts{value(1, "a"), value(2, "b")};
+    ASSERT_TRUE(
+        store.publish(key, named("inputs"), named("result"), artifacts));
+    unsigned objects_read = 0;
+    StoreOptions options;
+    options.fault = [&](IoOperation operation, const fs::path& path) {
+        if (operation == IoOperation::ReadFile &&
+            path.parent_path().parent_path().filename() == "objects")
+            ++objects_read;
+        return std::error_code{};
+    };
+    FileStore reader(root, options);
+    auto refs = reader.lookup_references(key, named("inputs"));
+    ASSERT_TRUE(refs);
+    ASSERT_EQ(refs->artifacts.size(), 2U);
+    EXPECT_EQ(objects_read, 0U);
+    EXPECT_FALSE(refs->artifacts[0].bytes);
+    EXPECT_FALSE(refs->artifacts[1].bytes);
+    EXPECT_EQ(reader.read_object(refs->artifacts[0].object),
+              artifacts[0].bytes);
+    EXPECT_EQ(objects_read, 1U);
+    fs::remove(object(refs->artifacts[1].object));
+    EXPECT_TRUE(reader.lookup_references(key, named("inputs")));
+    EXPECT_EQ(reader.lookup(key, named("inputs")).error().code,
+              StoreErrorCode::MissingObject);
+    EXPECT_EQ(reader.read_object(refs->artifacts[1].object).error().code,
+              StoreErrorCode::MissingObject);
+}
+
+TEST_F(CacheStore, ExplicitObjectReadsCheckKindSizeHashAndPayloadVersion) {
+    FileStore store(root);
+    ASSERT_TRUE(publish(store));
+    const auto refs = store.lookup_references(key, named("inputs"));
+    ASSERT_TRUE(refs);
+    auto reference = refs->artifacts.front().object;
+    auto wrong = reference;
+    ++wrong.size;
+    EXPECT_EQ(store.read_object(wrong).error().code,
+              StoreErrorCode::CorruptObject);
+    wrong = reference;
+    wrong.kind = ObjectKind::QueryKey;
+    EXPECT_EQ(store.read_object(wrong).error().code,
+              StoreErrorCode::CorruptObject);
+    wrong.kind = static_cast<ObjectKind>(255);
+    EXPECT_EQ(store.read_object(wrong).error().code,
+              StoreErrorCode::InvalidRequest);
+    auto bytes = read(object(reference));
+    bytes.back() ^= 1;
+    write(object(reference), bytes);
+    EXPECT_EQ(store.read_object(reference).error().code,
+              StoreErrorCode::CorruptObject);
+}
+
+TEST_F(CacheStore, ReferenceReadOnlyMissDoesNotCreateDirectories) {
+    FileStore reader(root);
+    EXPECT_EQ(reader.lookup_references(key, named("inputs")).error().code,
+              StoreErrorCode::NotFound);
+    EXPECT_EQ(
+        reader.read_object({ObjectKind::EvidenceBlock, named("absent"), 10})
+            .error()
+            .code,
+        StoreErrorCode::MissingObject);
+    EXPECT_FALSE(fs::exists(root));
+}
+} // namespace
+
+namespace {
+TEST_F(CacheStore, LeafPublicationSharesCasWithoutCreatingQueryCandidates) {
+    FileStore store(root);
+    const auto artifact = value();
+    auto first = store.write_object(artifact.kind, artifact.bytes);
+    ASSERT_TRUE(first);
+    auto again = store.write_object(artifact.kind, artifact.bytes);
+    ASSERT_TRUE(again);
+    EXPECT_EQ(*first, *again);
+    EXPECT_EQ(store.read_object(*first), artifact.bytes);
+    EXPECT_FALSE(fs::exists(root / "queries"));
+    EXPECT_EQ(files("objects"), 1U);
+    EXPECT_EQ(files("tmp"), 0U);
+    EXPECT_EQ(publish(store), PublishResult::Published);
+    EXPECT_EQ(store.lookup(key, named("inputs"))->artifacts[0].object, *first);
+}
+
+TEST_F(CacheStore, LeafPublicationValidatesOptionsAndCleansFailedTemporary) {
+    StoreOptions invalid;
+    invalid.lock_timeout = std::chrono::milliseconds(-1);
+    auto result =
+        FileStore(root, invalid).write_object(ObjectKind::Value, value().bytes);
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error().code, StoreErrorCode::InvalidRequest);
+    EXPECT_FALSE(fs::exists(root));
+    StoreOptions failing;
+    failing.fault = [](IoOperation operation, const fs::path&) {
+        return operation == IoOperation::CloseTemporary
+                   ? std::make_error_code(std::errc::no_space_on_device)
+                   : std::error_code{};
+    };
+    result =
+        FileStore(root, failing).write_object(ObjectKind::Value, value().bytes);
+    EXPECT_FALSE(result);
+    EXPECT_EQ(files("tmp"), 0U);
+    EXPECT_EQ(files("objects"), 0U);
+    EXPECT_FALSE(fs::exists(root / "queries"));
+}
+} // namespace

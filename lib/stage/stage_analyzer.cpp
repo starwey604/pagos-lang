@@ -1,7 +1,9 @@
 #include "pagos/stage/stage_analyzer.h"
 
+#include "memory_accounting.h"
 #include "pagos/vm/evaluator.h"
 #include "provenance_recorder.h"
+#include "scalar_cache.h"
 
 #include <algorithm>
 #include <bit>
@@ -9,6 +11,7 @@
 #include <cstdint>
 #include <functional>
 #include <iterator>
+#include <new>
 #include <string>
 #include <utility>
 
@@ -91,9 +94,13 @@ std::optional<hir::RuntimeTrace> return_dependency(const hir::ExprPtr& value) {
 StageAnalyzer::StageAnalyzer(source::DiagnosticEngine& diagnostics,
                              const sema::TypeTable& types,
                              AnalysisLimits limits,
-                             std::optional<cache::QueryContext> query_context)
+                             std::optional<cache::QueryContext> query_context,
+                             CacheConfig cache_config,
+                             provenance::EvidenceBuildConfig evidence_config)
     : diagnostics_(diagnostics), types_(types), limits_(limits),
-      query_context_(std::move(query_context)) {}
+      query_context_(std::move(query_context)),
+      cache_config_(std::move(cache_config)),
+      evidence_config_(std::move(evidence_config)) {}
 
 StageAnalyzer::~StageAnalyzer() = default;
 
@@ -136,8 +143,7 @@ StageAnalyzer::substitute_trace(hir::RuntimeTrace trace,
         if (found == arguments.end())
             break;
         auto source = found->second;
-        source.path.insert(source.path.end(), trace.path.begin(),
-                           trace.path.end());
+        source.path.append(trace.path);
         trace = std::move(source);
     }
     return trace;
@@ -250,6 +256,7 @@ void StageAnalyzer::analyze_exports(const syntax::Module& module) {
 hir::ExprPtr
 StageAnalyzer::analyze_function_body(const syntax::Function& function,
                                      source::Span call_span) {
+    ++cache_telemetry_.body_evaluations;
     auto block_result = analyze_block(*function.body);
     auto result =
         make_sequence(std::move(block_result.effects),
@@ -377,10 +384,118 @@ hir::ExprPtr StageAnalyzer::instantiate_inline(
     return result;
 }
 
+void StageAnalyzer::release_working_state() {
+    const auto release = [](auto& table) {
+        std::decay_t<decltype(table)>{}.swap(table);
+    };
+    release(functions_);
+    release(records_);
+    release(scopes_);
+    release(call_stack_);
+    release(specialization_cache_);
+    release(active_specializations_);
+    release(residual_cache_);
+    release(active_residuals_);
+    release(residual_stack_);
+    release(boundary_functions_);
+    release(residual_functions_);
+    release(active_parameter_traces_);
+    scalar_cache_.reset();
+}
+StageWorkingMemory StageAnalyzer::working_memory() const {
+    StageWorkingMemory result;
+    const auto map = [&](const auto& table) {
+        result.tables_bytes += memory::map(table);
+        result.entries += table.size();
+    };
+    map(functions_);
+    map(records_);
+    map(specialization_cache_);
+    map(active_specializations_);
+    map(residual_cache_);
+    map(active_residuals_);
+    map(boundary_functions_);
+    map(active_parameter_traces_);
+    result.tables_bytes +=
+        memory::vector(scopes_) + memory::vector(call_stack_) +
+        memory::vector(residual_stack_) + memory::vector(residual_functions_);
+    for (const auto& scope : scopes_) {
+        map(scope);
+        for (const auto& [name, unused] : scope) {
+            (void)unused;
+            result.tables_bytes += memory::heap(name);
+        }
+    }
+    for (const auto& [name, unused] : functions_) {
+        (void)unused;
+        result.tables_bytes += memory::heap(name);
+    }
+    for (const auto& [name, unused] : records_) {
+        (void)unused;
+        result.tables_bytes += memory::heap(name);
+    }
+    for (const auto& [name, unused] : boundary_functions_) {
+        (void)unused;
+        result.tables_bytes += memory::heap(name);
+    }
+    for (const auto& name : call_stack_)
+        result.tables_bytes += memory::heap(name);
+    const auto args = [&](const auto& key) {
+        result.arguments_bytes += memory::vector(key.arguments);
+        for (const auto& arg : key.arguments) {
+            if constexpr (std::is_same_v<std::decay_t<decltype(arg)>,
+                                         hir::Constant>)
+                result.arguments_bytes += memory::heap(arg);
+            else
+                result.arguments_bytes +=
+                    memory::heap(arg.type) +
+                    (arg.constant ? memory::heap(*arg.constant) : 0);
+        }
+    };
+    for (const auto& [key, unused] : specialization_cache_) {
+        (void)unused;
+        args(key);
+    }
+    for (const auto& key : active_specializations_)
+        args(key);
+    for (const auto& [key, unused] : residual_cache_) {
+        (void)unused;
+        args(key);
+    }
+    for (const auto& [key, unused] : active_residuals_) {
+        (void)unused;
+        args(key);
+    }
+    if (scalar_cache_)
+        result.cache_bytes = scalar_cache_->memory_bytes();
+    return result;
+}
+
 std::unique_ptr<hir::Module>
 StageAnalyzer::analyze(const syntax::Module& module) {
-    provenance_ = std::make_unique<ProvenanceRecorder>();
+    provenance_ = std::make_unique<ProvenanceRecorder>(evidence_config_);
+    if (query_context_)
+        provenance_->identity(module, types_, *query_context_);
     stats_ = {};
+    memory_stats_ = {};
+    cache_telemetry_ = {};
+    scalar_cache_.reset();
+    fuel_capture_ = nullptr;
+    if (cache_config_.mode != CacheMode::Off) {
+        if (query_context_ && !cache_config_.directory.empty()) {
+            try {
+                scalar_cache_ = std::make_unique<ScalarCache>(
+                    module, types_, *query_context_, cache_config_,
+                    cache_telemetry_,
+                    evidence_config_.mode ==
+                        provenance::EvidenceBuildMode::Spill);
+            } catch (const std::bad_alloc&) {
+                ++cache_telemetry_.errors;
+            }
+        } else {
+            ++cache_telemetry_.errors;
+        }
+    }
     functions_.clear();
     records_.clear();
     scopes_.clear();
@@ -438,7 +553,8 @@ StageAnalyzer::analyze(const syntax::Module& module) {
                 return std::nullopt;
             };
             const auto trace = find_trace(initializer);
-            auto path = trace ? trace->path : std::vector<std::string>{};
+            auto path =
+                trace ? trace->path.to_vector() : std::vector<std::string>{};
             path.push_back("static storage initializer " + global.name);
             diagnostics_.report(
                 {.code = "E2010",
@@ -494,6 +610,17 @@ StageAnalyzer::analyze(const syntax::Module& module) {
     result->residual_functions = std::move(residual_functions_);
     result->provenance = provenance_->finish(*result);
     provenance_.reset();
+    if (scalar_cache_ && scalar_cache_->has_pending())
+        scalar_cache_->commit(!diagnostics_.has_error() &&
+                              result->provenance->available() &&
+                              result->provenance->validate_details());
+    if (evidence_config_.measure_memory) {
+        memory_stats_.measured = true;
+        memory_stats_.before_release = working_memory();
+    }
+    release_working_state();
+    if (evidence_config_.measure_memory)
+        memory_stats_.after_release = working_memory();
     return result;
 }
 
@@ -994,6 +1121,8 @@ bool StageAnalyzer::reserve_array(std::size_t count, const sema::Type& type,
     }
     stats_.array_elements_reserved += count;
     stats_.array_bytes_reserved += count * width;
+    if (fuel_capture_)
+        fuel_capture_->construct(count, type, span);
     return true;
 }
 
@@ -1079,7 +1208,7 @@ hir::ExprPtr StageAnalyzer::analyze_array_generator(
         }
         const auto trace =
             substitute_trace(*value->trace, active_parameter_traces_);
-        auto path = trace.path;
+        auto path = trace.path.to_vector();
         path.push_back("array generator " + position);
         diagnostics_.report({
             .severity = source::Severity::Error,
@@ -1678,12 +1807,93 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
         return nullptr;
     }
 
+    auto disk_query = key && scalar_cache_
+                          ? scalar_cache_->query(function, arguments)
+                          : std::nullopt;
+    if (disk_query) {
+        if (auto restored = scalar_cache_->load(*disk_query, arguments)) {
+            // Entry checks above and body charges below use the caller's
+            // current budgets. A failed replay changes no semantic state;
+            // normal evaluation then produces the original diagnostic site.
+            auto replay = stats_;
+            bool can_replay;
+            {
+                CacheTimer timer(cache_telemetry_.resource_ns,
+                                 cache_config_.measure_timings);
+                can_replay =
+                    replay.fuel_consumed <= limits_.fuel &&
+                    restored->body_fuel <= limits_.fuel - replay.fuel_consumed;
+                if (disk_query->construction_after) {
+                    const auto& type = disk_query->result_type;
+                    const std::size_t width =
+                        type.element_type() == sema::TypeKind::Bool
+                            ? 1
+                            : type.integer_type.width / 8;
+                    const auto count = type.length;
+                    // Legacy array quotas precede shared aggregate quotas.
+                    // Check before multiplying; failures discard the copy.
+                    can_replay &= !construction_budget_exhausted_ &&
+                                  count <= limits_.array_elements -
+                                               replay.array_elements_reserved &&
+                                  count <= (limits_.array_bytes -
+                                            replay.array_bytes_reserved) /
+                                               width;
+                    can_replay &=
+                        count <= limits_.aggregate_members -
+                                     replay.aggregate_members_reserved &&
+                        count <= (limits_.aggregate_bytes -
+                                  replay.aggregate_bytes_reserved) /
+                                     width;
+                    if (can_replay) {
+                        replay.array_elements_reserved += count;
+                        replay.array_bytes_reserved += count * width;
+                        ++replay.aggregate_constructions;
+                        replay.aggregate_members_reserved += count;
+                        replay.aggregate_bytes_reserved += count * width;
+                    }
+                }
+            }
+            if (can_replay) {
+                replay.fuel_consumed += restored->body_fuel;
+                ++replay.specializations;
+                replay.maximum_recursion_depth = std::max(
+                    replay.maximum_recursion_depth, call_stack_.size() + 1);
+                try {
+                    CacheTimer timer(cache_telemetry_.restore_ns,
+                                     cache_config_.measure_timings);
+                    auto value = hir::make_constant(
+                        std::move(restored->value.value), restored->value.type,
+                        restored->span);
+                    auto instance = instantiate_inline(value, {}, {});
+                    auto output = make_sequence(
+                        argument_work, std::move(instance), expression.span);
+                    specialization_cache_.emplace(*key, value);
+                    stats_ = replay;
+                    ++cache_telemetry_.hits;
+                    ++cache_telemetry_.bodies_skipped;
+                    return output;
+                } catch (const std::bad_alloc&) {
+                    ++cache_telemetry_.errors;
+                }
+            } else {
+                ++cache_telemetry_.budget_fallbacks;
+            }
+        }
+    }
+
+    auto residual_disk_query =
+        !key && residual_key && !recursive_expansion && scalar_cache_
+            ? scalar_cache_->query(function, arguments, true)
+            : std::nullopt;
+    const auto specializations_before = stats_.specializations;
+    const auto depth_before = call_stack_.size();
     if (key) {
         active_specializations_.insert(*key);
         ++stats_.specializations;
     }
     scopes_.emplace_back();
     std::vector<hir::ExprPtr> parameters;
+    std::vector<hir::ExprPtr> template_bindings;
     std::unordered_map<const hir::Expr*, hir::ExprPtr> substitutions;
     TraceArguments traces;
     for (std::size_t index = 0; index < function.parameters.size(); ++index) {
@@ -1714,6 +1924,7 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
         } else if (value->stage == hir::Stage::Runtime) {
             value = hir::with_trace_step(value, name);
         }
+        template_bindings.push_back(value);
         define(function.parameters[index].name, std::move(value));
     }
     call_stack_.push_back(function.name);
@@ -1735,10 +1946,46 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
         if (recursive_expansion)
             can_analyze = reserve_residual(*entry, expression.span);
     }
-    if (entry)
+    if (entry) {
+        provenance_->specialization(entry->definition, function, arguments);
         provenance_->enter_call(entry->definition, substitutions);
-    auto result = can_analyze ? analyze_function_body(function, expression.span)
-                              : nullptr;
+    }
+    ResourceCapture body_resources{.query = disk_query ? &*disk_query
+                                            : residual_disk_query
+                                                ? &*residual_disk_query
+                                                : nullptr};
+    auto* previous_capture = fuel_capture_;
+    if (disk_query || residual_disk_query)
+        fuel_capture_ = &body_resources;
+    auto result = [&] {
+        if (can_analyze && residual_disk_query) {
+            if (auto restored = scalar_cache_->load_residual(
+                    *residual_disk_query, function, template_bindings)) {
+                if (stats_.fuel_consumed <= limits_.fuel &&
+                    residual_disk_query->body_fuel <=
+                        limits_.fuel - stats_.fuel_consumed &&
+                    stats_.residual_specializations + residual_reservations_ <
+                        limits_.residual_specializations &&
+                    !residual_budget_exhausted_) {
+                    stats_.fuel_consumed += residual_disk_query->body_fuel;
+                    ++cache_telemetry_.hits;
+                    ++cache_telemetry_.residual_hits;
+                    ++cache_telemetry_.bodies_skipped;
+                    return *restored;
+                }
+                ++cache_telemetry_.budget_fallbacks;
+            }
+        }
+        CacheTimer timer(cache_telemetry_.evaluate_ns,
+                         cache_config_.measure_timings);
+        return can_analyze ? analyze_function_body(function, expression.span)
+                           : nullptr;
+    }();
+    fuel_capture_ = previous_capture;
+    if (disk_query && diagnostics_.size() == diagnostics_before)
+        scalar_cache_->publish(*disk_query, result, body_resources,
+                               call_stack_.size() - depth_before,
+                               stats_.specializations - specializations_before);
     if (entry)
         provenance_->leave_call();
     call_stack_.pop_back();
@@ -1784,6 +2031,10 @@ hir::ExprPtr StageAnalyzer::analyze_call(const syntax::CallExpr& expression) {
             residual_cache_.emplace(std::move(*residual_key), definition);
             residual_functions_.push_back(definition);
             ++stats_.residual_specializations;
+            if (residual_disk_query && !definition->recursive)
+                scalar_cache_->publish_residual(
+                    *residual_disk_query, function, definition->body,
+                    template_bindings, body_resources);
             result = make_residual_call(definition, arguments, expression.span);
         } else {
             result = instantiate_inline(result, substitutions, traces);
@@ -1964,7 +2215,7 @@ void StageAnalyzer::report_comptime_failure(
                      .message = "Runtime source `" + trace.origin_name + "`",
                      .heading = "runtime source introduced here"}},
         .help = "remove `comptime` or remove the Runtime dependency",
-        .dependency_path = trace.path,
+        .dependency_path = trace.path.to_vector(),
     };
     diagnostics_.report(std::move(diagnostic));
 }
@@ -1979,6 +2230,8 @@ sema::Type StageAnalyzer::type_of(const syntax::Expr& expression) const {
 
 bool StageAnalyzer::consume_fuel(source::Span span) {
     if (stats_.fuel_consumed < limits_.fuel) {
+        if (fuel_capture_)
+            fuel_capture_->consume(span);
         ++stats_.fuel_consumed;
         return true;
     }

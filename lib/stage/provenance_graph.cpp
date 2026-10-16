@@ -1,4 +1,5 @@
 #include "pagos/stage/provenance_graph.h"
+#include "pagos/stage/provenance_query.h"
 
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SmallVector.h>
@@ -40,17 +41,12 @@ bool may_share(Rule rule) {
            rule == Rule::Aggregate || rule == Rule::Parameter;
 }
 
-std::uint64_t state_key(QueryState state) {
-    return (static_cast<std::uint64_t>(state.context) << 32U) |
-           state.node.value;
-}
-
 } // namespace
 
 struct GraphData {
     std::vector<Node> nodes{Node{}};
     std::vector<Edge> edges;
-    std::vector<NodeId> summaries{NodeId{}};
+    std::vector<SummaryDescription> summaries{SummaryDescription{}};
     std::size_t intern_hits{};
 };
 
@@ -84,7 +80,7 @@ FrozenGraph::FrozenGraph(std::shared_ptr<const GraphData> data)
 FrozenGraph Builder::freeze() && {
     for (std::size_t index = 1; index < state().graph->summaries.size();
          ++index)
-        if (state().graph->summaries[index].value == 0)
+        if (state().graph->summaries[index].value.value == 0)
             throw std::logic_error("unpublished provenance summary");
     std::shared_ptr<const GraphData> data(std::move(state().graph));
     impl_.reset(); // Discard the construction-only interning index.
@@ -108,7 +104,16 @@ StoreStats FrozenGraph::stats() const {
             .node_capacity_bytes = data_->nodes.capacity() * sizeof(Node),
             .edge_capacity_bytes = data_->edges.capacity() * sizeof(Edge),
             .summary_capacity_bytes =
-                data_->summaries.capacity() * sizeof(NodeId)};
+                data_->summaries.capacity() * sizeof(SummaryDescription)};
+}
+
+std::span<const SummaryDescription> FrozenGraph::summaries() const {
+    return std::span(data_->summaries).subspan(1);
+}
+const SummaryDescription& FrozenGraph::summary(SummaryId id) const {
+    if (id.value == 0)
+        throw std::out_of_range("invalid provenance summary");
+    return data_->summaries.at(id.value);
 }
 
 const Node& Builder::node(NodeId id) const {
@@ -169,7 +174,7 @@ NodeId Builder::add(Rule rule, SiteId site, std::span<const Edge> inputs,
 
 SummaryId Builder::reserve_summary() {
     const auto id = SummaryId{checked_id(state().graph->summaries.size())};
-    state().graph->summaries.push_back({});
+    state().graph->summaries.push_back({.id = id});
     return id;
 }
 
@@ -178,9 +183,10 @@ void Builder::define_summary(SummaryId summary, NodeId root) {
     if (summary.value == 0)
         throw std::out_of_range("invalid provenance summary");
     auto& target = state().graph->summaries.at(summary.value);
-    if (target.value != 0)
+    if (target.value.value != 0)
         throw std::logic_error("provenance summary already published");
-    target = root;
+    target.value = root;
+    target.effects = root;
 }
 
 NodeId Builder::parameter(SummaryId owner, std::uint32_t slot, SiteId site) {
@@ -246,7 +252,7 @@ StoreStats Builder::stats() const {
         .node_capacity_bytes = state().graph->nodes.capacity() * sizeof(Node),
         .edge_capacity_bytes = state().graph->edges.capacity() * sizeof(Edge),
         .summary_capacity_bytes =
-            state().graph->summaries.capacity() * sizeof(NodeId),
+            state().graph->summaries.capacity() * sizeof(SummaryDescription),
         .intern_capacity_bytes =
             state().intern.getMemorySize() +
             state().collision_next.capacity() * sizeof(NodeId)};
@@ -255,131 +261,12 @@ StoreStats Builder::stats() const {
 QueryResult FrozenGraph::query(NodeId root, QueryKind kind,
                                bool shortest_witness,
                                std::size_t state_limit) const {
-    (void)node(root);
-    struct Visit {
-        QueryState state;
-        std::size_t predecessor{};
-    };
-    QueryResult result;
-    std::vector<Invocation> contexts(1);
-    llvm::DenseMap<std::uint64_t, std::uint32_t> context_ids;
-    llvm::DenseMap<std::uint64_t, std::size_t> visited;
-    std::vector<Visit> queue;
-    const auto enqueue = [&](QueryState state, std::size_t predecessor) {
-        const auto key = state_key(state);
-        if (visited.contains(key))
-            return;
-        if (queue.size() >= state_limit) {
-            result.complete = false;
-            return;
-        }
-        visited[key] = queue.size();
-        queue.push_back({state, predecessor});
-    };
-    constexpr auto no_predecessor = std::numeric_limits<std::size_t>::max();
-    enqueue({root, 0}, no_predecessor);
-    for (std::size_t cursor = 0; cursor < queue.size(); ++cursor) {
-        const auto state = queue[cursor].state;
-        const auto& current = node(state.node);
-        ++result.visited_states;
-        if (current.rule == Rule::Incomplete)
-            result.complete = false;
-        const bool source = kind == QueryKind::Value
-                                ? current.rule == Rule::Origin ||
-                                      current.rule == Rule::RuntimeBoundary
-                                : current.rule == Rule::Effect;
-        if (source) {
-            result.sources.push_back({state.node, current.site, state.context});
-            if (shortest_witness) {
-                for (auto path = cursor; path != no_predecessor;
-                     path = queue[path].predecessor)
-                    result.witness.push_back(queue[path].state);
-                std::ranges::reverse(result.witness);
-                // This query promises one witness, not all reachable sources.
-                result.complete = false;
-                break;
-            }
-        }
-        if (current.rule == Rule::Parameter) {
-            auto frame = state.context;
-            while (frame != 0 && contexts[frame].owner != current.owner)
-                frame = contexts[frame].parent;
-            if (frame == 0) {
-                result.complete = false;
-            } else {
-                const auto& context = contexts[frame];
-                const auto arguments = edges(context.call);
-                if (current.payload >= arguments.size()) {
-                    result.complete = false;
-                } else {
-                    ++result.visited_edges;
-                    enqueue({arguments[current.payload].target, context.parent},
-                            cursor);
-                }
-            }
-            continue;
-        }
-        if (current.rule == Rule::Call || current.rule == Rule::SummaryRef) {
-            const auto target = data_->summaries.at(current.payload);
-            if (target.value == 0) {
-                result.complete = false;
-                continue;
-            }
-            auto frame = state.context;
-            bool cut = false;
-            if (current.rule == Rule::Call) {
-                const auto owner = SummaryId{current.payload};
-                bool recursive = false;
-                for (auto parent = frame; parent != 0;
-                     parent = contexts[parent].parent)
-                    recursive |= contexts[parent].owner == owner;
-                if (recursive) {
-                    cut = true;
-                    result.complete = false;
-                    result.recursive_call_cut = true;
-                } else {
-                    const auto key = state_key(state);
-                    const auto found = context_ids.find(key);
-                    if (found != context_ids.end()) {
-                        frame = found->second;
-                    } else {
-                        const auto id = checked_id(contexts.size());
-                        contexts.push_back({state.node, frame, owner});
-                        context_ids[key] = id;
-                        frame = id;
-                    }
-                    ++result.visited_edges;
-                    enqueue({target, frame}, cursor);
-                }
-            } else {
-                ++result.visited_edges;
-                enqueue({target, frame}, cursor);
-            }
-            // Value queries bind only parameters actually used by the summary.
-            // Effect queries also inspect evaluation of every call argument.
-            if (kind != QueryKind::Effects && !cut)
-                continue;
-        }
-        for (const auto& edge : edges(state.node)) {
-            if (kind == QueryKind::Value &&
-                (edge.relation == Relation::Initializer ||
-                 edge.relation == Relation::Effect))
-                continue;
-            ++result.visited_edges;
-            enqueue({edge.target, state.context}, cursor);
-        }
-    }
-    result.contexts = contexts.size() - 1;
-    result.invocations = std::move(contexts);
-    std::ranges::sort(result.sources,
-                      [](const Source& left, const Source& right) {
-                          if (left.site != right.site)
-                              return left.site < right.site;
-                          if (left.context != right.context)
-                              return left.context < right.context;
-                          return left.node.value < right.node.value;
-                      });
-    return result;
+    auto task = begin_query(root, kind, shortest_witness);
+    task.legacy_limit(state_limit);
+    const auto page = task.advance(QuerySlice::unlimited());
+    if (page.progress == QueryProgress::Failed)
+        throw std::runtime_error("provenance query allocation failed");
+    return task.result();
 }
 
 } // namespace pagos::stage::provenance

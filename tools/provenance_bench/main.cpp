@@ -109,23 +109,29 @@ class Graph {
     StoreStats construction_stats_;
 };
 
-// Representation baseline, not another StageAnalyzer. This uses the real
-// RuntimeTrace and mirrors first-source selection, path copying and symbolic
-// substitution. It deliberately cannot supply a complete multi-source answer.
+// Historical vector-path representation baseline, not another StageAnalyzer.
+// Keep its copy costs stable after RuntimeTrace switches to shared prefixes.
+// It deliberately cannot supply a complete multi-source answer.
+struct CopiedRuntimeTrace {
+    pagos::source::Span origin_span;
+    std::string origin_name;
+    std::vector<std::string> path;
+    std::optional<std::size_t> parameter_id;
+};
 class Paths {
   public:
     NodeId add(Rule rule, SiteId site, std::span<const Edge> edges = {},
                std::uint32_t payload = 0, SummaryId owner = {},
                Sharing = Sharing::Unique) {
-        std::optional<pagos::hir::RuntimeTrace> trace;
+        std::optional<CopiedRuntimeTrace> trace;
         const auto name = label(site);
         if (rule == Rule::Origin || rule == Rule::RuntimeBoundary ||
             rule == Rule::SummaryRef) {
-            trace = pagos::hir::RuntimeTrace{.origin_span = {site, site},
-                                             .origin_name = name,
-                                             .path = {name}};
+            trace = CopiedRuntimeTrace{.origin_span = {site, site},
+                                       .origin_name = name,
+                                       .path = {name}};
         } else if (rule == Rule::Parameter) {
-            trace = pagos::hir::RuntimeTrace{
+            trace = CopiedRuntimeTrace{
                 .origin_span = {site, site},
                 .origin_name = name,
                 .path = {name},
@@ -224,7 +230,7 @@ class Paths {
     static std::string label(SiteId site) {
         return "site_" + std::to_string(site);
     }
-    std::vector<std::optional<pagos::hir::RuntimeTrace>> traces_{std::nullopt};
+    std::vector<std::optional<CopiedRuntimeTrace>> traces_{std::nullopt};
     std::vector<NodeId> summaries_{NodeId{}};
     std::unordered_map<std::uint32_t, std::vector<NodeId>> members_;
 };
@@ -464,8 +470,7 @@ template <typename Model> void run(Model& model, const Options& options) {
               << ",\"checksum\":" << checksum
               << ",\"node_bytes\":" << sizeof(Node)
               << ",\"edge_bytes\":" << sizeof(Edge)
-              << ",\"trace_bytes\":" << sizeof(pagos::hir::RuntimeTrace)
-              << "}\n";
+              << ",\"trace_bytes\":" << sizeof(CopiedRuntimeTrace) << "}\n";
 }
 
 } // namespace

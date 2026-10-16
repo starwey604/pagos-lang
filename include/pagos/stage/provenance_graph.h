@@ -87,6 +87,7 @@ struct Invocation {
     NodeId call;
     std::uint32_t parent{};
     SummaryId owner;
+    bool operator==(const Invocation&) const = default;
 };
 struct QueryResult {
     std::vector<Source> sources;
@@ -103,6 +104,15 @@ struct QueryResult {
 };
 
 struct GraphData;
+class QueryTask;
+class TopologyTask;
+class FormulaIndex;
+
+struct SummaryDescription {
+    SummaryId id;
+    NodeId value;
+    NodeId effects;
+};
 
 // Cheap copies share immutable storage. Publishing a graph still requires the
 // caller's normal thread synchronization and lifetime management.
@@ -111,6 +121,12 @@ class FrozenGraph {
     [[nodiscard]] const Node& node(NodeId id) const;
     [[nodiscard]] std::span<const Edge> edges(NodeId id) const;
     [[nodiscard]] StoreStats stats() const;
+    [[nodiscard]] std::span<const SummaryDescription> summaries() const;
+    [[nodiscard]] const SummaryDescription& summary(SummaryId id) const;
+    [[nodiscard]] QueryTask begin_query(NodeId root,
+                                        QueryKind kind = QueryKind::Value,
+                                        bool shortest_witness = false) const;
+    [[nodiscard]] TopologyTask begin_topology(NodeId root) const;
     [[nodiscard]] QueryResult query(NodeId root,
                                     QueryKind kind = QueryKind::Value,
                                     bool shortest_witness = false,

@@ -1,0 +1,3 @@
+// RUN: %run_cache %s %t.cache 20 5 7
+fn first(k: u32, x: u32, unused: u32) -> u32 { k * x }
+let result = first(4, external_input(), external_input());

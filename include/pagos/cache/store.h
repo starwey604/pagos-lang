@@ -95,6 +95,20 @@ class FileStore {
 
     [[nodiscard]] std::expected<Candidate, StoreError>
     lookup(const QueryKey& key, const Digest& verified_inputs) const;
+    // Validates only the manifest, key and inputs. Artifact bytes are empty;
+    // required objects have NOT been checked. Adapters must validate their
+    // required summary closure before accepting reuse, then load cold details
+    // on demand. This is not an interchangeable semantic cache hit API.
+    [[nodiscard]] std::expected<Candidate, StoreError>
+    lookup_references(const QueryKey& key, const Digest& verified_inputs) const;
+    // Reads and checks one complete CAS object, including its payload header.
+    // Neither operation creates directories, locks or objects on disk.
+    [[nodiscard]] std::expected<Bytes, StoreError>
+    read_object(const ObjectRef& reference) const;
+    // Leaf-object publication for immutable object DAGs. Does not publish a
+    // query candidate; the root manifest must be committed last by its adapter.
+    [[nodiscard]] std::expected<ObjectRef, StoreError>
+    write_object(ObjectKind kind, Bytes bytes) const;
     [[nodiscard]] std::expected<PublishResult, StoreError>
     publish(const QueryKey& key, const Digest& verified_inputs,
             const Digest& semantic_result,
@@ -103,6 +117,9 @@ class FileStore {
     [[nodiscard]] const std::filesystem::path& root() const { return root_; }
 
   private:
+    [[nodiscard]] std::expected<Candidate, StoreError>
+    lookup_candidate(const QueryKey& key, const Digest& verified_inputs,
+                     bool load_objects) const;
     std::filesystem::path root_;
     StoreOptions options_;
 };

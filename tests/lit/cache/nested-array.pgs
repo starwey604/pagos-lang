@@ -1,0 +1,5 @@
+// RUN: %run_cache %s %t 10 2
+fn table() -> [u32; 3] { [for i in 1..4 { i * i }] }
+fn lookup(n: u32) -> u32 { table()[n] }
+let selected = lookup(external_input());
+let result = selected + table()[0];

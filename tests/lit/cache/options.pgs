@@ -1,0 +1,15 @@
+// RUN: not %pagosc --stage-cache=read-write check %s 2>&1 | %FileCheck %s --check-prefix=DIR
+// RUN: not %pagosc --stage-cache=unknown check %s 2>&1 | %FileCheck %s --check-prefix=MODE
+// RUN: not %pagosc --cache-dir= check %s 2>&1 | %FileCheck %s --check-prefix=EMPTY
+// RUN: %pagosc --stage-cache=off --cache-dir=%t/off --cache-stats check %s 2>&1 | %FileCheck %s --check-prefix=OFF
+// RUN: %pagosc --stage-cache=read-only --cache-dir=%t/missing --cache-stats check %s 2>&1 | %FileCheck %s --check-prefix=READ
+// RUN: test ! -e %t
+fn square(x: u32) -> u32 { x * x }
+let result = square(7);
+// DIR: enabled Stage cache requires --cache-dir=PATH
+// MODE: invalid Stage cache mode: unknown
+// EMPTY: --cache-dir requires a non-empty path
+// OFF: stage-cache: lookups=0, hits=0, misses=0, writes=0
+// OFF-SAME: body-evaluations=1, bodies-skipped=0
+// READ: stage-cache: lookups=1, hits=0, misses=1, writes=0
+// READ-SAME: body-evaluations=1, bodies-skipped=0

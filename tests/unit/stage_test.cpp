@@ -32,6 +32,30 @@ struct StageInput {
     std::unique_ptr<pagos::syntax::Module> module;
 };
 
+TEST(StageTrace, LongSharedPrefixesStillReportEveryDependencyInOrder) {
+    constexpr unsigned count = 512;
+    std::string text = "let n0 = external_input(); ";
+    std::vector<std::string> expected{"external_input", "n0"};
+    for (unsigned i = 1; i < count; ++i) {
+        const auto name = "n" + std::to_string(i);
+        text += "let " + name + " = n" + std::to_string(i - 1) + " + 1; ";
+        expected.push_back(name);
+    }
+    text += "comptime let invalid = n511;";
+    expected.push_back("invalid");
+    StageInput input(std::move(text));
+    pagos::stage::StageAnalyzer analyzer(input.diagnostics,
+                                         input.checker.types());
+    const auto result = analyzer.analyze(*input.module);
+    ASSERT_EQ(input.diagnostics.size(), 1U);
+    const auto& diagnostic = input.diagnostics.diagnostics().front();
+    EXPECT_EQ(diagnostic.code, "E2001");
+    EXPECT_EQ(diagnostic.dependency_path, expected);
+    // Earlier bindings retain their own shorter, immutable path.
+    EXPECT_EQ(result->bindings.front().trace->path.to_vector(),
+              (std::vector<std::string>{"external_input", "n0"}));
+}
+
 TEST(StageBudget, ResetsReservationsBetweenAnalyses) {
     StageInput input("let table = [for i in 2..5 { i * i }];");
     pagos::stage::AnalysisLimits limits;

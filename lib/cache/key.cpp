@@ -95,10 +95,21 @@ std::expected<Bytes, Error> encode_query_key(const QueryKey& key,
                                              Limits limits) {
     if (!valid_context(key.context) || !valid_definition_id(key.definition) ||
         key.definition.module != key.context.module ||
-        key.definition.kind != DefinitionKind::Function)
+        (key.definition.kind != DefinitionKind::Function &&
+         !((key.kind == QueryKind::FreezeEvidence ||
+            key.kind == QueryKind::FreezeEvidencePositions) &&
+           key.definition.kind == DefinitionKind::Module)))
         return std::unexpected(Error::InvalidContext);
     if (key.kind != QueryKind::EvaluatePureSpecialization &&
-        key.kind != QueryKind::SpecializeResidual)
+        key.kind != QueryKind::SpecializeResidual &&
+        key.kind != QueryKind::FreezeEvidence &&
+        key.kind != QueryKind::FreezeEvidencePositions &&
+        key.kind != QueryKind::FreezeFunctionEvidence)
+        return std::unexpected(Error::InvalidValue);
+    if ((key.kind == QueryKind::FreezeEvidence ||
+         key.kind == QueryKind::FreezeEvidencePositions) &&
+        (!key.arguments.empty() ||
+         key.definition.kind != DefinitionKind::Module))
         return std::unexpected(Error::InvalidValue);
     wire::Writer writer(limits);
     wire::header(writer, ObjectKind::QueryKey);
@@ -135,14 +146,20 @@ decode_query_key(std::span<const std::uint8_t> bytes, Limits limits) {
     QueryKey key;
     key.kind = static_cast<QueryKind>(reader.u8());
     if (key.kind != QueryKind::EvaluatePureSpecialization &&
-        key.kind != QueryKind::SpecializeResidual)
+        key.kind != QueryKind::SpecializeResidual &&
+        key.kind != QueryKind::FreezeEvidence &&
+        key.kind != QueryKind::FreezeEvidencePositions &&
+        key.kind != QueryKind::FreezeFunctionEvidence)
         reader.fail(Error::InvalidFormat);
     key.context = context(reader);
     key.definition.module = key.context.module;
     key.definition.kind = static_cast<DefinitionKind>(reader.u8());
     key.definition.name = reader.string();
     if (!valid_definition_id(key.definition) ||
-        key.definition.kind != DefinitionKind::Function)
+        (key.definition.kind != DefinitionKind::Function &&
+         !((key.kind == QueryKind::FreezeEvidence ||
+            key.kind == QueryKind::FreezeEvidencePositions) &&
+           key.definition.kind == DefinitionKind::Module)))
         reader.fail(Error::InvalidContext);
     const auto hash = reader.raw(32);
     if (reader.good())
@@ -171,6 +188,11 @@ decode_query_key(std::span<const std::uint8_t> bytes, Limits limits) {
             reader.fail(Error::InvalidFormat);
         key.arguments.push_back(std::move(argument));
     }
+    if ((key.kind == QueryKind::FreezeEvidence ||
+         key.kind == QueryKind::FreezeEvidencePositions) &&
+        (!key.arguments.empty() ||
+         key.definition.kind != DefinitionKind::Module))
+        reader.fail(Error::InvalidFormat);
     if (const auto result = reader.finish(); !result)
         return std::unexpected(result.error());
     return key;

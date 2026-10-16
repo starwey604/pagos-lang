@@ -2,6 +2,7 @@
 #include "pagos/mir/lowering.h"
 #include "pagos/sema/type_checker.h"
 #include "pagos/stage/provenance_analysis.h"
+#include "pagos/stage/provenance_topology.h"
 #include "pagos/stage/stage_analyzer.h"
 #include "pagos/syntax/lexer.h"
 #include "pagos/syntax/parser.h"
@@ -534,6 +535,131 @@ TEST(StageProvenance, SnapshotOutlivesInputAndRepeatedAnalysis) {
     std::ostringstream explanation;
     stage::explain_provenance(*snapshot, explanation);
     EXPECT_NE(explanation.str().find("binding y: Runtime"), std::string::npos);
+}
+
+TEST(StageProvenanceQuery,
+     DisplayTaskOwnsSourceAndAnalysisAfterInputsDisappear) {
+    auto task = [] {
+        Input input(
+            "fn read() -> u32 { external_input() } let answer = read();");
+        stage::StageAnalyzer analyzer(input.diagnostics, input.checker.types());
+        const auto module = analyzer.analyze(*input.module);
+        EXPECT_FALSE(input.diagnostics.has_error());
+        stage::ProvenanceQueryTask task(
+            module->provenance, input.source,
+            root(*module->provenance, "answer").node);
+        (void)task.query().advance({1, 1, 1, 0});
+        return task;
+    }();
+    while (task.query().progress() != QueryProgress::Completed)
+        (void)task.query().advance({1, 1, 1, 1});
+    ASSERT_EQ(task.query().result().sources.size(), 1U);
+    const auto& site =
+        task.analysis().site(task.query().result().sources[0].site);
+    EXPECT_EQ(site.label, "external_input");
+    EXPECT_EQ(task.source().path(), "provenance.pgs");
+    EXPECT_EQ(task.source().position(site.span.begin).line, 1U);
+    EXPECT_NE(task.source().text().find("external_input"),
+              std::string_view::npos);
+}
+
+TEST(StageProvenanceQuery,
+     ExplicitScopesRetainFailedLocalContractsAndDecisions) {
+    Input input("fn require(x: u32) -> u32 { comptime let local = if x == 0 { "
+                "7 } else { 7 }; local } "
+                "let answer = require(external_input());");
+    stage::StageAnalyzer analyzer(input.diagnostics, input.checker.types());
+    const auto module = analyzer.analyze(*input.module);
+    ASSERT_TRUE(input.diagnostics.has_error());
+    const auto& analysis = *module->provenance;
+    const auto& local = root(analysis, "local");
+    ASSERT_NE(local.scope.value, 0U);
+    const auto& scope = analysis.scope(local.scope);
+    EXPECT_NE(scope.name.find("require"), std::string::npos);
+    ASSERT_EQ(scope.contracts.size(), 1U);
+    EXPECT_EQ(analysis.roots()[scope.contracts[0]].node, local.node);
+    const auto& event = decision(analysis, "local");
+    EXPECT_EQ(event.scope, scope.id);
+    EXPECT_NE(std::ranges::find(scope.decisions, event.node),
+              scope.decisions.end());
+    std::size_t events = 0, contracts = 0;
+    for (const auto& owner : analysis.scopes()) {
+        events += owner.decisions.size();
+        contracts += owner.contracts.size();
+        for (const auto node : owner.decisions)
+            EXPECT_EQ(analysis.decision(node)->scope, owner.id);
+        for (const auto i : owner.contracts)
+            EXPECT_EQ(analysis.roots()[i].scope, owner.id);
+    }
+    EXPECT_EQ(events, analysis.decisions().size());
+    EXPECT_EQ(contracts, 1U);
+    const auto& port = analysis.graph().summary(scope.id);
+    EXPECT_EQ(port.value, port.effects);
+    // The aborted body is a recorded gap, not a fabricated exact formula.
+    auto topology = analysis.graph().begin_topology(port.value);
+    while (topology.progress() != QueryProgress::Completed)
+        (void)topology.advance();
+    auto task = topology.index()->begin_sources(port.value);
+    while (task.progress() != QueryProgress::Completed)
+        (void)task.advance();
+    EXPECT_FALSE(task.result().complete);
+}
+
+TEST(StageProvenanceQuery, QueriesDoNotChangeCompilationOrDiagnostics) {
+    for (const std::string text :
+         {"fn scale(k: u32, x: u32) -> u32 { k * x } let a = external_input(); "
+          "let b = external_input(); let aa = scale(4, a); let bb = scale(4, "
+          "b);",
+          "fn read() -> u32 { external_input() } let a = read(); let b = "
+          "read(); let both = a + b;",
+          "fn first(x: u32, y: u32) -> u32 { x } let a = external_input(); let "
+          "r = first(a, external_input());",
+          "fn nested(x: u32) -> u32 { let a = [7, x]; a[0] } comptime let r = "
+          "nested(external_input());",
+          "fn require(x: u32) -> u32 { comptime let local = if x == 0 { 7 } "
+          "else { 7 }; local } let r = require(external_input());"}) {
+        Input input(text);
+        stage::StageAnalyzer analyzer(input.diagnostics, input.checker.types());
+        const auto module = analyzer.analyze(*input.module);
+        const auto stats = analyzer.stats();
+        std::ostringstream hir_before, diagnostics_before, legacy;
+        hir::print(*module, hir_before);
+        input.diagnostics.render(diagnostics_before);
+        stage::explain_provenance(*module->provenance, legacy);
+        for (const auto mode :
+             {stage::ProvenanceQueryOptions::Mode::Resumable,
+              stage::ProvenanceQueryOptions::Mode::Compressed}) {
+            std::ostringstream output, telemetry;
+            stage::explain_provenance_experimental(*module->provenance, output,
+                                                   telemetry, {mode, 1, true});
+            EXPECT_EQ(output.str(), legacy.str());
+            EXPECT_NE(telemetry.str().find("provenance-query"),
+                      std::string::npos);
+        }
+        std::ostringstream hir_after, diagnostics_after;
+        hir::print(*module, hir_after);
+        input.diagnostics.render(diagnostics_after);
+        EXPECT_EQ(hir_after.str(), hir_before.str());
+        EXPECT_EQ(diagnostics_after.str(), diagnostics_before.str());
+        const auto& after = analyzer.stats();
+        EXPECT_EQ(after.fuel_consumed, stats.fuel_consumed);
+        EXPECT_EQ(after.specializations, stats.specializations);
+        EXPECT_EQ(after.cache_hits, stats.cache_hits);
+        EXPECT_EQ(after.maximum_recursion_depth, stats.maximum_recursion_depth);
+        EXPECT_EQ(after.array_elements_reserved, stats.array_elements_reserved);
+        EXPECT_EQ(after.array_bytes_reserved, stats.array_bytes_reserved);
+        EXPECT_EQ(after.aggregate_constructions, stats.aggregate_constructions);
+        EXPECT_EQ(after.aggregate_members_reserved,
+                  stats.aggregate_members_reserved);
+        EXPECT_EQ(after.aggregate_bytes_reserved,
+                  stats.aggregate_bytes_reserved);
+        EXPECT_EQ(after.residual_specializations,
+                  stats.residual_specializations);
+        EXPECT_EQ(after.residual_cache_hits, stats.residual_cache_hits);
+        if (!input.diagnostics.has_error()) {
+            EXPECT_TRUE(mir::lower(*module));
+        }
+    }
 }
 
 } // namespace

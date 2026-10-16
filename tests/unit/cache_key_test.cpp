@@ -5,6 +5,49 @@ namespace {
 using namespace pagos;
 using namespace pagos::cache;
 
+TEST(CacheKey, DefinitionCatalogMatchesFullIdentityAndValidation) {
+    cache_test::Input input("record R { a: u32 } fn f(x: u32) -> u32 { let a = "
+                            "[7, x]; a[0] + x } let a = f(3);");
+    const auto full = input.identity();
+    const auto catalog = stage::build_definition_catalog(
+        *input.module, input.checker.types(), cache_test::context());
+    ASSERT_TRUE(full);
+    ASSERT_TRUE(catalog);
+    EXPECT_EQ(catalog->module_fingerprint, full->module_fingerprint);
+    ASSERT_EQ(catalog->definitions.size(), full->definitions.size());
+    for (std::size_t i = 0; i < full->definitions.size(); ++i) {
+        const auto& a = full->definitions[i];
+        const auto& b = catalog->definitions[i];
+        EXPECT_EQ(a.id, b.id);
+        EXPECT_EQ(a.semantic_fingerprint, b.semantic_fingerprint);
+        EXPECT_EQ(a.parameters, b.parameters);
+        EXPECT_EQ(a.result, b.result);
+    }
+    for (const auto limits :
+         {Limits{.bytes = 8}, Limits{.elements = 3}, Limits{.depth = 1}}) {
+        const auto a =
+            stage::build_cache_identity(*input.module, input.checker.types(),
+                                        cache_test::context(), limits);
+        const auto b = stage::build_definition_catalog(
+            *input.module, input.checker.types(), cache_test::context(),
+            limits);
+        ASSERT_FALSE(a);
+        ASSERT_FALSE(b);
+        EXPECT_EQ(a.error(), b.error());
+    }
+    auto wrong = cache_test::context(64);
+    EXPECT_EQ(stage::build_definition_catalog(*input.module,
+                                              input.checker.types(), wrong)
+                  .error(),
+              Error::InvalidContext);
+    input.module->functions.front()->name_span = {9, 3};
+    EXPECT_EQ(stage::build_definition_catalog(
+                  *input.module, input.checker.types(), cache_test::context())
+                  .error(),
+              Error::InvalidAnchor);
+    EXPECT_EQ(input.identity().error(), Error::InvalidAnchor);
+}
+
 TEST(CacheKey, WhitespaceCommentsAndIntegerSeparatorsPreserveIdentity) {
     cache_test::Input first(
         "fn square(x: u32) -> u32 { x * 1000 } let result = square(7);");

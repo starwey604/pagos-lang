@@ -59,7 +59,10 @@ struct StageArgument {
 };
 enum class QueryKind : std::uint8_t {
     EvaluatePureSpecialization = 1,
-    SpecializeResidual = 2
+    SpecializeResidual = 2,
+    FreezeEvidence = 3,
+    FreezeEvidencePositions = 4,
+    FreezeFunctionEvidence = 5
 };
 struct QueryKey {
     QueryKind kind{QueryKind::EvaluatePureSpecialization};

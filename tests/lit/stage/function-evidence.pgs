@@ -1,0 +1,3 @@
+// RUN: %run_function_evidence %t.dir | %FileCheck %s
+// CHECK: function evidence: independent reads, lazy siblings, scopes, revisions and failures verified
+let placeholder = 0;

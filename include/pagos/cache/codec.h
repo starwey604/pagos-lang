@@ -22,7 +22,15 @@ inline constexpr std::uint32_t budget_protocol_version = 1;
 enum class ObjectKind : std::uint8_t {
     Value = 1,
     QueryKey = 2,
-    SourceAnchor = 3
+    SourceAnchor = 3,
+    ResourceRecipe = 4,
+    ProvenanceSnapshot = 5,
+    ProvenancePositions = 6,
+    ResidualTemplate = 7,
+    EvidenceBlock = 8,
+    EvidenceRoot = 9,
+    EvidenceSummary = 10,
+    EvidenceDetail = 11
 };
 enum class Error {
     UnsupportedType,

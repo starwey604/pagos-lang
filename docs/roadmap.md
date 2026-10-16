@@ -123,7 +123,36 @@ compression, and database indexes require later measurements.
 [C1a](cache-identity-c1a.md) is complete: canonical codecs, checked-AST identities,
 source anchors, and driver-supplied query context. [C1b](cache-store-c1b.md)
 is complete: filesystem manifests, a CAS, atomic publication and recovery.
-C2a pure scalar reuse is next; evaluation reuse and snapshots remain planned.
+[C2a](cache-scalar-c2a.md) is complete: experimental pure scalar reuse with
+budget and provenance equivalence, explicit cache modes, and physical telemetry.
+[C2b](cache-array-c2b.md) is complete: closed scalar arrays/generators, ordered
+resource templates, runtime bounds equivalence and independent-process
+measurements. [C3a snapshots](provenance-snapshot-c3a.md) and
+[C3b scalar residual templates](cache-residual-c3b.md) are complete.
+
+[C3q1/C3q2](provenance-query-c3q.md) are complete: resumable memory queries,
+shared dependency formulas, explicit decision/contract scopes and paginated
+compact topology. C3a now persists module evidence and independent source
+revisions; C3b reuses closed scalar HIR with mandatory evidence and resource
+validation. [C4a1](provenance-view-c4a1.md) provides manifest reference reads,
+memory/disk evidence views, pinned block lifetimes and native lazy queries.
+[C4a2](provenance-units-c4a2.md) captures actual specialization identities,
+freezes local IDs and Imports/SCCs and validates hot root closures/decisions.
+[C4a3](provenance-function-queries-c4a3.md) completes lazy function queries,
+CLI reads without Stage, and real large-function measurements. C4a is complete.
+[C4b1](provenance-spill-c4b1.md) adds the independent segmented/spill builder;
+[C4b2](provenance-recorder-spill-c4b2.md) integrates Recorder/CLI, auxiliary
+failures and publication guards. [C4b3a](provenance-trace-c4b3a.md) shares
+RuntimeTrace prefixes and adds independent Stage build/query measurements.
+[C4b3b](provenance-working-set-c4b3b.md) completes retained-work accounting,
+working-table release, real Stage crash/cleanup tests and large-graph build-peak
+acceptance. Spill remains explicit; small tasks show no stable net benefit.
+C4c is the next implementation step.
+C4b-C4e cover construction spill, persistent query checkpoints,
+finite-domain recursive explanations and pure detail replay. These extensions
+are explanation capabilities, not new Stage inference rules. Query work limits,
+recorded coverage, loaded detail, and UI expansion remain separate; evidence
+storage does not require enumerating every path or dynamic recursive call.
 
 ## Milestone 3: Bare-metal systems slice
 

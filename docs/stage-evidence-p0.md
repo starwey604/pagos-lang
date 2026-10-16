@@ -237,12 +237,17 @@ JSON 的 `measurement` 标明该采集方式；未修改脚本默认的 GNU time
 P0 完成后，先插入 [Cache Architecture RFC](cache-architecture-rfc.md)，
 明确语义查询、稳定身份、依赖验证、残留工作、预算及证据存储边界。
 该 RFC 先规划纯 Comptime 结果的缓存实验，不把磁盘数据库作为 P1 前提。
-[实施计划](cache-implementation-plan.md)将 C1–C3 拆成六轮，默认采用文件
+[实施计划](cache-implementation-plan.md)保留原缓存轮次，默认采用文件
 索引、CAS 与分段二进制证据快照；先完成协议及真实计算复用的验证，
 不等待数据库、mmap 或压缩选型。
 [C1a](cache-identity-c1a.md)已交付稳定身份与规范编码，
-[C1b](cache-store-c1b.md)已交付文件存储。下一轮为 C2a 纯标量复用；
-Analyzer 的求值与本节 P0 证据记录路径保持原状。
+[C1b](cache-store-c1b.md)已交付文件存储，
+[C2a](cache-scalar-c2a.md)与[C2b](cache-array-c2b.md)已交付默认关闭的
+纯标量及封闭数组复用。C3q1/C3q2 已验证可恢复查询与共享摘要；
+[C3a](provenance-snapshot-c3a.md)已固定模块快照格式，
+[C3b](cache-residual-c3b.md)已验证闭合标量残留模板与必需证据恢复。
+C4a–C4e 分别规划按需读取、构建期卸载、任务 checkpoint、有限域递归求解
+与纯重放。这些查询/存储能力不改变本节 P0 的决策权或 Stage 语义。
 再补 P1 的有限 Comptime 理由：已选静态分支、纯运算摘要、
 调用结果和特化的依据，并测量记录成本。随后单独实现相同标量常量的分支收敛，
 新增语义规则、更新规范、检查两种条件下的效果与陷阱。

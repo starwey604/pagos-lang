@@ -5,6 +5,7 @@
 
 # Local caches and Python bytecode
 /.cache/
+/.pagos-cache/
 __pycache__/
 *.py[cod]
 

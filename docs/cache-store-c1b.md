@@ -4,6 +4,7 @@
 [迭代计划](cache-implementation-plan.md)的 C1b，依赖
 [C1a 协议](cache-identity-c1a.md)。本轮提供独立文件存储与故障恢复，
 没有接入 Analyzer 求值或增加 `pagosc` 缓存选项。
+后续 [C2a](cache-scalar-c2a.md)已接入纯标量实验，并添加 ResourceRecipe 种类。
 
 ## 接口与适用性边界
 
@@ -23,6 +24,13 @@ Candidate 只表示存储校验成功。恢复前仍须由适配器解码负载�
 提供的语义结果指纹完整。本轮支持 C1a 的 Value、QueryKey 和 SourceAnchor
 种类，CAS 验证共同格式/种类头；具体负载语义解码属于调用方。
 新资源、快照和模板种类在后续加入明确标签与版本检查。
+
+[C4a1](provenance-view-c4a1.md) 增加 `lookup_references()` 和 `read_object()`：
+先只读取 manifest 引用，再按需读取完整 CAS 对象。引用读取没有检查必需
+对象的存在性或内容，不能代替语义缓存的 `lookup()`；后者仍在原有锁范围
+内读取全部 artifact。新增 EvidenceBlock 种类用于物理证据块。
+[C4a2](provenance-units-c4a2.md) 增加 `write_object()` 用于不可变对象 DAG 的
+叶发布；函数适配器校验 Import/摘要闭包并最后发布根 manifest。
 
 ## 文件索引与格式
 

@@ -1,0 +1,6 @@
+// RUN: %run_cache %s %t 18 31 32
+fn mark(n: u32) -> u32 { external_input(); n }
+fn ignore(n: u32) -> u32 { 9 }
+let a = ignore(mark(5));
+let b = ignore(mark(5));
+let result = a + b;

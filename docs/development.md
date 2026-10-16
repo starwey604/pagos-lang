@@ -75,6 +75,39 @@ builds, and `asan` for AddressSanitizer plus UndefinedBehaviorSanitizer.
 
 ## Run the Compiler
 
+### Experimental Stage cache
+
+The cache is off by default. C2a admits internal pure leaf functions with all
+Comptime scalar arguments, a scalar result, and a statement-free arithmetic,
+comparison, conversion, or parameter expression body. Unsupported programs use
+normal analysis. See the [C2a implementation](cache-scalar-c2a.md) for the exact
+admission rules and resource protocol. [C2b](cache-array-c2b.md) extends this
+to a single fixed-length scalar array literal or arithmetic generator. Ordinary
+calls, local statements, array parameters, and array-call arguments carrying
+residual work remain outside admission.
+
+```sh
+build/debug/pagosc --stage-cache=read-write --cache-dir=.pagos-cache \
+    --cache-stats explain-stage tests/lit/cache/pure-scalar.pgs
+build/debug/pagosc --stage-cache=read-only --cache-dir=.pagos-cache \
+    --cache-stats explain-stage tests/lit/cache/pure-scalar.pgs
+```
+
+`--stage-cache=off|read-write|read-only` selects the experimental mode; enabling
+it requires an explicit non-empty `--cache-dir=PATH`. The root `.pagos-cache/`
+is ignored by Git. Off mode performs no cache IO, and read-only mode does not
+create directories or publish objects. Storage failures fall back to analysis.
+The existing semantic budgets apply on cold and hot runs, including fuel,
+recursion depth, specialization count, and array/shared aggregate quotas.
+
+`--cache-stats` writes one separate `stage-cache:` line to stderr after Stage
+analysis. `hits` and `bodies-skipped` count successful disk reuse;
+`body-evaluations` counts actual function-body analyses, including unsupported
+functions. The explain-stage AnalysisStats line keeps its original logical
+meaning and session-local hit counts. Without the telemetry flag, cache outcomes
+do not add output or diagnostics. C2b adds opt-in physical phase timings; see its
+implementation record for measured results and their limits.
+
 ### RV32 environment probe
 
 Run `python3 scripts/check_rv32.py` with QEMU 11.1.1, Clang/LLD 22, and
@@ -345,18 +378,103 @@ Build `release`, then run:
 python3 scripts/benchmark.py --output build/benchmarks/baseline.json
 ```
 
-The Linux measurement script uses Python and GNU `/usr/bin/time`. It measures
-six bounded workloads across `check`, `emit-mir`, and `emit-llvm`, with two
-warmups and seven samples each. JSON records median/range, per-process peak
-RSS, output sizes, stage counters, input/binary hashes, budgets, machine, and
-tool versions. Wall time includes process startup and the measurement wrapper;
-differences between commands are not precise phase timings. Avoid concurrent
+The Linux measurement script uses Python and per-child `os.wait4`. It measures
+seven bounded workloads across `check`, `emit-mir`, and `emit-llvm`, with two
+warmups and seven samples each. JSON records all samples plus median/range,
+per-process peak RSS, output sizes, stage counters, input/binary hashes, budgets,
+machine, and
+tool versions. Wall time includes process startup, output capture and wait4
+polling at a 1 ms interval. Differences between commands are not precise phase
+timings. Avoid concurrent
 builds/tests and compare repeated runs on the same machine. Reports stay under
 ignored `build/`; keep only concise conclusions in the preparation plan.
 Use `--reference-compiler /path/to/old/build/release/pagosc` for alternating
 old/new samples with reversed order on each repeat. Both binaries must be
 Release builds; results include the reference hash/revision and paired ratios.
 This helps distinguish machine-wide fluctuations from implementation changes.
+
+Use `--cache-modes=all` for independent off/cold/hot measurements. Cold clears
+its disk cache before each child; hot uses a separately seeded read-only cache.
+OS page caches are uncontrolled. Samples include disk file counts/bytes and
+`--cache-stats` phase times; read/publish include codecs and checksums, while
+nested body evaluation times overlap. `--case benchmarks/closed-generator.pgs`
+and `--command check` select workloads/commands; both options are repeatable.
+See [C2b measurements](cache-array-c2b.md) for phase boundaries and results.
+
+The [C3q query lab](provenance-query-c3q.md) separates formula preparation from
+resumable and compressed query costs, including selected invocation paths:
+
+```sh
+cmake --build --preset release
+python3 scripts/benchmark_provenance_queries.py \
+  --output build/benchmarks/provenance-c3q.json
+```
+
+It requires Linux `wait4` for per-child peak RSS. Experimental query flags apply
+only to `explain-provenance`; default compiler behavior remains unchanged.
+
+C3a evidence snapshots and C3b closed scalar residual templates are documented
+in [snapshot implementation](provenance-snapshot-c3a.md) and
+[residual implementation](cache-residual-c3b.md). Snapshot reading is an explicit
+experiment which parses/checks current identity and restores evidence without
+Stage analysis. Residual reuse remains controlled by stage-cache, default off.
+
+```sh
+build/debug/pagosc --snapshot-write=build/evidence explain-provenance example.pgs
+build/debug/pagosc --snapshot-read=build/evidence explain-provenance example.pgs
+cmake --build --preset release
+python3 scripts/benchmark_evidence.py --output build/benchmarks/evidence-c3.json
+```
+
+The measurement separates snapshot encoding/checksum/restoration/query, whole
+filesystem restoration, and off/cold/hot residual reuse. Snapshot IO currently
+reads full objects; borrowed section spans do not imply lazy disk access.
+
+[C4a3 function evidence](provenance-function-queries-c4a3.md) adds a separate
+function/SCC format and a lazy reader. Reading parses/typechecks the current
+source identity, loads required hot summaries and skips Stage. Cold topology is
+read only for the selected query; decisions use hot metadata alone.
+
+```sh
+build/debug/pagosc --evidence-write=build/function-evidence \
+  --evidence-root=aa explain-provenance example.pgs
+build/debug/pagosc --evidence-read=build/function-evidence \
+  --evidence-root=aa --evidence-mode=witness --max-fuel=0 \
+  --provenance-slice=128 --provenance-query-stats \
+  explain-provenance example.pgs
+cmake --build --preset release
+python3 scripts/benchmark_function_evidence.py \
+  --output build/benchmarks/function-evidence-c4a3.json
+```
+
+`--evidence-mode` accepts `sources`, `witness`, `topology` and `decisions`.
+For decisions, `--evidence-root` selects a scope name, including `module`;
+all same-name specializations are listed. `--evidence-cache-bytes=N` bounds
+retained decoded SCC buffers (default 4 MiB, zero allowed), not whole-process
+memory. Snapshot and function evidence flags are mutually exclusive. The
+benchmark compares lazy queries with full graph restoration and reports
+per-child RSS including startup and source checking; no construction spill is
+implemented.
+
+[C4b1 construction storage](provenance-spill-c4b1.md) adds the C++
+`EvidenceBuilder` API for append-time sealing, temporary spill, pinned old
+blocks and delayed summary binding. That iteration supplied storage only. [C4b2](provenance-recorder-spill-c4b2.md) now
+integrates Stage Recorder and explicit CLI controls:
+
+```sh
+build/debug/pagosc --evidence-spill=build/evidence-tmp \
+  --spill-block-bytes=65536 --spill-resident-bytes=8388608 \
+  --spill-cache-bytes=1048576 --spill-disk-bytes=268435456 \
+  --spill-on-error=memory --spill-stats check example.pgs
+```
+
+The resident buffer limit excludes hot metadata, external pins and codec
+temporaries. Native source/topology queries retain the disk view; explicit
+compressed queries and snapshot/function exports restore the compatibility
+graph. Stage continues when evidence becomes unavailable, while related
+semantic publications are withheld. C4b3a adds shared RuntimeTrace prefixes and
+real Stage measurements. C4b3b adds retained-work accounting, crash/cleanup
+validation and measured large-graph peak savings; memory remains the default.
 
 ### Regression commands
 
@@ -430,3 +548,42 @@ the exact input-read sequence, rejecting missing or extra reads. Execution
 has a timeout to catch broken loop backedges. The harness lives in
 `tests/lit/Inputs/`; it exercises alias identity, evaluation order, short
 circuiting, loop boundaries, discarded results, and specialization-cache hits.
+
+## Stage path and spill measurements
+
+[C4b3a](provenance-trace-c4b3a.md) measures real Stage construction independently
+from native evidence queries and an optional retained-path census:
+
+```sh
+cmake --build --preset release --target pagos_stage_spill_bench
+python3 scripts/benchmark_stage_spill.py \
+  --output build/benchmarks/stage-spill.json
+```
+
+The script records every sample and build/source identity. Build/query children
+never allocate the census traversal index. Whole-process RSS includes the front
+end and HIR; build-plus-query RSS is not an isolated query peak. An optional
+`--baseline` and matching `--baseline-identity` compare a preserved earlier
+Release probe. The archived report contains that dirty baseline's hashes; HEAD
+alone cannot reconstruct it. CAS counters are logical payload IO, not total
+system IO. C4b3b supplies the broader workload and IO report below.
+
+[C4b3b](provenance-working-set-c4b3b.md) adds the broader real Stage corpus with
+Recorder definition identity, separate build/query RSS windows, capacity census,
+and Linux process IO counters. Temporary files default to `build/benchmarks/`;
+use `--work-dir` to select the filesystem being measured.
+
+```sh
+python3 scripts/benchmark_stage_working_set.py \
+  --output build/benchmarks/stage-working-set.json
+build/debug/pagosc reclaim-evidence build/evidence-tmp
+```
+
+Reclamation is explicit and only removes recognized, unlocked task namespaces;
+active views/builders and unknown markers are skipped. A killed process leaves
+its directory until explicit maintenance. Unmarked early-creation debris and
+legacy directories require offline inspection. The CAS disk quota excludes the
+26-byte task marker and filesystem metadata. `--spill-stats` adds an opt-in
+metadata/working-table capacity census; these capacities are not a total RSS
+limit. Large-graph peak savings meet C4b's experimental gate; no general speedup
+or small-task memory benefit is claimed.

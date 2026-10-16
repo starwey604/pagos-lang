@@ -17,6 +17,37 @@ config.test_exec_root = config.pagos_test_exec_root
 config.substitutions.append(("%pagosc", config.pagosc))
 config.substitutions.append(("%FileCheck", config.filecheck))
 config.substitutions.append((
+    "%run_stage_spill",
+    " ".join(shlex.quote(value) for value in [config.python,
+        os.path.join(config.pagos_test_source_root, "Inputs", "run_stage_spill.py"), config.pagosc, config.test_clang]),
+))
+config.substitutions.append((
+    "%run_function_evidence",
+    " ".join(shlex.quote(value) for value in [config.python,
+        os.path.join(config.pagos_test_source_root, "Inputs", "run_function_evidence.py"), config.pagosc]),
+))
+config.substitutions.append((
+    "%run_snapshot",
+    " ".join(shlex.quote(value) for value in [config.python,
+        os.path.join(config.pagos_test_source_root, "Inputs", "run_snapshot.py"), config.pagosc]),
+))
+config.substitutions.append((
+    "%run_array_bounds",
+    " ".join(shlex.quote(value) for value in [
+        config.python,
+        os.path.join(config.pagos_test_source_root, "Inputs", "run_array_bounds.py"),
+        config.pagosc, config.test_clang,
+    ]),
+))
+config.substitutions.append((
+    "%run_cache",
+    " ".join(shlex.quote(value) for value in [
+        config.python,
+        os.path.join(config.pagos_test_source_root, "Inputs", "run_cache.py"),
+        config.pagosc, config.test_clang,
+    ]),
+))
+config.substitutions.append((
     "%run_sections",
     " ".join(shlex.quote(value) for value in [
         config.python, os.path.join(config.pagos_test_source_root, "Inputs", "run_sections.py"),

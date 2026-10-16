@@ -120,6 +120,7 @@ class Reader {
         return bytes_.size() - offset_;
     }
     [[nodiscard]] bool good() const { return !error_; }
+    [[nodiscard]] const Limits& limits() const { return limits_; }
     [[nodiscard]] std::expected<void, Error> finish() {
         if (!error_ && remaining() != 0)
             fail(Error::InvalidFormat);

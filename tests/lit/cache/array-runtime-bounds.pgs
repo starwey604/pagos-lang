@@ -1,0 +1,5 @@
+// RUN: %run_array_bounds %s %t
+fn table() -> [u32; 4] { [for i in 1..5 { i * i }] }
+let a = table();
+let b = table();
+let result = a[external_input()] + b[0];
