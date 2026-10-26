@@ -641,3 +641,12 @@ ctest --test-dir build/debug \
   -R 'QueryCheckpointTest.Topology|ProvenanceTopology|pagos-topology-checkpoint-process' \
   --output-on-failure
 ```
+
+[C4c3b](provenance-topology-storage-c4c3b.md) adds explicit topology
+`save_segmented` and `offload`; task-store restore detects v3/v4 automatically.
+`state_memory()` separates task tables from externally retained formula indexes;
+`storage_stats()` describes the last segmented IO operation. Offloaded reads can
+pause with `storage_failure()` and retry after repair. Topology restore still
+materializes all tables. The independent Release `pagos_query_task_bench` and
+`scripts/benchmark_query_tasks.py` compare native paging and topology state;
+`pagos-query-task-benchmark-smoke` runs small correctness checks in CTest.

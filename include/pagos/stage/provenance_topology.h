@@ -91,6 +91,21 @@ class EvidenceTopologyTask {
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
+// Container capacities and hash value/bucket storage; excludes node links,
+// allocator metadata, graph leases and caller-owned copies of pages/indexes.
+struct TopologyStateMemory {
+    std::size_t queue{}, visited{}, formula_records{}, formula_terms{},
+        formula_index{}, calls{}, local_queue{}, local_seen{}, families{},
+        delivery{};
+    // Separately retained published index, observed through a weak reference.
+    std::size_t retained_index{};
+    bool offloaded{};
+};
+struct TopologyStorageStats {
+    std::size_t segment_reads{}, segment_writes{}, bytes_read{},
+        bytes_submitted{}, cas_bytes_added{}, reused_objects{},
+        peak_codec_buffers{}, logical_bytes{};
+};
 inline constexpr std::uint32_t topology_engine_version = 1;
 // Physical topology, followed by slice-bounded formula preparation. This is
 // structural completeness; it does not assert all concrete sources were read.
@@ -115,6 +130,22 @@ class TopologyTask {
     restore(QueryCheckpointBinding binding, const cache::TaskStore& store,
             const cache::TaskHead& head, NodeId root,
             cache::Limits limits = {});
+    // Fixed-record segments, including a flat terms table; no full byte
+    // snapshot.
+    [[nodiscard]] std::expected<cache::TaskHead, CheckpointError>
+    save_segmented(const cache::TaskStore& store,
+                   std::uint64_t expected_generation,
+                   std::size_t segment_bytes = 64 * 1024,
+                   cache::Limits limits = {}) const;
+    // Publish first, then release owned task/index tables and the active lease.
+    [[nodiscard]] std::expected<cache::TaskHead, CheckpointError>
+    offload(const cache::TaskStore& store, std::uint64_t expected_generation,
+            std::size_t segment_bytes = 64 * 1024, cache::Limits limits = {});
+    [[nodiscard]] TopologyStateMemory state_memory() const;
+    // Counters for the last segmented save/restore, not persistent logical
+    // work.
+    [[nodiscard]] const TopologyStorageStats& storage_stats() const;
+    [[nodiscard]] const std::optional<CheckpointError>& storage_failure() const;
     ~TopologyTask();
     TopologyTask(TopologyTask&&) noexcept;
     TopologyTask& operator=(TopologyTask&&) noexcept;
@@ -134,6 +165,12 @@ class TopologyTask {
     friend class FrozenGraph;
     struct Impl;
     TopologyTask(FrozenGraph graph, NodeId root);
+    [[nodiscard]] std::expected<void, CheckpointError> ensure_resident() const;
+    [[nodiscard]] static std::expected<TopologyTask, CheckpointError>
+    restore_segmented(QueryCheckpointBinding binding,
+                      const cache::TaskStore& store,
+                      const cache::TaskHead& head, NodeId root,
+                      cache::Limits limits, cache::Bytes bytes);
     std::unique_ptr<Impl> impl_;
 };
 } // namespace pagos::stage::provenance

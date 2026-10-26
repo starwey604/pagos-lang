@@ -1563,4 +1563,290 @@ TEST_F(QueryCheckpointTest,
     selected.evidence().evict();
     EXPECT_THROW((void)index->begin_invocation(calls), std::runtime_error);
 }
+std::size_t topology_bytes(const TopologyStateMemory& value) {
+    return value.queue + value.visited + value.formula_records +
+           value.formula_terms + value.formula_index + value.calls +
+           value.local_queue + value.local_seen + value.families +
+           value.delivery;
+}
+TEST_F(QueryCheckpointTest,
+       TopologySegmentedEveryPhaseOffloadsAndRestoresAcknowledgedPages) {
+    publish();
+    for (auto name : {"aa", "rr"}) {
+        auto view = open();
+        const auto selected = root(view, name);
+        auto id = task_id;
+        id.bytes[0] = name == std::string_view("aa") ? 0 : 1;
+        auto store = cache::TaskStore::open(directory / "topology", id,
+                                            cache::TaskAccess::ReadWrite);
+        ASSERT_TRUE(store);
+        TopologyTask task(binding(view), id, selected),
+            oracle(view.view(), selected);
+        const auto expected = finish_topology(oracle);
+        std::vector<TopologyRecord> records;
+        std::uint64_t generation = 0;
+        for (unsigned step = 0; step < 10000; ++step) {
+            const auto page = task.advance({1, 1, 1, 1});
+            ASSERT_NE(page.progress, QueryProgress::Failed);
+            const auto work = task.stats();
+            const auto saved = task.offload(*store, generation, 90);
+            ASSERT_TRUE(saved) << static_cast<int>(saved.error().code);
+            generation = saved->generation;
+            EXPECT_TRUE(task.state_memory().offloaded);
+            EXPECT_EQ(topology_bytes(task.state_memory()), 0U);
+            EXPECT_GT(task.storage_stats().segment_writes, 0U);
+            auto reader = cache::TaskStore::open(directory / "topology", id,
+                                                 cache::TaskAccess::ReadOnly);
+            ASSERT_TRUE(reader);
+            auto restored = TopologyTask::restore(binding(open()), *reader,
+                                                  *saved, selected);
+            ASSERT_TRUE(restored) << static_cast<int>(restored.error().code);
+            equal_topology_work(work, restored->stats());
+            EXPECT_GT(restored->storage_stats().segment_reads, 0U);
+            task = std::move(*restored);
+            if (page.sequence) {
+                const auto replay = task.advance({0, 0, 0, 0});
+                EXPECT_EQ(replay.sequence, page.sequence);
+                EXPECT_EQ(replay.records, page.records);
+                ASSERT_TRUE(task.acknowledge(page.sequence));
+                records.insert(records.end(), page.records.begin(),
+                               page.records.end());
+            }
+            if (page.progress == QueryProgress::Completed)
+                break;
+            ASSERT_LT(step, 9999U);
+        }
+        EXPECT_EQ(records, expected);
+        equal_formulas(*task.index(), *oracle.index());
+        equal_topology_work(task.stats(), oracle.stats());
+        // The byte v3 compatibility encoder still works after a v4 restore.
+        const auto old = task.checkpoint();
+        ASSERT_TRUE(old);
+        ASSERT_TRUE(TopologyTask::restore(binding(view), id, selected, *old));
+    }
+}
+TEST_F(QueryCheckpointTest,
+       TopologyOffloadReleasesWideFrontierAndRetriesReadFailure) {
+    publish(wide_program(513));
+    auto view = open(8 * 1024 * 1024);
+    const auto selected = aggregate_root(view, root(view));
+    bool fail = false;
+    cache::TaskStoreOptions options;
+    options.store.fault = [&](cache::IoOperation operation, const fs::path&) {
+        return fail && operation == cache::IoOperation::ReadFile
+                   ? std::make_error_code(std::errc::io_error)
+                   : std::error_code{};
+    };
+    auto store = cache::TaskStore::open(directory / "topology", task_id,
+                                        cache::TaskAccess::ReadWrite, options);
+    ASSERT_TRUE(store);
+    TopologyTask task(binding(view), task_id, selected),
+        oracle(view.view(), selected);
+    (void)finish_topology(oracle);
+    const auto page = task.advance({1, 256, 0, 257});
+    const auto before = task.state_memory();
+    EXPECT_GE(before.queue, 257 * sizeof(NodeId));
+    EXPECT_GT(before.visited, 0U);
+    const auto work = task.stats();
+    ASSERT_TRUE(task.offload(*store, 0, 256));
+    EXPECT_EQ(topology_bytes(task.state_memory()), 0U);
+    fail = true;
+    EXPECT_EQ(task.advance().progress, QueryProgress::Paused);
+    ASSERT_TRUE(task.storage_failure());
+    EXPECT_EQ(topology_bytes(task.state_memory()), 0U);
+    equal_topology_work(work, task.stats());
+    task.cancel();
+    EXPECT_EQ(task.advance().progress, QueryProgress::Cancelled);
+    fail = false;
+    const auto replay = task.advance();
+    EXPECT_EQ(replay.sequence, page.sequence);
+    EXPECT_EQ(replay.records, page.records);
+    EXPECT_EQ(task.progress(), QueryProgress::Cancelled);
+    ASSERT_TRUE(task.acknowledge(page.sequence));
+    EXPECT_EQ(task.advance().progress, QueryProgress::Cancelled);
+    task.resume();
+    (void)finish_topology(task, {17, 23, 11, 7});
+    ASSERT_FALSE(task.storage_failure());
+    equal_formulas(*task.index(), *oracle.index());
+    equal_topology_work(task.stats(), oracle.stats());
+}
+TEST_F(QueryCheckpointTest,
+       TopologyOffloadDetachesPublishedIndexWithoutInvalidatingItsQueries) {
+    publish();
+    auto view = open(1024 * 1024);
+    const auto selected = root(view);
+    auto store = cache::TaskStore::open(directory / "topology", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    TopologyTask task(binding(view), task_id, selected);
+    (void)finish_topology(task);
+    auto published = task.index();
+    ASSERT_TRUE(published);
+    const auto work = task.stats();
+    auto selected_query = published->begin_sources(selected);
+    ASSERT_TRUE(task.offload(*store, 0, 90));
+    EXPECT_EQ(topology_bytes(task.state_memory()), 0U);
+    EXPECT_GT(task.state_memory().retained_index, 0U);
+    EXPECT_FALSE(published->formulas().empty());
+    (void)selected_query.advance(QuerySlice::unlimited());
+    EXPECT_FALSE(selected_query.result().sources.empty());
+    const auto restored = task.index(); // Explicit materialization.
+    ASSERT_TRUE(restored);
+    equal_formulas(*restored, *published);
+    equal_topology_work(work, task.stats());
+    ASSERT_TRUE(task.offload(*store, 1, 90));
+    EXPECT_GT(task.state_memory().retained_index, 0U);
+}
+TEST_F(QueryCheckpointTest,
+       TopologySegmentedLimitsReuseAndFailedSavePreserveOldHead) {
+    publish();
+    auto view = open();
+    const auto selected = root(view);
+    auto store = cache::TaskStore::open(directory / "topology", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    TopologyTask task(binding(view), task_id, selected);
+    (void)task.advance({2, 3, 1, 2});
+    EXPECT_EQ(task.save_segmented(*store, 0, 71).error().code,
+              CheckpointErrorCode::LimitExceeded);
+    EXPECT_EQ(task.save_segmented(*store, 0, 90, {.bytes = 350}).error().code,
+              CheckpointErrorCode::LimitExceeded);
+    EXPECT_FALSE(fs::exists(store->directory() / "objects"));
+    const auto first = task.save_segmented(*store, 0, 90);
+    ASSERT_TRUE(first);
+    const auto second = task.save_segmented(*store, 1, 90);
+    ASSERT_TRUE(second);
+    EXPECT_EQ(first->manifest, second->manifest);
+    EXPECT_EQ(task.storage_stats().cas_bytes_added, 0U);
+    EXPECT_GT(task.storage_stats().reused_objects, 0U);
+    const auto retained = topology_bytes(task.state_memory());
+    EXPECT_FALSE(task.offload(*store, 1, 90));
+    EXPECT_EQ(topology_bytes(task.state_memory()), retained);
+    auto reader = cache::TaskStore::open(directory / "topology", task_id,
+                                         cache::TaskAccess::ReadOnly);
+    ASSERT_TRUE(reader);
+    EXPECT_EQ(task.offload(*reader, 2, 90).error().storage->code,
+              cache::StoreErrorCode::ReadOnly);
+    EXPECT_EQ(topology_bytes(task.state_memory()), retained);
+    // Explicit v3 publication may update a v4 topology head and vice versa.
+    const auto old = task.save(*store, 2);
+    ASSERT_TRUE(old);
+    ASSERT_TRUE(task.save_segmented(*store, 3, 90));
+    ASSERT_TRUE(TopologyTask::restore(binding(view), *store, *old, selected));
+}
+TEST_F(QueryCheckpointTest,
+       TopologySegmentedTablesSurpassSingleObjectLimitAndValidateDirectory) {
+    publish(wide_program(257));
+    auto view = open(8 * 1024 * 1024);
+    const auto selected = root(view);
+    auto store = cache::TaskStore::open(directory / "topology", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    TopologyTask task(binding(view), task_id, selected);
+    (void)finish_topology(task, QuerySlice::unlimited());
+    EXPECT_FALSE(task.checkpoint({.bytes = 4096}));
+    auto saved = task.save_segmented(*store, 0, 1024, {.bytes = 4096});
+    ASSERT_TRUE(saved);
+    auto restored = TopologyTask::restore(binding(view), *store, *saved,
+                                          selected, {.bytes = 4096});
+    ASSERT_TRUE(restored);
+    equal_formulas(*task.index(), *restored->index());
+    auto bytes = store->read(saved->manifest);
+    ASSERT_TRUE(bytes);
+    // First table descriptor follows the fixed control + delivery fields and
+    // two counts.
+    constexpr auto descriptor = 295 + 8;
+    (*bytes)[descriptor] = 1; // Queue must start at zero.
+    bytes->resize(bytes->size() - 32);
+    const auto checksum = cache::fingerprint("pagos.topology-task.v1", *bytes);
+    bytes->insert(bytes->end(), checksum.bytes.begin(), checksum.bytes.end());
+    auto writer = store->begin(saved->generation);
+    ASSERT_TRUE(writer);
+    auto root_ref =
+        writer->write(cache::ObjectKind::QueryTaskManifest, std::move(*bytes));
+    ASSERT_TRUE(root_ref);
+    auto malformed = writer->commit(*root_ref, saved->status);
+    ASSERT_TRUE(malformed);
+    EXPECT_EQ(TopologyTask::restore(binding(view), *store, *malformed, selected)
+                  .error()
+                  .code,
+              CheckpointErrorCode::Corrupt);
+}
+TEST_F(QueryCheckpointTest,
+       TopologySegmentedQuotaPublicationFaultAndResealedLeafAreRecoverable) {
+    publish(wide_program(64));
+    auto view = open(4 * 1024 * 1024);
+    const auto selected = aggregate_root(view, root(view));
+    cache::TaskStoreOptions quota;
+    quota.disk_bytes = 2048;
+    auto small = cache::TaskStore::open(directory / "topology", task_id,
+                                        cache::TaskAccess::ReadWrite, quota);
+    ASSERT_TRUE(small);
+    TopologyTask task(binding(view), task_id, selected);
+    ASSERT_TRUE(task.save_segmented(*small, 0, 90));
+    const auto page = task.advance({1, 64, 0, 65});
+    const auto memory = topology_bytes(task.state_memory());
+    EXPECT_EQ(task.offload(*small, 1, 90).error().code,
+              CheckpointErrorCode::LimitExceeded);
+    EXPECT_EQ((**small->head()).generation, 1U);
+    EXPECT_EQ(topology_bytes(task.state_memory()), memory);
+    bool fail = true;
+    cache::TaskStoreOptions options;
+    options.store.fault = [&](cache::IoOperation operation,
+                              const fs::path& path) {
+        return fail && operation == cache::IoOperation::PublishManifest &&
+                       path.filename() == "head"
+                   ? std::make_error_code(std::errc::io_error)
+                   : std::error_code{};
+    };
+    auto larger = cache::TaskStore::open(directory / "topology", task_id,
+                                         cache::TaskAccess::ReadWrite, options);
+    ASSERT_TRUE(larger);
+    EXPECT_FALSE(task.offload(*larger, 1, 90));
+    EXPECT_EQ((**larger->head()).generation, 1U);
+    EXPECT_EQ(task.advance().records, page.records);
+    fail = false;
+    const auto saved = task.offload(*larger, 1, 90);
+    ASSERT_TRUE(saved);
+    auto manifest = larger->read(saved->manifest);
+    ASSERT_TRUE(manifest);
+    cache::wire::Reader descriptor{std::span(*manifest).subspan(295 + 8), {}};
+    EXPECT_EQ(descriptor.u32(), 0U);
+    ASSERT_GT(descriptor.u32(), 0U);
+    cache::ObjectRef ref;
+    ref.kind = static_cast<cache::ObjectKind>(descriptor.u8());
+    const auto hash = descriptor.raw(32);
+    std::ranges::copy(hash, ref.digest.bytes.begin());
+    ref.size = descriptor.u64();
+    auto payload = larger->read(ref);
+    ASSERT_TRUE(payload);
+    (*payload)[13] ^= 1; // Authentic CAS with the wrong segment task identity.
+    auto writer = larger->begin(saved->generation);
+    ASSERT_TRUE(writer);
+    const auto invalid_leaf = writer->write(
+        cache::ObjectKind::QueryStateSegment, std::move(*payload));
+    ASSERT_TRUE(invalid_leaf);
+    std::ranges::copy(invalid_leaf->digest.bytes,
+                      manifest->begin() + 295 + 8 + 9);
+    manifest->resize(manifest->size() - 32);
+    const auto checksum =
+        cache::fingerprint("pagos.topology-task.v1", *manifest);
+    manifest->insert(manifest->end(), checksum.bytes.begin(),
+                     checksum.bytes.end());
+    const auto invalid_root = writer->write(
+        cache::ObjectKind::QueryTaskManifest, std::move(*manifest));
+    ASSERT_TRUE(invalid_root);
+    const auto bad = writer->commit(*invalid_root, saved->status);
+    ASSERT_TRUE(bad);
+    EXPECT_EQ(TopologyTask::restore(binding(view), *larger, *bad, selected)
+                  .error()
+                  .code,
+              CheckpointErrorCode::Corrupt);
+    // A retained old head and the offloaded task both still refer to valid
+    // leaves.
+    ASSERT_TRUE(
+        TopologyTask::restore(binding(view), *larger, *saved, selected));
+    EXPECT_EQ(task.advance().records, page.records);
+    EXPECT_FALSE(task.storage_failure());
+}
 } // namespace

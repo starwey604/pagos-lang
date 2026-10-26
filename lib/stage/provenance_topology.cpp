@@ -3,6 +3,7 @@
 #include "pagos/stage/provenance_snapshot.h"
 
 #include <algorithm>
+#include <array>
 #include <optional>
 #include <stdexcept>
 #include <unordered_set>
@@ -33,10 +34,10 @@ bool terminal(Rule rule, QueryKind kind) {
                 ? rule == Rule::Origin || rule == Rule::RuntimeBoundary
                 : rule == Rule::Effect);
 }
-// QueryTaskManifest v3 is the symbolic topology task. Native query manifests
-// retain versions 1 (resident) and 2 (paged); tasks cannot change kind in
-// place.
+// Symbolic topology uses v3 resident and v4 segmented manifests. Native queries
+// retain v1/v2; a task cannot change between native and symbolic query kinds.
 constexpr std::uint32_t topology_manifest_version = 3;
+constexpr std::uint32_t topology_segmented_version = 4;
 CheckpointError codec_error(cache::Error error) {
     return {error == cache::Error::IncompatibleVersion
                 ? CheckpointErrorCode::IncompatibleVersion
@@ -203,6 +204,16 @@ struct TopologyTask::Impl {
     cache::Digest task_id;
     std::uint64_t acknowledged{};
     std::optional<TopologyPage> unconfirmed;
+    struct Offloaded {
+        cache::TaskStore store;
+        cache::TaskHead head;
+        cache::Limits limits;
+        QueryProgress resume_progress;
+        std::weak_ptr<const FormulaIndex> retained;
+    };
+    std::optional<Offloaded> offloaded;
+    std::optional<CheckpointError> storage_error;
+    TopologyStorageStats io;
     QueryProgress progress{QueryProgress::Running};
     std::uint64_t sequence{};
     std::vector<NodeId> queue;
@@ -381,11 +392,18 @@ struct TopologyTask::Impl {
             bytes += formula.terms.capacity() * sizeof(NodeId);
     }
     void validate();
+    void write_control(cache::wire::Writer& writer,
+                       std::uint32_t version) const;
+    static TopologyTask read_control(QueryCheckpointBinding binding,
+                                     cache::Digest task_id, NodeId root,
+                                     cache::wire::Reader& reader,
+                                     std::uint32_t version);
     static void identity(cache::wire::Reader& reader,
                          const QueryCheckpointBinding& binding,
-                         cache::Digest task, NodeId root) {
+                         cache::Digest task, NodeId root,
+                         std::uint32_t version = topology_manifest_version) {
         cache::wire::header(reader, cache::ObjectKind::QueryTaskManifest);
-        if (reader.u32() != topology_manifest_version ||
+        if (reader.u32() != version ||
             reader.u32() != topology_engine_version ||
             reader.u32() != provenance_record_model)
             reader.fail(cache::Error::IncompatibleVersion);
@@ -429,20 +447,45 @@ const TopologyStats& TopologyTask::stats() const {
     return impl_->index->stats_;
 }
 std::shared_ptr<const FormulaIndex> TopologyTask::index() const {
+    if (!ensure_resident())
+        throw std::runtime_error("topology state unavailable");
     return progress() == QueryProgress::Completed ? impl_->index : nullptr;
 }
 void TopologyTask::cancel() {
+    if (impl_->offloaded) {
+        auto& logical = impl_->offloaded->resume_progress;
+        if (logical == QueryProgress::Running ||
+            logical == QueryProgress::Paused)
+            impl_->progress = logical = QueryProgress::Cancelled;
+        return;
+    }
     if (progress() == QueryProgress::Running ||
         progress() == QueryProgress::Paused)
         impl_->progress = QueryProgress::Cancelled;
 }
 void TopologyTask::resume() {
+    if (impl_->offloaded) {
+        auto& logical = impl_->offloaded->resume_progress;
+        if (logical == QueryProgress::Paused ||
+            logical == QueryProgress::Cancelled)
+            logical = QueryProgress::Running;
+        impl_->progress = logical;
+        return;
+    }
     if (progress() == QueryProgress::Paused ||
         progress() == QueryProgress::Cancelled)
         impl_->progress = QueryProgress::Running;
 }
 TopologyPage TopologyTask::advance(QuerySlice slice,
                                    std::stop_token cancellation) {
+    if (auto ready = ensure_resident(); !ready) {
+        TopologyPage page;
+        page.task = impl_->task_id;
+        page.progress = impl_->progress;
+        page.failure = EvidenceError{
+            EvidenceErrorCode::IoFailure, ready.error().storage, {}};
+        return page;
+    }
     if (impl_->unconfirmed) {
         if (cancellation.stop_requested())
             cancel();
@@ -492,6 +535,8 @@ TopologyPage TopologyTask::advance(QuerySlice slice,
     return page;
 }
 bool TopologyTask::acknowledge(std::uint64_t sequence) {
+    if (!ensure_resident())
+        return false;
     auto& task = *impl_;
     if (!task.binding)
         return false;
@@ -503,8 +548,36 @@ bool TopologyTask::acknowledge(std::uint64_t sequence) {
     task.unconfirmed.reset();
     return true;
 }
+void TopologyTask::Impl::write_control(cache::wire::Writer& writer,
+                                       std::uint32_t version) const {
+    cache::wire::header(writer, cache::ObjectKind::QueryTaskManifest);
+    writer.u32(version);
+    writer.u32(topology_engine_version);
+    writer.u32(provenance_record_model);
+    writer.raw(binding->closure_.bytes);
+    writer.raw(binding->positions_.bytes);
+    writer.raw(binding->revision_.bytes);
+    writer.raw(task_id.bytes);
+    writer.u32(root.value);
+    writer.u8(static_cast<std::uint8_t>(progress));
+    writer.u64(sequence);
+    writer.u64(acknowledged);
+    auto stats = index->stats_;
+    counters(stats, [&](std::size_t value) { writer.u64(value); });
+    writer.u64(cursor);
+    writer.u64(edge_cursor);
+    writer.u64(link_cursor);
+    writer.boolean(active);
+    writer.boolean(preparing);
+    writer.u64(formula_cursor);
+    writer.u64(local_cursor);
+    writer.u64(local_edge);
+    writer.boolean(local_active);
+}
 std::expected<cache::Bytes, CheckpointError>
 TopologyTask::checkpoint(cache::Limits limits) const {
+    if (auto ready = ensure_resident(); !ready)
+        return std::unexpected(ready.error());
     const auto& task = *impl_;
     if (!task.binding || task.progress == QueryProgress::Failed)
         return std::unexpected(
@@ -515,29 +588,7 @@ TopologyTask::checkpoint(cache::Limits limits) const {
         auto bounds = limits;
         bounds.bytes -= 32;
         cache::wire::Writer writer(bounds);
-        cache::wire::header(writer, cache::ObjectKind::QueryTaskManifest);
-        writer.u32(topology_manifest_version);
-        writer.u32(topology_engine_version);
-        writer.u32(provenance_record_model);
-        writer.raw(task.binding->closure_.bytes);
-        writer.raw(task.binding->positions_.bytes);
-        writer.raw(task.binding->revision_.bytes);
-        writer.raw(task.task_id.bytes);
-        writer.u32(task.root.value);
-        writer.u8(static_cast<std::uint8_t>(task.progress));
-        writer.u64(task.sequence);
-        writer.u64(task.acknowledged);
-        auto stats = task.index->stats_;
-        counters(stats, [&](std::size_t value) { writer.u64(value); });
-        writer.u64(task.cursor);
-        writer.u64(task.edge_cursor);
-        writer.u64(task.link_cursor);
-        writer.boolean(task.active);
-        writer.boolean(task.preparing);
-        writer.u64(task.formula_cursor);
-        writer.u64(task.local_cursor);
-        writer.u64(task.local_edge);
-        writer.boolean(task.local_active);
+        task.write_control(writer, topology_manifest_version);
         const auto nodes = [&](const auto& values) {
             writer.count(values.size());
             for (auto value : values)
@@ -590,33 +641,45 @@ TopologyTask::checkpoint(cache::Limits limits) const {
             CheckpointError{CheckpointErrorCode::LimitExceeded, {}});
     }
 }
+TopologyTask TopologyTask::Impl::read_control(QueryCheckpointBinding binding,
+                                              cache::Digest task_id,
+                                              NodeId root,
+                                              cache::wire::Reader& reader,
+                                              std::uint32_t version) {
+    Impl::identity(reader, binding, task_id, root, version);
+    TopologyTask result(std::move(binding), task_id, root);
+    auto& task = *result.impl_;
+    task.queue.clear();
+    task.visited.clear();
+    task.index->formulas_.clear();
+    task.index->formula_ids_.clear();
+    task.progress = static_cast<QueryProgress>(reader.u8());
+    task.sequence = reader.u64();
+    task.acknowledged = reader.u64();
+    counters(task.index->stats_,
+             [&](std::size_t& value) { value = size(reader); });
+    task.cursor = size(reader);
+    task.edge_cursor = size(reader);
+    task.link_cursor = size(reader);
+    task.active = reader.boolean();
+    task.preparing = reader.boolean();
+    task.formula_cursor = size(reader);
+    task.local_cursor = size(reader);
+    task.local_edge = size(reader);
+    task.local_active = reader.boolean();
+    if (!reader.good())
+        finish(reader);
+    return result;
+}
 std::expected<TopologyTask, CheckpointError>
 TopologyTask::restore(QueryCheckpointBinding binding, cache::Digest task_id,
                       NodeId root, std::span<const std::uint8_t> bytes,
                       cache::Limits limits) {
     try {
         cache::wire::Reader reader(verified(bytes, limits), limits);
-        Impl::identity(reader, binding, task_id, root);
-        TopologyTask result(std::move(binding), task_id, root);
+        auto result = Impl::read_control(std::move(binding), task_id, root,
+                                         reader, topology_manifest_version);
         auto& task = *result.impl_;
-        task.queue.clear();
-        task.visited.clear();
-        task.index->formulas_.clear();
-        task.index->formula_ids_.clear();
-        task.progress = static_cast<QueryProgress>(reader.u8());
-        task.sequence = reader.u64();
-        task.acknowledged = reader.u64();
-        counters(task.index->stats_,
-                 [&](std::size_t& value) { value = size(reader); });
-        task.cursor = size(reader);
-        task.edge_cursor = size(reader);
-        task.link_cursor = size(reader);
-        task.active = reader.boolean();
-        task.preparing = reader.boolean();
-        task.formula_cursor = size(reader);
-        task.local_cursor = size(reader);
-        task.local_edge = size(reader);
-        task.local_active = reader.boolean();
         const auto nodes = [&](auto& values) {
             const auto count = reader.count(4);
             for (std::uint32_t i = 0; i < count && reader.good(); ++i)
@@ -839,8 +902,14 @@ TopologyTask::save(const cache::TaskStore& store,
             if (!old)
                 throw store_error(old.error());
             cache::wire::Reader reader(verified(*old, limits), limits);
-            Impl::identity(reader, *impl_->binding, impl_->task_id,
-                           impl_->root);
+            cache::wire::Reader version_reader(verified(*old, limits), limits);
+            cache::wire::header(version_reader,
+                                cache::ObjectKind::QueryTaskManifest);
+            const auto version = version_reader.u32();
+            require(version == topology_manifest_version ||
+                    version == topology_segmented_version);
+            Impl::identity(reader, *impl_->binding, impl_->task_id, impl_->root,
+                           version);
         }
         auto object = writer->write(cache::ObjectKind::QueryTaskManifest,
                                     std::move(*bytes));
@@ -874,6 +943,11 @@ std::expected<TopologyTask, CheckpointError> TopologyTask::restore(
     auto bytes = store.read(head.manifest);
     if (!bytes)
         return std::unexpected(store_error(bytes.error()));
+    cache::wire::Reader version_reader(*bytes, limits);
+    cache::wire::header(version_reader, cache::ObjectKind::QueryTaskManifest);
+    if (version_reader.u32() == topology_segmented_version)
+        return restore_segmented(std::move(binding), store, head, root, limits,
+                                 std::move(*bytes));
     auto task = restore(std::move(binding), store.task(), root, *bytes, limits);
     if (!task)
         return task;
@@ -882,5 +956,469 @@ std::expected<TopologyTask, CheckpointError> TopologyTask::restore(
         return std::unexpected(
             CheckpointError{CheckpointErrorCode::Corrupt, {}});
     return task;
+}
+namespace {
+struct TopologySegment {
+    std::uint32_t first{}, count{};
+    cache::ObjectRef object;
+};
+constexpr std::array topology_widths{4U, 18U, 4U, 4U, 4U, 15U};
+std::size_t index_bytes(const FormulaIndex& index) {
+    // Public records/terms only. The task adds its private calls and hash
+    // index.
+    std::size_t bytes = 0;
+    for (const auto& formula : index.formulas())
+        bytes += formula.terms.capacity() * sizeof(NodeId);
+    return bytes;
+}
+template <class Set> std::size_t hash_bytes(const Set& values) {
+    return values.bucket_count() * sizeof(void*) +
+           values.size() * sizeof(typename Set::value_type);
+}
+} // namespace
+TopologyStateMemory TopologyTask::state_memory() const {
+    const auto& task = *impl_;
+    const auto index_memory = [](const FormulaIndex& index) {
+        return index.formulas_.capacity() * sizeof(DependencyFormula) +
+               index_bytes(index) + index.calls_.capacity() * sizeof(NodeId) +
+               hash_bytes(index.formula_ids_);
+    };
+    TopologyStateMemory memory;
+    memory.offloaded = task.offloaded.has_value();
+    if (task.offloaded) {
+        if (auto retained = task.offloaded->retained.lock())
+            memory.retained_index = index_memory(*retained);
+        return memory;
+    }
+    memory.queue = task.queue.capacity() * sizeof(NodeId);
+    memory.visited = hash_bytes(task.visited);
+    memory.formula_records =
+        task.index->formulas_.capacity() * sizeof(DependencyFormula);
+    memory.formula_terms = index_bytes(*task.index);
+    memory.formula_index = hash_bytes(task.index->formula_ids_);
+    memory.calls = task.index->calls_.capacity() * sizeof(NodeId);
+    memory.local_queue = task.local_queue.capacity() * sizeof(NodeId);
+    memory.local_seen = hash_bytes(task.local_seen);
+    memory.families = hash_bytes(task.families);
+    memory.delivery = task.unconfirmed ? task.unconfirmed->records.capacity() *
+                                             sizeof(TopologyRecord)
+                                       : 0;
+    return memory;
+}
+const TopologyStorageStats& TopologyTask::storage_stats() const {
+    return impl_->io;
+}
+const std::optional<CheckpointError>& TopologyTask::storage_failure() const {
+    return impl_->storage_error;
+}
+std::expected<cache::TaskHead, CheckpointError> TopologyTask::save_segmented(
+    const cache::TaskStore& store, std::uint64_t generation,
+    std::size_t segment_bytes, cache::Limits limits) const {
+    if (auto ready = ensure_resident(); !ready)
+        return std::unexpected(ready.error());
+    auto& task = *impl_;
+    if (!task.binding || task.progress == QueryProgress::Failed)
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::InvalidState, {}});
+    if (store.task() != task.task_id)
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::BindingMismatch, {}});
+    task.io = {};
+    try {
+        if (segment_bytes < 72 || segment_bytes > limits.bytes ||
+            limits.bytes < 32)
+            throw CheckpointError{CheckpointErrorCode::LimitExceeded, {}};
+        std::array<std::size_t, 6> totals{
+            task.queue.size(),
+            task.index->formulas_.size(),
+            0,
+            task.index->calls_.size(),
+            task.local_queue.size(),
+            task.unconfirmed ? task.unconfirmed->records.size() : 0};
+        for (const auto& formula : task.index->formulas_) {
+            if (formula.terms.size() > limits.elements - totals[2])
+                throw CheckpointError{CheckpointErrorCode::LimitExceeded, {}};
+            totals[2] += formula.terms.size();
+        }
+        cache::wire::Writer prefix(limits);
+        task.write_control(prefix, topology_segmented_version);
+        prefix.boolean(task.unconfirmed.has_value());
+        prefix.u8(task.unconfirmed
+                      ? static_cast<std::uint8_t>(task.unconfirmed->progress)
+                      : 0);
+        auto control = prefix.finish();
+        if (!control)
+            throw codec_error(control.error());
+        std::size_t metadata = control->size();
+        for (unsigned table = 0; table < 6; ++table) {
+            const auto capacity = (segment_bytes - 54) / topology_widths[table];
+            const auto segments =
+                totals[table] / capacity + (totals[table] % capacity != 0);
+            if (totals[table] > limits.elements || totals[table] > UINT32_MAX ||
+                limits.bytes - metadata < 8 ||
+                segments > (limits.bytes - metadata - 8) / 49)
+                throw CheckpointError{CheckpointErrorCode::LimitExceeded, {}};
+            metadata += 8 + segments * 49;
+            task.io.logical_bytes += totals[table] * topology_widths[table];
+        }
+        if (limits.bytes - metadata < 32)
+            throw CheckpointError{CheckpointErrorCode::LimitExceeded, {}};
+        auto transaction = store.begin(generation);
+        if (!transaction)
+            throw store_error(transaction.error());
+        auto old_head = store.head();
+        if (!old_head)
+            throw store_error(old_head.error());
+        if (*old_head) {
+            if ((**old_head).manifest.size > limits.bytes)
+                throw CheckpointError{CheckpointErrorCode::LimitExceeded, {}};
+            auto old = store.read((**old_head).manifest);
+            if (!old)
+                throw store_error(old.error());
+            task.io.bytes_read += old->size();
+            task.io.peak_codec_buffers =
+                std::max(task.io.peak_codec_buffers,
+                         control->capacity() + old->capacity());
+            const auto payload = verified(*old, limits);
+            cache::wire::Reader version_reader(payload, limits);
+            cache::wire::header(version_reader,
+                                cache::ObjectKind::QueryTaskManifest);
+            const auto version = version_reader.u32();
+            if (version != topology_manifest_version &&
+                version != topology_segmented_version)
+                throw CheckpointError{CheckpointErrorCode::IncompatibleVersion,
+                                      {}};
+            cache::wire::Reader identity_reader(payload, limits);
+            Impl::identity(identity_reader, *task.binding, task.task_id,
+                           task.root, version);
+        }
+        const auto write = [&](cache::ObjectKind kind, cache::Bytes bytes) {
+            task.io.bytes_submitted += bytes.size();
+            task.io.peak_codec_buffers =
+                std::max(task.io.peak_codec_buffers,
+                         control->capacity() + bytes.capacity());
+            const auto before = transaction->charged_bytes();
+            auto object = transaction->write(kind, std::move(bytes));
+            if (!object)
+                throw store_error(object.error());
+            const auto added = transaction->charged_bytes() - before;
+            task.io.cas_bytes_added += added;
+            if (!added)
+                ++task.io.reused_objects;
+            return *object;
+        };
+        std::array<std::vector<TopologySegment>, 6> directories;
+        for (unsigned table = 0; table < 6; ++table) {
+            const auto capacity = (segment_bytes - 54) / topology_widths[table];
+            std::size_t first = 0, count = 0, filled = 0;
+            cache::wire::Writer block(limits);
+            const auto start = [&] {
+                count = std::min(capacity, totals[table] - first);
+                filled = 0;
+                block = cache::wire::Writer(limits);
+                cache::wire::header(block,
+                                    cache::ObjectKind::QueryStateSegment);
+                block.u32(topology_segmented_version);
+                block.raw(task.task_id.bytes);
+                block.u8(static_cast<std::uint8_t>(table));
+                block.count(first);
+                block.count(count);
+            };
+            if (totals[table])
+                start();
+            const auto emit = [&](auto encode) {
+                encode(block);
+                if (++filled != count)
+                    return;
+                auto bytes = block.finish();
+                if (!bytes)
+                    throw codec_error(bytes.error());
+                const auto object = write(cache::ObjectKind::QueryStateSegment,
+                                          std::move(*bytes));
+                directories[table].push_back({static_cast<std::uint32_t>(first),
+                                              static_cast<std::uint32_t>(count),
+                                              object});
+                ++task.io.segment_writes;
+                first += count;
+                if (first < totals[table])
+                    start();
+            };
+            if (table == 0 || table == 3 || table == 4) {
+                const auto& nodes = table == 0   ? task.queue
+                                    : table == 3 ? task.index->calls_
+                                                 : task.local_queue;
+                for (auto id : nodes)
+                    emit([&](auto& output) { output.u32(id.value); });
+            } else if (table == 1) {
+                std::size_t term_begin = 0;
+                for (const auto& formula : task.index->formulas_) {
+                    emit([&](auto& output) {
+                        output.u32(formula.root.value);
+                        output.u8(static_cast<std::uint8_t>(formula.kind));
+                        if (formula.fallback != "" &&
+                            formula.fallback != "unsupported rule" &&
+                            formula.fallback != "unsupported relation")
+                            throw CheckpointError{
+                                CheckpointErrorCode::InvalidState, {}};
+                        output.u8(formula.fallback.empty()                 ? 0
+                                  : formula.fallback == "unsupported rule" ? 1
+                                                                           : 2);
+                        output.u64(term_begin);
+                        output.count(formula.terms.size());
+                    });
+                    term_begin += formula.terms.size();
+                }
+            } else if (table == 2) {
+                for (const auto& formula : task.index->formulas_)
+                    for (auto term : formula.terms)
+                        emit([&](auto& output) { output.u32(term.value); });
+            } else if (task.unconfirmed) {
+                for (const auto& record : task.unconfirmed->records)
+                    emit([&](auto& output) {
+                        output.u8(static_cast<std::uint8_t>(record.kind));
+                        output.u32(record.node.value);
+                        output.u32(record.edge.target.value);
+                        output.u8(
+                            static_cast<std::uint8_t>(record.edge.relation));
+                        output.u32(record.summary.value);
+                        output.u8(static_cast<std::uint8_t>(record.port));
+                    });
+            }
+            require(first == totals[table]);
+        }
+        cache::wire::Writer manifest(limits);
+        manifest.raw(*control);
+        for (unsigned table = 0; table < 6; ++table) {
+            manifest.count(totals[table]);
+            manifest.count(directories[table].size());
+            for (const auto& segment : directories[table]) {
+                manifest.u32(segment.first);
+                manifest.u32(segment.count);
+                manifest.u8(static_cast<std::uint8_t>(segment.object.kind));
+                manifest.raw(segment.object.digest.bytes);
+                manifest.u64(segment.object.size);
+            }
+        }
+        auto bytes = manifest.finish();
+        if (!bytes)
+            throw codec_error(bytes.error());
+        const auto checksum =
+            cache::fingerprint("pagos.topology-task.v1", *bytes);
+        bytes->insert(bytes->end(), checksum.bytes.begin(),
+                      checksum.bytes.end());
+        auto object =
+            write(cache::ObjectKind::QueryTaskManifest, std::move(*bytes));
+        auto head = transaction->commit(
+            object, status(task.progress, task.unconfirmed.has_value()));
+        if (!head)
+            throw store_error(head.error());
+        return *head;
+    } catch (const CheckpointError& error) {
+        return std::unexpected(error);
+    } catch (const std::bad_alloc&) {
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::OutOfMemory, {}});
+    } catch (const std::length_error&) {
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::LimitExceeded, {}});
+    }
+}
+std::expected<TopologyTask, CheckpointError>
+TopologyTask::restore_segmented(QueryCheckpointBinding binding,
+                                const cache::TaskStore& store,
+                                const cache::TaskHead& head, NodeId root,
+                                cache::Limits limits, cache::Bytes bytes) {
+    try {
+        cache::wire::Reader reader(verified(bytes, limits), limits);
+        auto result = Impl::read_control(std::move(binding), store.task(), root,
+                                         reader, 4);
+        auto& task = *result.impl_;
+        task.io.bytes_read = bytes.size();
+        task.io.peak_codec_buffers = bytes.capacity();
+        const bool pending = reader.boolean();
+        const auto delivery_progress = static_cast<QueryProgress>(reader.u8());
+        if (pending) {
+            task.unconfirmed = TopologyPage{};
+            task.unconfirmed->task = store.task();
+            task.unconfirmed->sequence = task.sequence;
+            task.unconfirmed->progress = delivery_progress;
+        } else
+            require(delivery_progress == QueryProgress::Running);
+        std::array<std::size_t, 6> totals;
+        std::array<std::vector<TopologySegment>, 6> directories;
+        for (unsigned table = 0; table < 6; ++table) {
+            totals[table] = reader.count(0);
+            const auto segments = reader.count(49);
+            if (!reader.good())
+                finish(reader);
+            require(segments <= totals[table]);
+            std::size_t next = 0;
+            for (std::uint32_t i = 0; i < segments; ++i) {
+                TopologySegment segment;
+                segment.first = reader.u32();
+                segment.count = reader.u32();
+                segment.object = {static_cast<cache::ObjectKind>(reader.u8()),
+                                  digest(reader), reader.u64()};
+                if (!reader.good())
+                    finish(reader);
+                require(segment.first == next && segment.count &&
+                        segment.count <= totals[table] - next &&
+                        segment.object.kind ==
+                            cache::ObjectKind::QueryStateSegment &&
+                        segment.object.size ==
+                            54 + std::uint64_t{segment.count} *
+                                     topology_widths[table]);
+                if (segment.object.size > limits.bytes)
+                    throw CheckpointError{CheckpointErrorCode::LimitExceeded,
+                                          {}};
+                next += segment.count;
+                directories[table].push_back(segment);
+            }
+            require(next == totals[table]);
+            task.io.logical_bytes += totals[table] * topology_widths[table];
+        }
+        finish(reader);
+        require(pending == (totals[5] != 0) &&
+                status(task.progress, pending) == head.status);
+        std::size_t expected_terms = 0, formula_cursor = 0, term_cursor = 0;
+        for (unsigned table = 0; table < 6; ++table) {
+            for (const auto& segment : directories[table]) {
+                auto payload = store.read(segment.object);
+                if (!payload)
+                    throw store_error(payload.error());
+                ++task.io.segment_reads;
+                task.io.bytes_read += payload->size();
+                task.io.peak_codec_buffers =
+                    std::max(task.io.peak_codec_buffers,
+                             bytes.capacity() + payload->capacity());
+                cache::wire::Reader input(*payload, limits);
+                cache::wire::header(input,
+                                    cache::ObjectKind::QueryStateSegment);
+                if (input.u32() != topology_segmented_version)
+                    throw CheckpointError{
+                        CheckpointErrorCode::IncompatibleVersion, {}};
+                require(digest(input) == store.task() && input.u8() == table &&
+                        input.u32() == segment.first &&
+                        input.u32() == segment.count);
+                for (std::uint32_t i = 0; i < segment.count && input.good();
+                     ++i) {
+                    if (table == 0 || table == 3 || table == 4) {
+                        auto& nodes = table == 0   ? task.queue
+                                      : table == 3 ? task.index->calls_
+                                                   : task.local_queue;
+                        nodes.push_back({input.u32()});
+                    } else if (table == 1) {
+                        DependencyFormula formula{
+                            {input.u32()},
+                            static_cast<QueryKind>(input.u8()),
+                            {},
+                            {}};
+                        const auto fallback = input.u8();
+                        require(fallback <= 2);
+                        formula.fallback = fallback == 0 ? ""
+                                           : fallback == 1
+                                               ? "unsupported rule"
+                                               : "unsupported relation";
+                        const auto first = size(input);
+                        const auto count = input.u32();
+                        require(first == expected_terms &&
+                                count <= totals[2] - expected_terms);
+                        expected_terms += count;
+                        formula.terms.resize(count);
+                        task.index->formulas_.push_back(std::move(formula));
+                    } else if (table == 2) {
+                        while (formula_cursor < task.index->formulas_.size() &&
+                               term_cursor ==
+                                   task.index->formulas_[formula_cursor]
+                                       .terms.size()) {
+                            ++formula_cursor;
+                            term_cursor = 0;
+                        }
+                        require(formula_cursor < task.index->formulas_.size());
+                        task.index->formulas_[formula_cursor]
+                            .terms[term_cursor++] = {input.u32()};
+                    } else {
+                        TopologyRecord record;
+                        record.kind =
+                            static_cast<TopologyRecordKind>(input.u8());
+                        record.node = {input.u32()};
+                        record.edge.target = {input.u32()};
+                        record.edge.relation =
+                            static_cast<Relation>(input.u8());
+                        record.summary = {input.u32()};
+                        record.port = static_cast<QueryKind>(input.u8());
+                        task.unconfirmed->records.push_back(record);
+                    }
+                }
+                finish(input);
+            }
+            if (table == 1)
+                require(expected_terms == totals[2]);
+        }
+        task.validate();
+        if (task.progress == QueryProgress::Completed)
+            task.capacity();
+        return result;
+    } catch (const CheckpointError& error) {
+        return std::unexpected(error);
+    } catch (const ReadFailure& error) {
+        return std::unexpected(CheckpointError{
+            CheckpointErrorCode::UnavailableEvidence, error.error});
+    } catch (const std::bad_alloc&) {
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::OutOfMemory, {}});
+    } catch (const std::length_error&) {
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::LimitExceeded, {}});
+    }
+}
+std::expected<cache::TaskHead, CheckpointError>
+TopologyTask::offload(const cache::TaskStore& store, std::uint64_t generation,
+                      std::size_t segment_bytes, cache::Limits limits) {
+    if (auto ready = ensure_resident(); !ready)
+        return std::unexpected(ready.error());
+    auto& task = *impl_;
+    try {
+        auto empty = std::shared_ptr<FormulaIndex>(
+            new FormulaIndex(task.index->evidence_));
+        auto saved = save_segmented(store, generation, segment_bytes, limits);
+        if (!saved)
+            return saved;
+        empty->stats_ = task.index->stats_;
+        empty->stats_.formula_capacity_bytes = 0;
+        task.offloaded =
+            Impl::Offloaded{store, *saved, limits, task.progress, task.index};
+        task.index = std::move(empty);
+        decltype(task.queue){}.swap(task.queue);
+        decltype(task.visited){}.swap(task.visited);
+        decltype(task.local_queue){}.swap(task.local_queue);
+        decltype(task.local_seen){}.swap(task.local_seen);
+        decltype(task.families){}.swap(task.families);
+        task.unconfirmed.reset();
+        task.lease.reset();
+        return saved;
+    } catch (const std::bad_alloc&) {
+        return std::unexpected(
+            CheckpointError{CheckpointErrorCode::OutOfMemory, {}});
+    }
+}
+std::expected<void, CheckpointError> TopologyTask::ensure_resident() const {
+    auto& task = *impl_;
+    if (!task.offloaded)
+        return {};
+    const auto& state = *task.offloaded;
+    auto restored = restore(*task.binding, state.store, state.head, task.root,
+                            state.limits);
+    if (!restored) {
+        task.storage_error = restored.error();
+        task.progress = state.resume_progress == QueryProgress::Cancelled
+                            ? QueryProgress::Cancelled
+                            : QueryProgress::Paused;
+        return std::unexpected(restored.error());
+    }
+    const auto progress = state.resume_progress;
+    task = std::move(*restored->impl_);
+    task.progress = progress;
+    return {};
 }
 } // namespace pagos::stage::provenance

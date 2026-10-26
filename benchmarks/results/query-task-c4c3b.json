@@ -1,0 +1,6957 @@
+{
+  "schema": 1,
+  "date": "2026-10-26",
+  "commit": "117e82c095e2a31c068fce8a23fb958a6cbde08d",
+  "dirty": true,
+  "binary_sha256": "fae6ee7e6c6c09e91f74eebc13d26205f2c34c1f759c85efaeb44f68c8564c4e",
+  "cmake_cache_sha256": "191ce2eb3bc464212c4ce7fe1a3bc37c3bd7dfc2eb3f517088b47c758b290a9b",
+  "source_sha256": {
+    "include/pagos/stage/provenance_topology.h": "a62e733950df9f2e368140ccc24968c17238404a32e11f7d39ee1d8ebc4e8b3d",
+    "include/pagos/stage/provenance_query.h": "351cd9ebeb769a435eec5e33023975b868444ec0d58670044eeb670244b1440d",
+    "lib/stage/provenance_topology.cpp": "876c581d94c4ff8cc76dea30dc6548ff3aae5088c65217f33958aa57ea74a653",
+    "lib/stage/provenance_query.cpp": "b42ae9dd8493c526fad455138aade4c33f8347ad4a71f3931db11dfecb8313b1",
+    "lib/stage/query_storage.cpp": "715787da3e08418c8f150365331913c247775f6f42f4c5a0aa1c3a8972d241bb",
+    "lib/cache/task_store.cpp": "ad24a9cb8613ec43b7f1c2fe47989da3ea003ed668f268fdea7b55eab740e2e0",
+    "lib/stage/function_evidence_view.cpp": "99bfee685c7efece994eba744f313f07dea9798182fb227defadb32877fac87d",
+    "tools/query_task_bench/main.cpp": "5b8026ca37f2f1e4f5f97748f801d976ddad7699ddde37f54f76525115b829be",
+    "scripts/benchmark_query_tasks.py": "7ed6ec20a14c17a18794aa1a5ac472224d501fdffc39927a422778d75284136f",
+    "scripts/benchmark_provenance_queries.py": "c7f119fefb18fa6c2f7c2c8f67adc0e47b65334cef8a5d2966bf5001f7b9981e",
+    "scripts/benchmark_function_evidence.py": "e0c2ebc879d8eb8db58888a4e0962a9cdda6c49bf3328329a5b61e89f875332a"
+  },
+  "machine": "Linux-7.3.0-5-cachyos-x86_64-with-glibc2.44",
+  "cpu": "AMD Ryzen AI 9 HX 470 w/ Radeon 890M",
+  "filesystem": {
+    "path": "/home/ww/codings/pagos-lang/build/benchmarks",
+    "device": 58,
+    "type": "btrfs"
+  },
+  "versions": {
+    "clang": "clang version 23.1.4",
+    "llvm-config": "23.1.4",
+    "python3": "Python 3.14.8"
+  },
+  "warmups": 1,
+  "repeats": 3,
+  "smoke": false,
+  "config": {
+    "segment_bytes": 16384,
+    "paging_resident_bytes": 262144,
+    "paging_cache_bytes": 65536,
+    "evidence_cache_bytes": 4194304
+  },
+  "measurement": "Sequential fresh children after builds/tests stop. One separate Stage/Recorder publisher per real .pgs; all query children only parse/typecheck and load that evidence (Stage=0). Native cuts one 64-state/512-edge/64-binding slice with no output. Topology frontier cuts one 64/512/64/256 slice; formula cuts after half the physical-node count in formula states. Save clocks exclude prefix work; original task/view destroyed before a fresh view opens, and restore clocks exclude fresh-view metadata loading. Restore must preserve all logical counters; continuation uses 64/512/64/256 slices. Memory mode retains state after v1 native/v3 topology save; paged native and v4 topology offload drop task-owned buffers before destruction. Owned capacity is sampled at advance boundaries, not continuous allocation peak; native directory is separate, topology hash accounting includes values/buckets but excludes links. Codec buffer high-water is retained vector capacity observed in segmented topology IO, excluding CAS envelope scratch and directory metadata. Task read requests include missing probes, head and dedup verification; they are not physical device IO. Disk includes CAS envelopes, old/unpublished objects, head and marker; native paging may append leaves after the last saved head. Topology save_cas_added counts new CAS bytes, excluding head replacement; amplification ratios use its fixed-record logical_table_bytes, excluding control/directories. Native paging read/write telemetry covers the restored backend only. wait4 whole-child RSS includes front end, graph cache, saved/restored state, result digest/compatibility copies and destruction; no RSS or constant-time restore claim. Warm OS page cache, no cache flushing, pinning or fixed frequency. Smoke is correctness only.",
+  "results": [
+    {
+      "case": "wide",
+      "size": 257,
+      "mode": "native-memory",
+      "phase": "frontier",
+      "source_sha256": "451a8f7d439c66ad75f6a2a02c1017ca6eb1f4ac348e0cfd5c791112c72eb180",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 1170766,
+          "save_ns": 468629,
+          "restore_ns": 60213,
+          "continue_ns": 772138,
+          "before_bytes": 16460,
+          "after_save_bytes": 16460,
+          "restored_bytes": 16460,
+          "final_bytes": 39052,
+          "sampled_peak_owned": 39052,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 15,
+          "task_write_requests": 4,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 5994,
+          "files": 6,
+          "result": "a05ca71d15d6587139e64b40b8b5face64d0f40d4d75b1d40c208aa0b88a63b8",
+          "work": [
+            517,
+            517,
+            773,
+            516,
+            0,
+            0,
+            258
+          ],
+          "wall_seconds": 0.014967410999815911,
+          "peak_rss_kib": 39788
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 1137173,
+          "save_ns": 491823,
+          "restore_ns": 62196,
+          "continue_ns": 1115792,
+          "before_bytes": 16460,
+          "after_save_bytes": 16460,
+          "restored_bytes": 16460,
+          "final_bytes": 39052,
+          "sampled_peak_owned": 39052,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 15,
+          "task_write_requests": 4,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 5994,
+          "files": 6,
+          "result": "a05ca71d15d6587139e64b40b8b5face64d0f40d4d75b1d40c208aa0b88a63b8",
+          "work": [
+            517,
+            517,
+            773,
+            516,
+            0,
+            0,
+            258
+          ],
+          "wall_seconds": 0.0170684709996749,
+          "peak_rss_kib": 39716
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 779562,
+          "save_ns": 320511,
+          "restore_ns": 39123,
+          "continue_ns": 732193,
+          "before_bytes": 16460,
+          "after_save_bytes": 16460,
+          "restored_bytes": 16460,
+          "final_bytes": 39052,
+          "sampled_peak_owned": 39052,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 15,
+          "task_write_requests": 4,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 5994,
+          "files": 6,
+          "result": "a05ca71d15d6587139e64b40b8b5face64d0f40d4d75b1d40c208aa0b88a63b8",
+          "work": [
+            517,
+            517,
+            773,
+            516,
+            0,
+            0,
+            258
+          ],
+          "wall_seconds": 0.011813915999937308,
+          "peak_rss_kib": 39472
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 1137173,
+          "min": 779562,
+          "max": 1170766,
+          "iqr": 391204.0
+        },
+        "save_ns": {
+          "median": 468629,
+          "min": 320511,
+          "max": 491823,
+          "iqr": 171312.0
+        },
+        "restore_ns": {
+          "median": 60213,
+          "min": 39123,
+          "max": 62196,
+          "iqr": 23073.0
+        },
+        "continue_ns": {
+          "median": 772138,
+          "min": 732193,
+          "max": 1115792,
+          "iqr": 383599.0
+        },
+        "before_bytes": {
+          "median": 16460,
+          "min": 16460,
+          "max": 16460,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 16460,
+          "min": 16460,
+          "max": 16460,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 16460,
+          "min": 16460,
+          "max": 16460,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 39052,
+          "min": 39052,
+          "max": 39052,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 39052,
+          "min": 39052,
+          "max": 39052,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 15,
+          "min": 15,
+          "max": 15,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 4,
+          "min": 4,
+          "max": 4,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 5994,
+          "min": 5994,
+          "max": 5994,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 6,
+          "min": 6,
+          "max": 6,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.014967410999815911,
+          "min": 0.011813915999937308,
+          "max": 0.0170684709996749,
+          "iqr": 0.005254554999737593
+        },
+        "peak_rss_kib": {
+          "median": 39716,
+          "min": 39472,
+          "max": 39788,
+          "iqr": 316.0
+        }
+      }
+    },
+    {
+      "case": "wide",
+      "size": 257,
+      "mode": "native-paged",
+      "phase": "frontier",
+      "source_sha256": "451a8f7d439c66ad75f6a2a02c1017ca6eb1f4ac348e0cfd5c791112c72eb180",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 777067,
+          "save_ns": 462528,
+          "restore_ns": 86512,
+          "continue_ns": 775905,
+          "before_bytes": 97920,
+          "after_save_bytes": 0,
+          "restored_bytes": 108304,
+          "final_bytes": 108304,
+          "sampled_peak_owned": 108304,
+          "directory_bytes": 216,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 20,
+          "task_write_requests": 5,
+          "paging_reads": 3,
+          "paging_writes": 0,
+          "paging_bytes_read": 10446,
+          "paging_bytes_written": 0,
+          "disk_bytes": 11314,
+          "files": 7,
+          "result": "a05ca71d15d6587139e64b40b8b5face64d0f40d4d75b1d40c208aa0b88a63b8",
+          "work": [
+            517,
+            517,
+            773,
+            516,
+            0,
+            0,
+            258
+          ],
+          "wall_seconds": 0.013061726999694656,
+          "peak_rss_kib": 39568
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 770856,
+          "save_ns": 419587,
+          "restore_ns": 66395,
+          "continue_ns": 736351,
+          "before_bytes": 97920,
+          "after_save_bytes": 0,
+          "restored_bytes": 108304,
+          "final_bytes": 108304,
+          "sampled_peak_owned": 108304,
+          "directory_bytes": 216,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 20,
+          "task_write_requests": 5,
+          "paging_reads": 3,
+          "paging_writes": 0,
+          "paging_bytes_read": 10446,
+          "paging_bytes_written": 0,
+          "disk_bytes": 11314,
+          "files": 7,
+          "result": "a05ca71d15d6587139e64b40b8b5face64d0f40d4d75b1d40c208aa0b88a63b8",
+          "work": [
+            517,
+            517,
+            773,
+            516,
+            0,
+            0,
+            258
+          ],
+          "wall_seconds": 0.012925651999921683,
+          "peak_rss_kib": 39940
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 823024,
+          "save_ns": 447359,
+          "restore_ns": 66706,
+          "continue_ns": 754004,
+          "before_bytes": 97920,
+          "after_save_bytes": 0,
+          "restored_bytes": 108304,
+          "final_bytes": 108304,
+          "sampled_peak_owned": 108304,
+          "directory_bytes": 216,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 20,
+          "task_write_requests": 5,
+          "paging_reads": 3,
+          "paging_writes": 0,
+          "paging_bytes_read": 10446,
+          "paging_bytes_written": 0,
+          "disk_bytes": 11314,
+          "files": 7,
+          "result": "a05ca71d15d6587139e64b40b8b5face64d0f40d4d75b1d40c208aa0b88a63b8",
+          "work": [
+            517,
+            517,
+            773,
+            516,
+            0,
+            0,
+            258
+          ],
+          "wall_seconds": 0.013976833000015176,
+          "peak_rss_kib": 39820
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 777067,
+          "min": 770856,
+          "max": 823024,
+          "iqr": 52168.0
+        },
+        "save_ns": {
+          "median": 447359,
+          "min": 419587,
+          "max": 462528,
+          "iqr": 42941.0
+        },
+        "restore_ns": {
+          "median": 66706,
+          "min": 66395,
+          "max": 86512,
+          "iqr": 20117.0
+        },
+        "continue_ns": {
+          "median": 754004,
+          "min": 736351,
+          "max": 775905,
+          "iqr": 39554.0
+        },
+        "before_bytes": {
+          "median": 97920,
+          "min": 97920,
+          "max": 97920,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 108304,
+          "min": 108304,
+          "max": 108304,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 108304,
+          "min": 108304,
+          "max": 108304,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 108304,
+          "min": 108304,
+          "max": 108304,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 216,
+          "min": 216,
+          "max": 216,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 20,
+          "min": 20,
+          "max": 20,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 5,
+          "min": 5,
+          "max": 5,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 3,
+          "min": 3,
+          "max": 3,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 10446,
+          "min": 10446,
+          "max": 10446,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 11314,
+          "min": 11314,
+          "max": 11314,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 7,
+          "min": 7,
+          "max": 7,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.013061726999694656,
+          "min": 0.012925651999921683,
+          "max": 0.013976833000015176,
+          "iqr": 0.001051181000093493
+        },
+        "peak_rss_kib": {
+          "median": 39820,
+          "min": 39568,
+          "max": 39940,
+          "iqr": 372.0
+        }
+      }
+    },
+    {
+      "case": "wide",
+      "size": 257,
+      "mode": "topology-resident",
+      "phase": "frontier",
+      "source_sha256": "451a8f7d439c66ad75f6a2a02c1017ca6eb1f4ac348e0cfd5c791112c72eb180",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 846007,
+          "save_ns": 237465,
+          "restore_ns": 859081,
+          "continue_ns": 128911,
+          "before_bytes": 4344,
+          "after_save_bytes": 4344,
+          "restored_bytes": 4344,
+          "final_bytes": 41800,
+          "sampled_peak_owned": 43760,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 1574,
+          "files": 4,
+          "result": "3ec8da033ef79ad0aad2208eb379ae2761aa5c48a8443583e5b9d39b7d79feb8",
+          "work": [
+            774,
+            773,
+            0,
+            2,
+            514,
+            1291,
+            1546,
+            0,
+            514
+          ],
+          "wall_seconds": 0.01494362599987653,
+          "peak_rss_kib": 39476
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 725050,
+          "save_ns": 186440,
+          "restore_ns": 664646,
+          "continue_ns": 120876,
+          "before_bytes": 4344,
+          "after_save_bytes": 4344,
+          "restored_bytes": 4344,
+          "final_bytes": 41800,
+          "sampled_peak_owned": 43760,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 1574,
+          "files": 4,
+          "result": "3ec8da033ef79ad0aad2208eb379ae2761aa5c48a8443583e5b9d39b7d79feb8",
+          "work": [
+            774,
+            773,
+            0,
+            2,
+            514,
+            1291,
+            1546,
+            0,
+            514
+          ],
+          "wall_seconds": 0.012843346999943606,
+          "peak_rss_kib": 39864
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 726742,
+          "save_ns": 202349,
+          "restore_ns": 667402,
+          "continue_ns": 127459,
+          "before_bytes": 4344,
+          "after_save_bytes": 4344,
+          "restored_bytes": 4344,
+          "final_bytes": 41800,
+          "sampled_peak_owned": 43760,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 1574,
+          "files": 4,
+          "result": "3ec8da033ef79ad0aad2208eb379ae2761aa5c48a8443583e5b9d39b7d79feb8",
+          "work": [
+            774,
+            773,
+            0,
+            2,
+            514,
+            1291,
+            1546,
+            0,
+            514
+          ],
+          "wall_seconds": 0.012822447999951692,
+          "peak_rss_kib": 39888
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 726742,
+          "min": 725050,
+          "max": 846007,
+          "iqr": 120957.0
+        },
+        "save_ns": {
+          "median": 202349,
+          "min": 186440,
+          "max": 237465,
+          "iqr": 51025.0
+        },
+        "restore_ns": {
+          "median": 667402,
+          "min": 664646,
+          "max": 859081,
+          "iqr": 194435.0
+        },
+        "continue_ns": {
+          "median": 127459,
+          "min": 120876,
+          "max": 128911,
+          "iqr": 8035.0
+        },
+        "before_bytes": {
+          "median": 4344,
+          "min": 4344,
+          "max": 4344,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 4344,
+          "min": 4344,
+          "max": 4344,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 4344,
+          "min": 4344,
+          "max": 4344,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 41800,
+          "min": 41800,
+          "max": 41800,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 43760,
+          "min": 43760,
+          "max": 43760,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 7,
+          "min": 7,
+          "max": 7,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 2,
+          "min": 2,
+          "max": 2,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 1574,
+          "min": 1574,
+          "max": 1574,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 4,
+          "min": 4,
+          "max": 4,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.012843346999943606,
+          "min": 0.012822447999951692,
+          "max": 0.01494362599987653,
+          "iqr": 0.0021211779999248392
+        },
+        "peak_rss_kib": {
+          "median": 39864,
+          "min": 39476,
+          "max": 39888,
+          "iqr": 412.0
+        }
+      }
+    },
+    {
+      "case": "wide",
+      "size": 257,
+      "mode": "topology-segmented",
+      "phase": "frontier",
+      "source_sha256": "451a8f7d439c66ad75f6a2a02c1017ca6eb1f4ac348e0cfd5c791112c72eb180",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 1105854,
+          "save_ns": 415519,
+          "restore_ns": 756639,
+          "continue_ns": 122360,
+          "before_bytes": 4344,
+          "after_save_bytes": 0,
+          "restored_bytes": 4344,
+          "final_bytes": 41800,
+          "sampled_peak_owned": 43760,
+          "directory_bytes": 0,
+          "codec_buffers": 1780,
+          "logical_table_bytes": 1052,
+          "save_cas_added": 1780,
+          "save_segments": 2,
+          "restore_segments": 2,
+          "task_read_requests": 15,
+          "task_write_requests": 4,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 1927,
+          "files": 6,
+          "result": "3ec8da033ef79ad0aad2208eb379ae2761aa5c48a8443583e5b9d39b7d79feb8",
+          "work": [
+            774,
+            773,
+            0,
+            2,
+            514,
+            1291,
+            1546,
+            0,
+            514
+          ],
+          "wall_seconds": 0.016057084000294708,
+          "peak_rss_kib": 40084,
+          "save_amplification": 1.6920152091254752
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 965381,
+          "save_ns": 334037,
+          "restore_ns": 698019,
+          "continue_ns": 126588,
+          "before_bytes": 4344,
+          "after_save_bytes": 0,
+          "restored_bytes": 4344,
+          "final_bytes": 41800,
+          "sampled_peak_owned": 43760,
+          "directory_bytes": 0,
+          "codec_buffers": 1780,
+          "logical_table_bytes": 1052,
+          "save_cas_added": 1780,
+          "save_segments": 2,
+          "restore_segments": 2,
+          "task_read_requests": 15,
+          "task_write_requests": 4,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 1927,
+          "files": 6,
+          "result": "3ec8da033ef79ad0aad2208eb379ae2761aa5c48a8443583e5b9d39b7d79feb8",
+          "work": [
+            774,
+            773,
+            0,
+            2,
+            514,
+            1291,
+            1546,
+            0,
+            514
+          ],
+          "wall_seconds": 0.014898781999818311,
+          "peak_rss_kib": 39652,
+          "save_amplification": 1.6920152091254752
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 761248,
+          "save_ns": 267121,
+          "restore_ns": 685216,
+          "continue_ns": 121177,
+          "before_bytes": 4344,
+          "after_save_bytes": 0,
+          "restored_bytes": 4344,
+          "final_bytes": 41800,
+          "sampled_peak_owned": 43760,
+          "directory_bytes": 0,
+          "codec_buffers": 1780,
+          "logical_table_bytes": 1052,
+          "save_cas_added": 1780,
+          "save_segments": 2,
+          "restore_segments": 2,
+          "task_read_requests": 15,
+          "task_write_requests": 4,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 1927,
+          "files": 6,
+          "result": "3ec8da033ef79ad0aad2208eb379ae2761aa5c48a8443583e5b9d39b7d79feb8",
+          "work": [
+            774,
+            773,
+            0,
+            2,
+            514,
+            1291,
+            1546,
+            0,
+            514
+          ],
+          "wall_seconds": 0.013938712000253872,
+          "peak_rss_kib": 39584,
+          "save_amplification": 1.6920152091254752
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 965381,
+          "min": 761248,
+          "max": 1105854,
+          "iqr": 344606.0
+        },
+        "save_ns": {
+          "median": 334037,
+          "min": 267121,
+          "max": 415519,
+          "iqr": 148398.0
+        },
+        "restore_ns": {
+          "median": 698019,
+          "min": 685216,
+          "max": 756639,
+          "iqr": 71423.0
+        },
+        "continue_ns": {
+          "median": 122360,
+          "min": 121177,
+          "max": 126588,
+          "iqr": 5411.0
+        },
+        "before_bytes": {
+          "median": 4344,
+          "min": 4344,
+          "max": 4344,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 4344,
+          "min": 4344,
+          "max": 4344,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 41800,
+          "min": 41800,
+          "max": 41800,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 43760,
+          "min": 43760,
+          "max": 43760,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 1780,
+          "min": 1780,
+          "max": 1780,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 1052,
+          "min": 1052,
+          "max": 1052,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 1780,
+          "min": 1780,
+          "max": 1780,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 2,
+          "min": 2,
+          "max": 2,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 2,
+          "min": 2,
+          "max": 2,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 15,
+          "min": 15,
+          "max": 15,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 4,
+          "min": 4,
+          "max": 4,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 1927,
+          "min": 1927,
+          "max": 1927,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 6,
+          "min": 6,
+          "max": 6,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.014898781999818311,
+          "min": 0.013938712000253872,
+          "max": 0.016057084000294708,
+          "iqr": 0.0021183720000408357
+        },
+        "peak_rss_kib": {
+          "median": 39652,
+          "min": 39584,
+          "max": 40084,
+          "iqr": 500.0
+        },
+        "save_amplification": {
+          "median": 1.6920152091254752,
+          "min": 1.6920152091254752,
+          "max": 1.6920152091254752,
+          "iqr": 0.0
+        }
+      }
+    },
+    {
+      "case": "wide",
+      "size": 257,
+      "mode": "topology-resident",
+      "phase": "formula",
+      "source_sha256": "451a8f7d439c66ad75f6a2a02c1017ca6eb1f4ac348e0cfd5c791112c72eb180",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 1267557,
+          "save_ns": 428815,
+          "restore_ns": 1104161,
+          "continue_ns": 83657,
+          "before_bytes": 29332,
+          "after_save_bytes": 29332,
+          "restored_bytes": 29332,
+          "final_bytes": 41800,
+          "sampled_peak_owned": 43808,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 6230,
+          "files": 4,
+          "result": "3ec8da033ef79ad0aad2208eb379ae2761aa5c48a8443583e5b9d39b7d79feb8",
+          "work": [
+            774,
+            773,
+            0,
+            2,
+            514,
+            1291,
+            1546,
+            0,
+            514
+          ],
+          "wall_seconds": 0.01721087899977647,
+          "peak_rss_kib": 39704
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 887905,
+          "save_ns": 353072,
+          "restore_ns": 756759,
+          "continue_ns": 54241,
+          "before_bytes": 29332,
+          "after_save_bytes": 29332,
+          "restored_bytes": 29332,
+          "final_bytes": 41800,
+          "sampled_peak_owned": 43808,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 6230,
+          "files": 4,
+          "result": "3ec8da033ef79ad0aad2208eb379ae2761aa5c48a8443583e5b9d39b7d79feb8",
+          "work": [
+            774,
+            773,
+            0,
+            2,
+            514,
+            1291,
+            1546,
+            0,
+            514
+          ],
+          "wall_seconds": 0.01496403500004817,
+          "peak_rss_kib": 39528
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 1271825,
+          "save_ns": 417053,
+          "restore_ns": 1118288,
+          "continue_ns": 83867,
+          "before_bytes": 29332,
+          "after_save_bytes": 29332,
+          "restored_bytes": 29332,
+          "final_bytes": 41800,
+          "sampled_peak_owned": 43808,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 6230,
+          "files": 4,
+          "result": "3ec8da033ef79ad0aad2208eb379ae2761aa5c48a8443583e5b9d39b7d79feb8",
+          "work": [
+            774,
+            773,
+            0,
+            2,
+            514,
+            1291,
+            1546,
+            0,
+            514
+          ],
+          "wall_seconds": 0.01606496900012644,
+          "peak_rss_kib": 39772
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 1267557,
+          "min": 887905,
+          "max": 1271825,
+          "iqr": 383920.0
+        },
+        "save_ns": {
+          "median": 417053,
+          "min": 353072,
+          "max": 428815,
+          "iqr": 75743.0
+        },
+        "restore_ns": {
+          "median": 1104161,
+          "min": 756759,
+          "max": 1118288,
+          "iqr": 361529.0
+        },
+        "continue_ns": {
+          "median": 83657,
+          "min": 54241,
+          "max": 83867,
+          "iqr": 29626.0
+        },
+        "before_bytes": {
+          "median": 29332,
+          "min": 29332,
+          "max": 29332,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 29332,
+          "min": 29332,
+          "max": 29332,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 29332,
+          "min": 29332,
+          "max": 29332,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 41800,
+          "min": 41800,
+          "max": 41800,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 43808,
+          "min": 43808,
+          "max": 43808,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 7,
+          "min": 7,
+          "max": 7,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 2,
+          "min": 2,
+          "max": 2,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 6230,
+          "min": 6230,
+          "max": 6230,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 4,
+          "min": 4,
+          "max": 4,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.01606496900012644,
+          "min": 0.01496403500004817,
+          "max": 0.01721087899977647,
+          "iqr": 0.0022468439997282985
+        },
+        "peak_rss_kib": {
+          "median": 39704,
+          "min": 39528,
+          "max": 39772,
+          "iqr": 244.0
+        }
+      }
+    },
+    {
+      "case": "wide",
+      "size": 257,
+      "mode": "topology-segmented",
+      "phase": "formula",
+      "source_sha256": "451a8f7d439c66ad75f6a2a02c1017ca6eb1f4ac348e0cfd5c791112c72eb180",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 930555,
+          "save_ns": 627066,
+          "restore_ns": 1104141,
+          "continue_ns": 56046,
+          "before_bytes": 29332,
+          "after_save_bytes": 0,
+          "restored_bytes": 29328,
+          "final_bytes": 41784,
+          "sampled_peak_owned": 43792,
+          "directory_bytes": 0,
+          "codec_buffers": 6100,
+          "logical_table_bytes": 5708,
+          "save_cas_added": 6740,
+          "save_segments": 4,
+          "restore_segments": 4,
+          "task_read_requests": 23,
+          "task_write_requests": 6,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 6887,
+          "files": 8,
+          "result": "3ec8da033ef79ad0aad2208eb379ae2761aa5c48a8443583e5b9d39b7d79feb8",
+          "work": [
+            774,
+            773,
+            0,
+            2,
+            514,
+            1291,
+            1546,
+            0,
+            514
+          ],
+          "wall_seconds": 0.014986005000082514,
+          "peak_rss_kib": 39340,
+          "save_amplification": 1.1807988787666432
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 821210,
+          "save_ns": 390772,
+          "restore_ns": 766728,
+          "continue_ns": 55154,
+          "before_bytes": 29332,
+          "after_save_bytes": 0,
+          "restored_bytes": 29328,
+          "final_bytes": 41784,
+          "sampled_peak_owned": 43792,
+          "directory_bytes": 0,
+          "codec_buffers": 6100,
+          "logical_table_bytes": 5708,
+          "save_cas_added": 6740,
+          "save_segments": 4,
+          "restore_segments": 4,
+          "task_read_requests": 23,
+          "task_write_requests": 6,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 6887,
+          "files": 8,
+          "result": "3ec8da033ef79ad0aad2208eb379ae2761aa5c48a8443583e5b9d39b7d79feb8",
+          "work": [
+            774,
+            773,
+            0,
+            2,
+            514,
+            1291,
+            1546,
+            0,
+            514
+          ],
+          "wall_seconds": 0.013993884000228718,
+          "peak_rss_kib": 39168,
+          "save_amplification": 1.1807988787666432
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 917291,
+          "save_ns": 457748,
+          "restore_ns": 1084835,
+          "continue_ns": 55644,
+          "before_bytes": 29332,
+          "after_save_bytes": 0,
+          "restored_bytes": 29328,
+          "final_bytes": 41784,
+          "sampled_peak_owned": 43792,
+          "directory_bytes": 0,
+          "codec_buffers": 6100,
+          "logical_table_bytes": 5708,
+          "save_cas_added": 6740,
+          "save_segments": 4,
+          "restore_segments": 4,
+          "task_read_requests": 23,
+          "task_write_requests": 6,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 6887,
+          "files": 8,
+          "result": "3ec8da033ef79ad0aad2208eb379ae2761aa5c48a8443583e5b9d39b7d79feb8",
+          "work": [
+            774,
+            773,
+            0,
+            2,
+            514,
+            1291,
+            1546,
+            0,
+            514
+          ],
+          "wall_seconds": 0.015033725000193954,
+          "peak_rss_kib": 39512,
+          "save_amplification": 1.1807988787666432
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 917291,
+          "min": 821210,
+          "max": 930555,
+          "iqr": 109345.0
+        },
+        "save_ns": {
+          "median": 457748,
+          "min": 390772,
+          "max": 627066,
+          "iqr": 236294.0
+        },
+        "restore_ns": {
+          "median": 1084835,
+          "min": 766728,
+          "max": 1104141,
+          "iqr": 337413.0
+        },
+        "continue_ns": {
+          "median": 55644,
+          "min": 55154,
+          "max": 56046,
+          "iqr": 892.0
+        },
+        "before_bytes": {
+          "median": 29332,
+          "min": 29332,
+          "max": 29332,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 29328,
+          "min": 29328,
+          "max": 29328,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 41784,
+          "min": 41784,
+          "max": 41784,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 43792,
+          "min": 43792,
+          "max": 43792,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 6100,
+          "min": 6100,
+          "max": 6100,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 5708,
+          "min": 5708,
+          "max": 5708,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 6740,
+          "min": 6740,
+          "max": 6740,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 4,
+          "min": 4,
+          "max": 4,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 4,
+          "min": 4,
+          "max": 4,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 23,
+          "min": 23,
+          "max": 23,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 6,
+          "min": 6,
+          "max": 6,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 6887,
+          "min": 6887,
+          "max": 6887,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 8,
+          "min": 8,
+          "max": 8,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.014986005000082514,
+          "min": 0.013993884000228718,
+          "max": 0.015033725000193954,
+          "iqr": 0.0010398409999652358
+        },
+        "peak_rss_kib": {
+          "median": 39340,
+          "min": 39168,
+          "max": 39512,
+          "iqr": 344.0
+        },
+        "save_amplification": {
+          "median": 1.1807988787666432,
+          "min": 1.1807988787666432,
+          "max": 1.1807988787666432,
+          "iqr": 0.0
+        }
+      }
+    },
+    {
+      "case": "wide",
+      "size": 2049,
+      "mode": "native-memory",
+      "phase": "frontier",
+      "source_sha256": "0e8316876c4d6d45b939e854258aa417badff8a6470d506f7906058dcfc0ef27",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 6933984,
+          "save_ns": 483507,
+          "restore_ns": 5825105,
+          "continue_ns": 270788,
+          "before_bytes": 32908,
+          "after_save_bytes": 32908,
+          "restored_bytes": 32908,
+          "final_bytes": 312332,
+          "sampled_peak_owned": 312332,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 15,
+          "task_write_requests": 4,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 9066,
+          "files": 6,
+          "result": "a05b16d5b31b5b060bf8add733632202249fda6db95e9d417ee95ccafa5b6efb",
+          "work": [
+            4101,
+            4101,
+            6149,
+            4100,
+            0,
+            0,
+            2050
+          ],
+          "wall_seconds": 0.05425319000005402,
+          "peak_rss_kib": 47148
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 7477434,
+          "save_ns": 451847,
+          "restore_ns": 6017245,
+          "continue_ns": 312045,
+          "before_bytes": 32908,
+          "after_save_bytes": 32908,
+          "restored_bytes": 32908,
+          "final_bytes": 312332,
+          "sampled_peak_owned": 312332,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 15,
+          "task_write_requests": 4,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 9066,
+          "files": 6,
+          "result": "a05b16d5b31b5b060bf8add733632202249fda6db95e9d417ee95ccafa5b6efb",
+          "work": [
+            4101,
+            4101,
+            6149,
+            4100,
+            0,
+            0,
+            2050
+          ],
+          "wall_seconds": 0.04790554500004873,
+          "peak_rss_kib": 46792
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 5701954,
+          "save_ns": 452168,
+          "restore_ns": 5614720,
+          "continue_ns": 269515,
+          "before_bytes": 32908,
+          "after_save_bytes": 32908,
+          "restored_bytes": 32908,
+          "final_bytes": 312332,
+          "sampled_peak_owned": 312332,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 15,
+          "task_write_requests": 4,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 9066,
+          "files": 6,
+          "result": "a05b16d5b31b5b060bf8add733632202249fda6db95e9d417ee95ccafa5b6efb",
+          "work": [
+            4101,
+            4101,
+            6149,
+            4100,
+            0,
+            0,
+            2050
+          ],
+          "wall_seconds": 0.04590306899990537,
+          "peak_rss_kib": 46764
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 6933984,
+          "min": 5701954,
+          "max": 7477434,
+          "iqr": 1775480.0
+        },
+        "save_ns": {
+          "median": 452168,
+          "min": 451847,
+          "max": 483507,
+          "iqr": 31660.0
+        },
+        "restore_ns": {
+          "median": 5825105,
+          "min": 5614720,
+          "max": 6017245,
+          "iqr": 402525.0
+        },
+        "continue_ns": {
+          "median": 270788,
+          "min": 269515,
+          "max": 312045,
+          "iqr": 42530.0
+        },
+        "before_bytes": {
+          "median": 32908,
+          "min": 32908,
+          "max": 32908,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 32908,
+          "min": 32908,
+          "max": 32908,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 32908,
+          "min": 32908,
+          "max": 32908,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 312332,
+          "min": 312332,
+          "max": 312332,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 312332,
+          "min": 312332,
+          "max": 312332,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 15,
+          "min": 15,
+          "max": 15,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 4,
+          "min": 4,
+          "max": 4,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 9066,
+          "min": 9066,
+          "max": 9066,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 6,
+          "min": 6,
+          "max": 6,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.04790554500004873,
+          "min": 0.04590306899990537,
+          "max": 0.05425319000005402,
+          "iqr": 0.008350121000148647
+        },
+        "peak_rss_kib": {
+          "median": 46792,
+          "min": 46764,
+          "max": 47148,
+          "iqr": 384.0
+        }
+      }
+    },
+    {
+      "case": "wide",
+      "size": 2049,
+      "mode": "native-paged",
+      "phase": "frontier",
+      "source_sha256": "0e8316876c4d6d45b939e854258aa417badff8a6470d506f7906058dcfc0ef27",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 4271090,
+          "save_ns": 438322,
+          "restore_ns": 3786992,
+          "continue_ns": 2625233,
+          "before_bytes": 97920,
+          "after_save_bytes": 0,
+          "restored_bytes": 114448,
+          "final_bytes": 163328,
+          "sampled_peak_owned": 163456,
+          "directory_bytes": 792,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 63,
+          "task_write_requests": 13,
+          "paging_reads": 11,
+          "paging_writes": 8,
+          "paging_bytes_read": 139422,
+          "paging_bytes_written": 122832,
+          "disk_bytes": 140682,
+          "files": 15,
+          "result": "a05b16d5b31b5b060bf8add733632202249fda6db95e9d417ee95ccafa5b6efb",
+          "work": [
+            4101,
+            4101,
+            6149,
+            4100,
+            0,
+            0,
+            2050
+          ],
+          "wall_seconds": 0.03516516999980013,
+          "peak_rss_kib": 47272
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 4172596,
+          "save_ns": 451637,
+          "restore_ns": 3914151,
+          "continue_ns": 2581010,
+          "before_bytes": 97920,
+          "after_save_bytes": 0,
+          "restored_bytes": 114448,
+          "final_bytes": 163328,
+          "sampled_peak_owned": 163456,
+          "directory_bytes": 792,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 63,
+          "task_write_requests": 13,
+          "paging_reads": 11,
+          "paging_writes": 8,
+          "paging_bytes_read": 139422,
+          "paging_bytes_written": 122832,
+          "disk_bytes": 140682,
+          "files": 15,
+          "result": "a05b16d5b31b5b060bf8add733632202249fda6db95e9d417ee95ccafa5b6efb",
+          "work": [
+            4101,
+            4101,
+            6149,
+            4100,
+            0,
+            0,
+            2050
+          ],
+          "wall_seconds": 0.041375608000180364,
+          "peak_rss_kib": 47620
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 4012665,
+          "save_ns": 442270,
+          "restore_ns": 3827057,
+          "continue_ns": 2610075,
+          "before_bytes": 97920,
+          "after_save_bytes": 0,
+          "restored_bytes": 114448,
+          "final_bytes": 163328,
+          "sampled_peak_owned": 163456,
+          "directory_bytes": 792,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 63,
+          "task_write_requests": 13,
+          "paging_reads": 11,
+          "paging_writes": 8,
+          "paging_bytes_read": 139422,
+          "paging_bytes_written": 122832,
+          "disk_bytes": 140682,
+          "files": 15,
+          "result": "a05b16d5b31b5b060bf8add733632202249fda6db95e9d417ee95ccafa5b6efb",
+          "work": [
+            4101,
+            4101,
+            6149,
+            4100,
+            0,
+            0,
+            2050
+          ],
+          "wall_seconds": 0.03614949600023465,
+          "peak_rss_kib": 48476
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 4172596,
+          "min": 4012665,
+          "max": 4271090,
+          "iqr": 258425.0
+        },
+        "save_ns": {
+          "median": 442270,
+          "min": 438322,
+          "max": 451637,
+          "iqr": 13315.0
+        },
+        "restore_ns": {
+          "median": 3827057,
+          "min": 3786992,
+          "max": 3914151,
+          "iqr": 127159.0
+        },
+        "continue_ns": {
+          "median": 2610075,
+          "min": 2581010,
+          "max": 2625233,
+          "iqr": 44223.0
+        },
+        "before_bytes": {
+          "median": 97920,
+          "min": 97920,
+          "max": 97920,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 114448,
+          "min": 114448,
+          "max": 114448,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 163328,
+          "min": 163328,
+          "max": 163328,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 163456,
+          "min": 163456,
+          "max": 163456,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 792,
+          "min": 792,
+          "max": 792,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 63,
+          "min": 63,
+          "max": 63,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 13,
+          "min": 13,
+          "max": 13,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 11,
+          "min": 11,
+          "max": 11,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 8,
+          "min": 8,
+          "max": 8,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 139422,
+          "min": 139422,
+          "max": 139422,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 122832,
+          "min": 122832,
+          "max": 122832,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 140682,
+          "min": 140682,
+          "max": 140682,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 15,
+          "min": 15,
+          "max": 15,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.03614949600023465,
+          "min": 0.03516516999980013,
+          "max": 0.041375608000180364,
+          "iqr": 0.006210438000380236
+        },
+        "peak_rss_kib": {
+          "median": 47620,
+          "min": 47272,
+          "max": 48476,
+          "iqr": 1204.0
+        }
+      }
+    },
+    {
+      "case": "wide",
+      "size": 2049,
+      "mode": "topology-resident",
+      "phase": "frontier",
+      "source_sha256": "0e8316876c4d6d45b939e854258aa417badff8a6470d506f7906058dcfc0ef27",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 3884716,
+          "save_ns": 236444,
+          "restore_ns": 3770581,
+          "continue_ns": 663734,
+          "before_bytes": 4344,
+          "after_save_bytes": 4344,
+          "restored_bytes": 4344,
+          "final_bytes": 360984,
+          "sampled_peak_owned": 377368,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 1574,
+          "files": 4,
+          "result": "60b2c8e3c971ac9cabe47fb6902d881e5aecb84bd938837bc25d4c02412ea3b9",
+          "work": [
+            6150,
+            6149,
+            0,
+            2,
+            4098,
+            10251,
+            12298,
+            0,
+            4098
+          ],
+          "wall_seconds": 0.03396611200014377,
+          "peak_rss_kib": 47780
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 8155315,
+          "save_ns": 514414,
+          "restore_ns": 4054144,
+          "continue_ns": 630522,
+          "before_bytes": 4344,
+          "after_save_bytes": 4344,
+          "restored_bytes": 4344,
+          "final_bytes": 360984,
+          "sampled_peak_owned": 377368,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 1574,
+          "files": 4,
+          "result": "60b2c8e3c971ac9cabe47fb6902d881e5aecb84bd938837bc25d4c02412ea3b9",
+          "work": [
+            6150,
+            6149,
+            0,
+            2,
+            4098,
+            10251,
+            12298,
+            0,
+            4098
+          ],
+          "wall_seconds": 0.05081044300004578,
+          "peak_rss_kib": 46920
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 4019298,
+          "save_ns": 231965,
+          "restore_ns": 4105710,
+          "continue_ns": 646352,
+          "before_bytes": 4344,
+          "after_save_bytes": 4344,
+          "restored_bytes": 4344,
+          "final_bytes": 360984,
+          "sampled_peak_owned": 377368,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 1574,
+          "files": 4,
+          "result": "60b2c8e3c971ac9cabe47fb6902d881e5aecb84bd938837bc25d4c02412ea3b9",
+          "work": [
+            6150,
+            6149,
+            0,
+            2,
+            4098,
+            10251,
+            12298,
+            0,
+            4098
+          ],
+          "wall_seconds": 0.034063974999753555,
+          "peak_rss_kib": 47104
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 4019298,
+          "min": 3884716,
+          "max": 8155315,
+          "iqr": 4270599.0
+        },
+        "save_ns": {
+          "median": 236444,
+          "min": 231965,
+          "max": 514414,
+          "iqr": 282449.0
+        },
+        "restore_ns": {
+          "median": 4054144,
+          "min": 3770581,
+          "max": 4105710,
+          "iqr": 335129.0
+        },
+        "continue_ns": {
+          "median": 646352,
+          "min": 630522,
+          "max": 663734,
+          "iqr": 33212.0
+        },
+        "before_bytes": {
+          "median": 4344,
+          "min": 4344,
+          "max": 4344,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 4344,
+          "min": 4344,
+          "max": 4344,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 4344,
+          "min": 4344,
+          "max": 4344,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 360984,
+          "min": 360984,
+          "max": 360984,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 377368,
+          "min": 377368,
+          "max": 377368,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 7,
+          "min": 7,
+          "max": 7,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 2,
+          "min": 2,
+          "max": 2,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 1574,
+          "min": 1574,
+          "max": 1574,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 4,
+          "min": 4,
+          "max": 4,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.034063974999753555,
+          "min": 0.03396611200014377,
+          "max": 0.05081044300004578,
+          "iqr": 0.016844330999902013
+        },
+        "peak_rss_kib": {
+          "median": 47104,
+          "min": 46920,
+          "max": 47780,
+          "iqr": 860.0
+        }
+      }
+    },
+    {
+      "case": "wide",
+      "size": 2049,
+      "mode": "topology-segmented",
+      "phase": "frontier",
+      "source_sha256": "0e8316876c4d6d45b939e854258aa417badff8a6470d506f7906058dcfc0ef27",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 3879436,
+          "save_ns": 291627,
+          "restore_ns": 3960447,
+          "continue_ns": 635892,
+          "before_bytes": 4344,
+          "after_save_bytes": 0,
+          "restored_bytes": 4344,
+          "final_bytes": 360984,
+          "sampled_peak_owned": 377368,
+          "directory_bytes": 0,
+          "codec_buffers": 1780,
+          "logical_table_bytes": 1052,
+          "save_cas_added": 1780,
+          "save_segments": 2,
+          "restore_segments": 2,
+          "task_read_requests": 15,
+          "task_write_requests": 4,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 1927,
+          "files": 6,
+          "result": "60b2c8e3c971ac9cabe47fb6902d881e5aecb84bd938837bc25d4c02412ea3b9",
+          "work": [
+            6150,
+            6149,
+            0,
+            2,
+            4098,
+            10251,
+            12298,
+            0,
+            4098
+          ],
+          "wall_seconds": 0.03707038300035492,
+          "peak_rss_kib": 46708,
+          "save_amplification": 1.6920152091254752
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 3849029,
+          "save_ns": 270758,
+          "restore_ns": 3992217,
+          "continue_ns": 632767,
+          "before_bytes": 4344,
+          "after_save_bytes": 0,
+          "restored_bytes": 4344,
+          "final_bytes": 360984,
+          "sampled_peak_owned": 377368,
+          "directory_bytes": 0,
+          "codec_buffers": 1780,
+          "logical_table_bytes": 1052,
+          "save_cas_added": 1780,
+          "save_segments": 2,
+          "restore_segments": 2,
+          "task_read_requests": 15,
+          "task_write_requests": 4,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 1927,
+          "files": 6,
+          "result": "60b2c8e3c971ac9cabe47fb6902d881e5aecb84bd938837bc25d4c02412ea3b9",
+          "work": [
+            6150,
+            6149,
+            0,
+            2,
+            4098,
+            10251,
+            12298,
+            0,
+            4098
+          ],
+          "wall_seconds": 0.03512343200009127,
+          "peak_rss_kib": 46940,
+          "save_amplification": 1.6920152091254752
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 3945710,
+          "save_ns": 274004,
+          "restore_ns": 3857224,
+          "continue_ns": 642154,
+          "before_bytes": 4344,
+          "after_save_bytes": 0,
+          "restored_bytes": 4344,
+          "final_bytes": 360984,
+          "sampled_peak_owned": 377368,
+          "directory_bytes": 0,
+          "codec_buffers": 1780,
+          "logical_table_bytes": 1052,
+          "save_cas_added": 1780,
+          "save_segments": 2,
+          "restore_segments": 2,
+          "task_read_requests": 15,
+          "task_write_requests": 4,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 1927,
+          "files": 6,
+          "result": "60b2c8e3c971ac9cabe47fb6902d881e5aecb84bd938837bc25d4c02412ea3b9",
+          "work": [
+            6150,
+            6149,
+            0,
+            2,
+            4098,
+            10251,
+            12298,
+            0,
+            4098
+          ],
+          "wall_seconds": 0.03304113700005473,
+          "peak_rss_kib": 47944,
+          "save_amplification": 1.6920152091254752
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 3879436,
+          "min": 3849029,
+          "max": 3945710,
+          "iqr": 96681.0
+        },
+        "save_ns": {
+          "median": 274004,
+          "min": 270758,
+          "max": 291627,
+          "iqr": 20869.0
+        },
+        "restore_ns": {
+          "median": 3960447,
+          "min": 3857224,
+          "max": 3992217,
+          "iqr": 134993.0
+        },
+        "continue_ns": {
+          "median": 635892,
+          "min": 632767,
+          "max": 642154,
+          "iqr": 9387.0
+        },
+        "before_bytes": {
+          "median": 4344,
+          "min": 4344,
+          "max": 4344,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 4344,
+          "min": 4344,
+          "max": 4344,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 360984,
+          "min": 360984,
+          "max": 360984,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 377368,
+          "min": 377368,
+          "max": 377368,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 1780,
+          "min": 1780,
+          "max": 1780,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 1052,
+          "min": 1052,
+          "max": 1052,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 1780,
+          "min": 1780,
+          "max": 1780,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 2,
+          "min": 2,
+          "max": 2,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 2,
+          "min": 2,
+          "max": 2,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 15,
+          "min": 15,
+          "max": 15,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 4,
+          "min": 4,
+          "max": 4,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 1927,
+          "min": 1927,
+          "max": 1927,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 6,
+          "min": 6,
+          "max": 6,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.03512343200009127,
+          "min": 0.03304113700005473,
+          "max": 0.03707038300035492,
+          "iqr": 0.004029246000300191
+        },
+        "peak_rss_kib": {
+          "median": 46940,
+          "min": 46708,
+          "max": 47944,
+          "iqr": 1236.0
+        },
+        "save_amplification": {
+          "median": 1.6920152091254752,
+          "min": 1.6920152091254752,
+          "max": 1.6920152091254752,
+          "iqr": 0.0
+        }
+      }
+    },
+    {
+      "case": "wide",
+      "size": 2049,
+      "mode": "topology-resident",
+      "phase": "formula",
+      "source_sha256": "0e8316876c4d6d45b939e854258aa417badff8a6470d506f7906058dcfc0ef27",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 4673505,
+          "save_ns": 725701,
+          "restore_ns": 4446269,
+          "continue_ns": 276359,
+          "before_bytes": 250804,
+          "after_save_bytes": 250804,
+          "restored_bytes": 250804,
+          "final_bytes": 360984,
+          "sampled_peak_owned": 377368,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 45654,
+          "files": 4,
+          "result": "60b2c8e3c971ac9cabe47fb6902d881e5aecb84bd938837bc25d4c02412ea3b9",
+          "work": [
+            6150,
+            6149,
+            0,
+            2,
+            4098,
+            10251,
+            12298,
+            0,
+            4098
+          ],
+          "wall_seconds": 0.03512132900004872,
+          "peak_rss_kib": 47036
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 4610166,
+          "save_ns": 729518,
+          "restore_ns": 4274016,
+          "continue_ns": 282449,
+          "before_bytes": 250804,
+          "after_save_bytes": 250804,
+          "restored_bytes": 250804,
+          "final_bytes": 360984,
+          "sampled_peak_owned": 377368,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 45654,
+          "files": 4,
+          "result": "60b2c8e3c971ac9cabe47fb6902d881e5aecb84bd938837bc25d4c02412ea3b9",
+          "work": [
+            6150,
+            6149,
+            0,
+            2,
+            4098,
+            10251,
+            12298,
+            0,
+            4098
+          ],
+          "wall_seconds": 0.034087459000147646,
+          "peak_rss_kib": 47072
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 4774174,
+          "save_ns": 742993,
+          "restore_ns": 4341241,
+          "continue_ns": 276108,
+          "before_bytes": 250804,
+          "after_save_bytes": 250804,
+          "restored_bytes": 250804,
+          "final_bytes": 360984,
+          "sampled_peak_owned": 377368,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 45654,
+          "files": 4,
+          "result": "60b2c8e3c971ac9cabe47fb6902d881e5aecb84bd938837bc25d4c02412ea3b9",
+          "work": [
+            6150,
+            6149,
+            0,
+            2,
+            4098,
+            10251,
+            12298,
+            0,
+            4098
+          ],
+          "wall_seconds": 0.03503188000013324,
+          "peak_rss_kib": 47304
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 4673505,
+          "min": 4610166,
+          "max": 4774174,
+          "iqr": 164008.0
+        },
+        "save_ns": {
+          "median": 729518,
+          "min": 725701,
+          "max": 742993,
+          "iqr": 17292.0
+        },
+        "restore_ns": {
+          "median": 4341241,
+          "min": 4274016,
+          "max": 4446269,
+          "iqr": 172253.0
+        },
+        "continue_ns": {
+          "median": 276359,
+          "min": 276108,
+          "max": 282449,
+          "iqr": 6341.0
+        },
+        "before_bytes": {
+          "median": 250804,
+          "min": 250804,
+          "max": 250804,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 250804,
+          "min": 250804,
+          "max": 250804,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 250804,
+          "min": 250804,
+          "max": 250804,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 360984,
+          "min": 360984,
+          "max": 360984,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 377368,
+          "min": 377368,
+          "max": 377368,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 7,
+          "min": 7,
+          "max": 7,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 2,
+          "min": 2,
+          "max": 2,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 45654,
+          "min": 45654,
+          "max": 45654,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 4,
+          "min": 4,
+          "max": 4,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.03503188000013324,
+          "min": 0.034087459000147646,
+          "max": 0.03512132900004872,
+          "iqr": 0.0010338699999010714
+        },
+        "peak_rss_kib": {
+          "median": 47072,
+          "min": 47036,
+          "max": 47304,
+          "iqr": 268.0
+        }
+      }
+    },
+    {
+      "case": "wide",
+      "size": 2049,
+      "mode": "topology-segmented",
+      "phase": "formula",
+      "source_sha256": "0e8316876c4d6d45b939e854258aa417badff8a6470d506f7906058dcfc0ef27",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 4540496,
+          "save_ns": 866846,
+          "restore_ns": 4452961,
+          "continue_ns": 315342,
+          "before_bytes": 250804,
+          "after_save_bytes": 0,
+          "restored_bytes": 250800,
+          "final_bytes": 360968,
+          "sampled_peak_owned": 377352,
+          "directory_bytes": 0,
+          "codec_buffers": 23380,
+          "logical_table_bytes": 45132,
+          "save_cas_added": 46468,
+          "save_segments": 6,
+          "restore_segments": 6,
+          "task_read_requests": 31,
+          "task_write_requests": 8,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 46615,
+          "files": 10,
+          "result": "60b2c8e3c971ac9cabe47fb6902d881e5aecb84bd938837bc25d4c02412ea3b9",
+          "work": [
+            6150,
+            6149,
+            0,
+            2,
+            4098,
+            10251,
+            12298,
+            0,
+            4098
+          ],
+          "wall_seconds": 0.03841732900036732,
+          "peak_rss_kib": 48224,
+          "save_amplification": 1.0296020561907293
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 4634683,
+          "save_ns": 836509,
+          "restore_ns": 4342595,
+          "continue_ns": 284364,
+          "before_bytes": 250804,
+          "after_save_bytes": 0,
+          "restored_bytes": 250800,
+          "final_bytes": 360968,
+          "sampled_peak_owned": 377352,
+          "directory_bytes": 0,
+          "codec_buffers": 23380,
+          "logical_table_bytes": 45132,
+          "save_cas_added": 46468,
+          "save_segments": 6,
+          "restore_segments": 6,
+          "task_read_requests": 31,
+          "task_write_requests": 8,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 46615,
+          "files": 10,
+          "result": "60b2c8e3c971ac9cabe47fb6902d881e5aecb84bd938837bc25d4c02412ea3b9",
+          "work": [
+            6150,
+            6149,
+            0,
+            2,
+            4098,
+            10251,
+            12298,
+            0,
+            4098
+          ],
+          "wall_seconds": 0.03414521800004877,
+          "peak_rss_kib": 47168,
+          "save_amplification": 1.0296020561907293
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 4721606,
+          "save_ns": 914735,
+          "restore_ns": 4230774,
+          "continue_ns": 277109,
+          "before_bytes": 250804,
+          "after_save_bytes": 0,
+          "restored_bytes": 250800,
+          "final_bytes": 360968,
+          "sampled_peak_owned": 377352,
+          "directory_bytes": 0,
+          "codec_buffers": 23380,
+          "logical_table_bytes": 45132,
+          "save_cas_added": 46468,
+          "save_segments": 6,
+          "restore_segments": 6,
+          "task_read_requests": 31,
+          "task_write_requests": 8,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 46615,
+          "files": 10,
+          "result": "60b2c8e3c971ac9cabe47fb6902d881e5aecb84bd938837bc25d4c02412ea3b9",
+          "work": [
+            6150,
+            6149,
+            0,
+            2,
+            4098,
+            10251,
+            12298,
+            0,
+            4098
+          ],
+          "wall_seconds": 0.0349785499997779,
+          "peak_rss_kib": 48336,
+          "save_amplification": 1.0296020561907293
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 4634683,
+          "min": 4540496,
+          "max": 4721606,
+          "iqr": 181110.0
+        },
+        "save_ns": {
+          "median": 866846,
+          "min": 836509,
+          "max": 914735,
+          "iqr": 78226.0
+        },
+        "restore_ns": {
+          "median": 4342595,
+          "min": 4230774,
+          "max": 4452961,
+          "iqr": 222187.0
+        },
+        "continue_ns": {
+          "median": 284364,
+          "min": 277109,
+          "max": 315342,
+          "iqr": 38233.0
+        },
+        "before_bytes": {
+          "median": 250804,
+          "min": 250804,
+          "max": 250804,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 250800,
+          "min": 250800,
+          "max": 250800,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 360968,
+          "min": 360968,
+          "max": 360968,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 377352,
+          "min": 377352,
+          "max": 377352,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 23380,
+          "min": 23380,
+          "max": 23380,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 45132,
+          "min": 45132,
+          "max": 45132,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 46468,
+          "min": 46468,
+          "max": 46468,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 6,
+          "min": 6,
+          "max": 6,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 6,
+          "min": 6,
+          "max": 6,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 31,
+          "min": 31,
+          "max": 31,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 8,
+          "min": 8,
+          "max": 8,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 46615,
+          "min": 46615,
+          "max": 46615,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 10,
+          "min": 10,
+          "max": 10,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.0349785499997779,
+          "min": 0.03414521800004877,
+          "max": 0.03841732900036732,
+          "iqr": 0.004272111000318546
+        },
+        "peak_rss_kib": {
+          "median": 48224,
+          "min": 47168,
+          "max": 48336,
+          "iqr": 1168.0
+        },
+        "save_amplification": {
+          "median": 1.0296020561907293,
+          "min": 1.0296020561907293,
+          "max": 1.0296020561907293,
+          "iqr": 0.0
+        }
+      }
+    },
+    {
+      "case": "function",
+      "size": 256,
+      "mode": "native-memory",
+      "phase": "frontier",
+      "source_sha256": "46f2049cffa0d8afa1a7543e3ec7e6d90cdd4287b023c6266a057dbaba824026",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 278472,
+          "save_ns": 235822,
+          "restore_ns": 36969,
+          "continue_ns": 262933,
+          "before_bytes": 5180,
+          "after_save_bytes": 5180,
+          "restored_bytes": 5180,
+          "final_bytes": 33976,
+          "sampled_peak_owned": 33976,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 19,
+          "task_write_requests": 5,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 2074,
+          "files": 7,
+          "result": "746783f9b54c139e18ed5936c54a246f255355eda9c25c80c39cdb56730bd88d",
+          "work": [
+            521,
+            521,
+            1034,
+            775,
+            2,
+            0,
+            3
+          ],
+          "wall_seconds": 0.009753953000199544,
+          "peak_rss_kib": 39616
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 287318,
+          "save_ns": 241954,
+          "restore_ns": 49122,
+          "continue_ns": 270467,
+          "before_bytes": 5180,
+          "after_save_bytes": 5180,
+          "restored_bytes": 5180,
+          "final_bytes": 33976,
+          "sampled_peak_owned": 33976,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 19,
+          "task_write_requests": 5,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 2074,
+          "files": 7,
+          "result": "746783f9b54c139e18ed5936c54a246f255355eda9c25c80c39cdb56730bd88d",
+          "work": [
+            521,
+            521,
+            1034,
+            775,
+            2,
+            0,
+            3
+          ],
+          "wall_seconds": 0.011836369000320701,
+          "peak_rss_kib": 39532
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 277951,
+          "save_ns": 245360,
+          "restore_ns": 34535,
+          "continue_ns": 270618,
+          "before_bytes": 5180,
+          "after_save_bytes": 5180,
+          "restored_bytes": 5180,
+          "final_bytes": 33976,
+          "sampled_peak_owned": 33976,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 19,
+          "task_write_requests": 5,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 2074,
+          "files": 7,
+          "result": "746783f9b54c139e18ed5936c54a246f255355eda9c25c80c39cdb56730bd88d",
+          "work": [
+            521,
+            521,
+            1034,
+            775,
+            2,
+            0,
+            3
+          ],
+          "wall_seconds": 0.008827314999962255,
+          "peak_rss_kib": 39284
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 278472,
+          "min": 277951,
+          "max": 287318,
+          "iqr": 9367.0
+        },
+        "save_ns": {
+          "median": 241954,
+          "min": 235822,
+          "max": 245360,
+          "iqr": 9538.0
+        },
+        "restore_ns": {
+          "median": 36969,
+          "min": 34535,
+          "max": 49122,
+          "iqr": 14587.0
+        },
+        "continue_ns": {
+          "median": 270467,
+          "min": 262933,
+          "max": 270618,
+          "iqr": 7685.0
+        },
+        "before_bytes": {
+          "median": 5180,
+          "min": 5180,
+          "max": 5180,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 5180,
+          "min": 5180,
+          "max": 5180,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 5180,
+          "min": 5180,
+          "max": 5180,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 33976,
+          "min": 33976,
+          "max": 33976,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 33976,
+          "min": 33976,
+          "max": 33976,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 19,
+          "min": 19,
+          "max": 19,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 5,
+          "min": 5,
+          "max": 5,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 2074,
+          "min": 2074,
+          "max": 2074,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 7,
+          "min": 7,
+          "max": 7,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.009753953000199544,
+          "min": 0.008827314999962255,
+          "max": 0.011836369000320701,
+          "iqr": 0.0030090540003584465
+        },
+        "peak_rss_kib": {
+          "median": 39532,
+          "min": 39284,
+          "max": 39616,
+          "iqr": 332.0
+        }
+      }
+    },
+    {
+      "case": "function",
+      "size": 256,
+      "mode": "native-paged",
+      "phase": "frontier",
+      "source_sha256": "46f2049cffa0d8afa1a7543e3ec7e6d90cdd4287b023c6266a057dbaba824026",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 293160,
+          "save_ns": 298891,
+          "restore_ns": 51387,
+          "continue_ns": 327885,
+          "before_bytes": 97920,
+          "after_save_bytes": 0,
+          "restored_bytes": 100224,
+          "final_bytes": 100224,
+          "sampled_peak_owned": 100224,
+          "directory_bytes": 360,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 28,
+          "task_write_requests": 7,
+          "paging_reads": 5,
+          "paging_writes": 0,
+          "paging_bytes_read": 2402,
+          "paging_bytes_written": 0,
+          "disk_bytes": 3482,
+          "files": 9,
+          "result": "746783f9b54c139e18ed5936c54a246f255355eda9c25c80c39cdb56730bd88d",
+          "work": [
+            521,
+            521,
+            1034,
+            775,
+            2,
+            0,
+            3
+          ],
+          "wall_seconds": 0.009746910000103526,
+          "peak_rss_kib": 39684
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 288200,
+          "save_ns": 296947,
+          "restore_ns": 49964,
+          "continue_ns": 329208,
+          "before_bytes": 97920,
+          "after_save_bytes": 0,
+          "restored_bytes": 100224,
+          "final_bytes": 100224,
+          "sampled_peak_owned": 100224,
+          "directory_bytes": 360,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 28,
+          "task_write_requests": 7,
+          "paging_reads": 5,
+          "paging_writes": 0,
+          "paging_bytes_read": 2402,
+          "paging_bytes_written": 0,
+          "disk_bytes": 3482,
+          "files": 9,
+          "result": "746783f9b54c139e18ed5936c54a246f255355eda9c25c80c39cdb56730bd88d",
+          "work": [
+            521,
+            521,
+            1034,
+            775,
+            2,
+            0,
+            3
+          ],
+          "wall_seconds": 0.0086400440000034,
+          "peak_rss_kib": 39640
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 288421,
+          "save_ns": 287960,
+          "restore_ns": 45997,
+          "continue_ns": 322876,
+          "before_bytes": 97920,
+          "after_save_bytes": 0,
+          "restored_bytes": 100224,
+          "final_bytes": 100224,
+          "sampled_peak_owned": 100224,
+          "directory_bytes": 360,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 28,
+          "task_write_requests": 7,
+          "paging_reads": 5,
+          "paging_writes": 0,
+          "paging_bytes_read": 2402,
+          "paging_bytes_written": 0,
+          "disk_bytes": 3482,
+          "files": 9,
+          "result": "746783f9b54c139e18ed5936c54a246f255355eda9c25c80c39cdb56730bd88d",
+          "work": [
+            521,
+            521,
+            1034,
+            775,
+            2,
+            0,
+            3
+          ],
+          "wall_seconds": 0.00862838200009719,
+          "peak_rss_kib": 39380
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 288421,
+          "min": 288200,
+          "max": 293160,
+          "iqr": 4960.0
+        },
+        "save_ns": {
+          "median": 296947,
+          "min": 287960,
+          "max": 298891,
+          "iqr": 10931.0
+        },
+        "restore_ns": {
+          "median": 49964,
+          "min": 45997,
+          "max": 51387,
+          "iqr": 5390.0
+        },
+        "continue_ns": {
+          "median": 327885,
+          "min": 322876,
+          "max": 329208,
+          "iqr": 6332.0
+        },
+        "before_bytes": {
+          "median": 97920,
+          "min": 97920,
+          "max": 97920,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 100224,
+          "min": 100224,
+          "max": 100224,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 100224,
+          "min": 100224,
+          "max": 100224,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 100224,
+          "min": 100224,
+          "max": 100224,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 360,
+          "min": 360,
+          "max": 360,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 28,
+          "min": 28,
+          "max": 28,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 7,
+          "min": 7,
+          "max": 7,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 5,
+          "min": 5,
+          "max": 5,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 2402,
+          "min": 2402,
+          "max": 2402,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 3482,
+          "min": 3482,
+          "max": 3482,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 9,
+          "min": 9,
+          "max": 9,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.0086400440000034,
+          "min": 0.00862838200009719,
+          "max": 0.009746910000103526,
+          "iqr": 0.0011185280000063358
+        },
+        "peak_rss_kib": {
+          "median": 39640,
+          "min": 39380,
+          "max": 39684,
+          "iqr": 304.0
+        }
+      }
+    },
+    {
+      "case": "function",
+      "size": 256,
+      "mode": "topology-resident",
+      "phase": "frontier",
+      "source_sha256": "46f2049cffa0d8afa1a7543e3ec7e6d90cdd4287b023c6266a057dbaba824026",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 616797,
+          "save_ns": 295966,
+          "restore_ns": 588413,
+          "continue_ns": 137378,
+          "before_bytes": 4676,
+          "after_save_bytes": 4676,
+          "restored_bytes": 4676,
+          "final_bytes": 19700,
+          "sampled_peak_owned": 21744,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 1594,
+          "files": 4,
+          "result": "673dfcebfa8b87f25633894092c8f3649b6227b47f0c70629f5c7e9208a0f0df",
+          "work": [
+            523,
+            1033,
+            2,
+            6,
+            9,
+            1047,
+            2066,
+            0,
+            4
+          ],
+          "wall_seconds": 0.013891834000332892,
+          "peak_rss_kib": 39492
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 616576,
+          "save_ns": 284613,
+          "restore_ns": 579287,
+          "continue_ns": 138650,
+          "before_bytes": 4676,
+          "after_save_bytes": 4676,
+          "restored_bytes": 4676,
+          "final_bytes": 19700,
+          "sampled_peak_owned": 21744,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 1594,
+          "files": 4,
+          "result": "673dfcebfa8b87f25633894092c8f3649b6227b47f0c70629f5c7e9208a0f0df",
+          "work": [
+            523,
+            1033,
+            2,
+            6,
+            9,
+            1047,
+            2066,
+            0,
+            4
+          ],
+          "wall_seconds": 0.014996293999956833,
+          "peak_rss_kib": 39784
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 292689,
+          "save_ns": 163016,
+          "restore_ns": 271869,
+          "continue_ns": 67667,
+          "before_bytes": 4676,
+          "after_save_bytes": 4676,
+          "restored_bytes": 4676,
+          "final_bytes": 19700,
+          "sampled_peak_owned": 21744,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 1594,
+          "files": 4,
+          "result": "673dfcebfa8b87f25633894092c8f3649b6227b47f0c70629f5c7e9208a0f0df",
+          "work": [
+            523,
+            1033,
+            2,
+            6,
+            9,
+            1047,
+            2066,
+            0,
+            4
+          ],
+          "wall_seconds": 0.010742025999661564,
+          "peak_rss_kib": 39760
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 616576,
+          "min": 292689,
+          "max": 616797,
+          "iqr": 324108.0
+        },
+        "save_ns": {
+          "median": 284613,
+          "min": 163016,
+          "max": 295966,
+          "iqr": 132950.0
+        },
+        "restore_ns": {
+          "median": 579287,
+          "min": 271869,
+          "max": 588413,
+          "iqr": 316544.0
+        },
+        "continue_ns": {
+          "median": 137378,
+          "min": 67667,
+          "max": 138650,
+          "iqr": 70983.0
+        },
+        "before_bytes": {
+          "median": 4676,
+          "min": 4676,
+          "max": 4676,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 4676,
+          "min": 4676,
+          "max": 4676,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 4676,
+          "min": 4676,
+          "max": 4676,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 19700,
+          "min": 19700,
+          "max": 19700,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 21744,
+          "min": 21744,
+          "max": 21744,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 7,
+          "min": 7,
+          "max": 7,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 2,
+          "min": 2,
+          "max": 2,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 1594,
+          "min": 1594,
+          "max": 1594,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 4,
+          "min": 4,
+          "max": 4,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.013891834000332892,
+          "min": 0.010742025999661564,
+          "max": 0.014996293999956833,
+          "iqr": 0.004254268000295269
+        },
+        "peak_rss_kib": {
+          "median": 39760,
+          "min": 39492,
+          "max": 39784,
+          "iqr": 292.0
+        }
+      }
+    },
+    {
+      "case": "function",
+      "size": 256,
+      "mode": "topology-segmented",
+      "phase": "frontier",
+      "source_sha256": "46f2049cffa0d8afa1a7543e3ec7e6d90cdd4287b023c6266a057dbaba824026",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 278552,
+          "save_ns": 226455,
+          "restore_ns": 275447,
+          "continue_ns": 65603,
+          "before_bytes": 4676,
+          "after_save_bytes": 0,
+          "restored_bytes": 4676,
+          "final_bytes": 19700,
+          "sampled_peak_owned": 21744,
+          "directory_bytes": 0,
+          "codec_buffers": 1780,
+          "logical_table_bytes": 1104,
+          "save_cas_added": 1984,
+          "save_segments": 3,
+          "restore_segments": 3,
+          "task_read_requests": 19,
+          "task_write_requests": 5,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 2131,
+          "files": 7,
+          "result": "673dfcebfa8b87f25633894092c8f3649b6227b47f0c70629f5c7e9208a0f0df",
+          "work": [
+            523,
+            1033,
+            2,
+            6,
+            9,
+            1047,
+            2066,
+            0,
+            4
+          ],
+          "wall_seconds": 0.010690720000184228,
+          "peak_rss_kib": 39572,
+          "save_amplification": 1.7971014492753623
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 281187,
+          "save_ns": 247654,
+          "restore_ns": 301004,
+          "continue_ns": 62638,
+          "before_bytes": 4676,
+          "after_save_bytes": 0,
+          "restored_bytes": 4676,
+          "final_bytes": 19700,
+          "sampled_peak_owned": 21744,
+          "directory_bytes": 0,
+          "codec_buffers": 1780,
+          "logical_table_bytes": 1104,
+          "save_cas_added": 1984,
+          "save_segments": 3,
+          "restore_segments": 3,
+          "task_read_requests": 19,
+          "task_write_requests": 5,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 2131,
+          "files": 7,
+          "result": "673dfcebfa8b87f25633894092c8f3649b6227b47f0c70629f5c7e9208a0f0df",
+          "work": [
+            523,
+            1033,
+            2,
+            6,
+            9,
+            1047,
+            2066,
+            0,
+            4
+          ],
+          "wall_seconds": 0.009742041000208701,
+          "peak_rss_kib": 39616,
+          "save_amplification": 1.7971014492753623
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 276239,
+          "save_ns": 244699,
+          "restore_ns": 295033,
+          "continue_ns": 61996,
+          "before_bytes": 4676,
+          "after_save_bytes": 0,
+          "restored_bytes": 4676,
+          "final_bytes": 19700,
+          "sampled_peak_owned": 21744,
+          "directory_bytes": 0,
+          "codec_buffers": 1780,
+          "logical_table_bytes": 1104,
+          "save_cas_added": 1984,
+          "save_segments": 3,
+          "restore_segments": 3,
+          "task_read_requests": 19,
+          "task_write_requests": 5,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 2131,
+          "files": 7,
+          "result": "673dfcebfa8b87f25633894092c8f3649b6227b47f0c70629f5c7e9208a0f0df",
+          "work": [
+            523,
+            1033,
+            2,
+            6,
+            9,
+            1047,
+            2066,
+            0,
+            4
+          ],
+          "wall_seconds": 0.009657072000209155,
+          "peak_rss_kib": 39676,
+          "save_amplification": 1.7971014492753623
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 278552,
+          "min": 276239,
+          "max": 281187,
+          "iqr": 4948.0
+        },
+        "save_ns": {
+          "median": 244699,
+          "min": 226455,
+          "max": 247654,
+          "iqr": 21199.0
+        },
+        "restore_ns": {
+          "median": 295033,
+          "min": 275447,
+          "max": 301004,
+          "iqr": 25557.0
+        },
+        "continue_ns": {
+          "median": 62638,
+          "min": 61996,
+          "max": 65603,
+          "iqr": 3607.0
+        },
+        "before_bytes": {
+          "median": 4676,
+          "min": 4676,
+          "max": 4676,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 4676,
+          "min": 4676,
+          "max": 4676,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 19700,
+          "min": 19700,
+          "max": 19700,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 21744,
+          "min": 21744,
+          "max": 21744,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 1780,
+          "min": 1780,
+          "max": 1780,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 1104,
+          "min": 1104,
+          "max": 1104,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 1984,
+          "min": 1984,
+          "max": 1984,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 3,
+          "min": 3,
+          "max": 3,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 3,
+          "min": 3,
+          "max": 3,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 19,
+          "min": 19,
+          "max": 19,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 5,
+          "min": 5,
+          "max": 5,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 2131,
+          "min": 2131,
+          "max": 2131,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 7,
+          "min": 7,
+          "max": 7,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.009742041000208701,
+          "min": 0.009657072000209155,
+          "max": 0.010690720000184228,
+          "iqr": 0.0010336479999750736
+        },
+        "peak_rss_kib": {
+          "median": 39616,
+          "min": 39572,
+          "max": 39676,
+          "iqr": 104.0
+        },
+        "save_amplification": {
+          "median": 1.7971014492753623,
+          "min": 1.7971014492753623,
+          "max": 1.7971014492753623,
+          "iqr": 0.0
+        }
+      }
+    },
+    {
+      "case": "function",
+      "size": 256,
+      "mode": "topology-resident",
+      "phase": "formula",
+      "source_sha256": "46f2049cffa0d8afa1a7543e3ec7e6d90cdd4287b023c6266a057dbaba824026",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 326742,
+          "save_ns": 197159,
+          "restore_ns": 309019,
+          "continue_ns": 31349,
+          "before_bytes": 15312,
+          "after_save_bytes": 15312,
+          "restored_bytes": 15312,
+          "final_bytes": 19700,
+          "sampled_peak_owned": 21744,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 3702,
+          "files": 4,
+          "result": "673dfcebfa8b87f25633894092c8f3649b6227b47f0c70629f5c7e9208a0f0df",
+          "work": [
+            523,
+            1033,
+            2,
+            6,
+            9,
+            1047,
+            2066,
+            0,
+            4
+          ],
+          "wall_seconds": 0.009774662000381795,
+          "peak_rss_kib": 39744
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 333977,
+          "save_ns": 230142,
+          "restore_ns": 304712,
+          "continue_ns": 32061,
+          "before_bytes": 15312,
+          "after_save_bytes": 15312,
+          "restored_bytes": 15312,
+          "final_bytes": 19700,
+          "sampled_peak_owned": 21744,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 3702,
+          "files": 4,
+          "result": "673dfcebfa8b87f25633894092c8f3649b6227b47f0c70629f5c7e9208a0f0df",
+          "work": [
+            523,
+            1033,
+            2,
+            6,
+            9,
+            1047,
+            2066,
+            0,
+            4
+          ],
+          "wall_seconds": 0.010804222999922786,
+          "peak_rss_kib": 39560
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 325460,
+          "save_ns": 177893,
+          "restore_ns": 295064,
+          "continue_ns": 31109,
+          "before_bytes": 15312,
+          "after_save_bytes": 15312,
+          "restored_bytes": 15312,
+          "final_bytes": 19700,
+          "sampled_peak_owned": 21744,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 3702,
+          "files": 4,
+          "result": "673dfcebfa8b87f25633894092c8f3649b6227b47f0c70629f5c7e9208a0f0df",
+          "work": [
+            523,
+            1033,
+            2,
+            6,
+            9,
+            1047,
+            2066,
+            0,
+            4
+          ],
+          "wall_seconds": 0.010751564000202052,
+          "peak_rss_kib": 39548
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 326742,
+          "min": 325460,
+          "max": 333977,
+          "iqr": 8517.0
+        },
+        "save_ns": {
+          "median": 197159,
+          "min": 177893,
+          "max": 230142,
+          "iqr": 52249.0
+        },
+        "restore_ns": {
+          "median": 304712,
+          "min": 295064,
+          "max": 309019,
+          "iqr": 13955.0
+        },
+        "continue_ns": {
+          "median": 31349,
+          "min": 31109,
+          "max": 32061,
+          "iqr": 952.0
+        },
+        "before_bytes": {
+          "median": 15312,
+          "min": 15312,
+          "max": 15312,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 15312,
+          "min": 15312,
+          "max": 15312,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 15312,
+          "min": 15312,
+          "max": 15312,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 19700,
+          "min": 19700,
+          "max": 19700,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 21744,
+          "min": 21744,
+          "max": 21744,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 7,
+          "min": 7,
+          "max": 7,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 2,
+          "min": 2,
+          "max": 2,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 3702,
+          "min": 3702,
+          "max": 3702,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 4,
+          "min": 4,
+          "max": 4,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.010751564000202052,
+          "min": 0.009774662000381795,
+          "max": 0.010804222999922786,
+          "iqr": 0.0010295609995409905
+        },
+        "peak_rss_kib": {
+          "median": 39560,
+          "min": 39548,
+          "max": 39744,
+          "iqr": 196.0
+        }
+      }
+    },
+    {
+      "case": "function",
+      "size": 256,
+      "mode": "topology-segmented",
+      "phase": "formula",
+      "source_sha256": "46f2049cffa0d8afa1a7543e3ec7e6d90cdd4287b023c6266a057dbaba824026",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 347162,
+          "save_ns": 333906,
+          "restore_ns": 310602,
+          "continue_ns": 30737,
+          "before_bytes": 15312,
+          "after_save_bytes": 0,
+          "restored_bytes": 15312,
+          "final_bytes": 19700,
+          "sampled_peak_owned": 21744,
+          "directory_bytes": 0,
+          "codec_buffers": 3220,
+          "logical_table_bytes": 3212,
+          "save_cas_added": 4396,
+          "save_segments": 5,
+          "restore_segments": 5,
+          "task_read_requests": 27,
+          "task_write_requests": 7,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 4543,
+          "files": 9,
+          "result": "673dfcebfa8b87f25633894092c8f3649b6227b47f0c70629f5c7e9208a0f0df",
+          "work": [
+            523,
+            1033,
+            2,
+            6,
+            9,
+            1047,
+            2066,
+            0,
+            4
+          ],
+          "wall_seconds": 0.01176740900018558,
+          "peak_rss_kib": 39680,
+          "save_amplification": 1.3686176836861768
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 319379,
+          "save_ns": 302888,
+          "restore_ns": 309110,
+          "continue_ns": 30718,
+          "before_bytes": 15312,
+          "after_save_bytes": 0,
+          "restored_bytes": 15312,
+          "final_bytes": 19700,
+          "sampled_peak_owned": 21744,
+          "directory_bytes": 0,
+          "codec_buffers": 3220,
+          "logical_table_bytes": 3212,
+          "save_cas_added": 4396,
+          "save_segments": 5,
+          "restore_segments": 5,
+          "task_read_requests": 27,
+          "task_write_requests": 7,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 4543,
+          "files": 9,
+          "result": "673dfcebfa8b87f25633894092c8f3649b6227b47f0c70629f5c7e9208a0f0df",
+          "work": [
+            523,
+            1033,
+            2,
+            6,
+            9,
+            1047,
+            2066,
+            0,
+            4
+          ],
+          "wall_seconds": 0.010743920000095386,
+          "peak_rss_kib": 39696,
+          "save_amplification": 1.3686176836861768
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 414678,
+          "save_ns": 315371,
+          "restore_ns": 337643,
+          "continue_ns": 31138,
+          "before_bytes": 15312,
+          "after_save_bytes": 0,
+          "restored_bytes": 15312,
+          "final_bytes": 19700,
+          "sampled_peak_owned": 21744,
+          "directory_bytes": 0,
+          "codec_buffers": 3220,
+          "logical_table_bytes": 3212,
+          "save_cas_added": 4396,
+          "save_segments": 5,
+          "restore_segments": 5,
+          "task_read_requests": 27,
+          "task_write_requests": 7,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 4543,
+          "files": 9,
+          "result": "673dfcebfa8b87f25633894092c8f3649b6227b47f0c70629f5c7e9208a0f0df",
+          "work": [
+            523,
+            1033,
+            2,
+            6,
+            9,
+            1047,
+            2066,
+            0,
+            4
+          ],
+          "wall_seconds": 0.012833888999921328,
+          "peak_rss_kib": 39196,
+          "save_amplification": 1.3686176836861768
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 347162,
+          "min": 319379,
+          "max": 414678,
+          "iqr": 95299.0
+        },
+        "save_ns": {
+          "median": 315371,
+          "min": 302888,
+          "max": 333906,
+          "iqr": 31018.0
+        },
+        "restore_ns": {
+          "median": 310602,
+          "min": 309110,
+          "max": 337643,
+          "iqr": 28533.0
+        },
+        "continue_ns": {
+          "median": 30737,
+          "min": 30718,
+          "max": 31138,
+          "iqr": 420.0
+        },
+        "before_bytes": {
+          "median": 15312,
+          "min": 15312,
+          "max": 15312,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 15312,
+          "min": 15312,
+          "max": 15312,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 19700,
+          "min": 19700,
+          "max": 19700,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 21744,
+          "min": 21744,
+          "max": 21744,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 3220,
+          "min": 3220,
+          "max": 3220,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 3212,
+          "min": 3212,
+          "max": 3212,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 4396,
+          "min": 4396,
+          "max": 4396,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 5,
+          "min": 5,
+          "max": 5,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 5,
+          "min": 5,
+          "max": 5,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 27,
+          "min": 27,
+          "max": 27,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 7,
+          "min": 7,
+          "max": 7,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 4543,
+          "min": 4543,
+          "max": 4543,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 9,
+          "min": 9,
+          "max": 9,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.01176740900018558,
+          "min": 0.010743920000095386,
+          "max": 0.012833888999921328,
+          "iqr": 0.002089968999825942
+        },
+        "peak_rss_kib": {
+          "median": 39680,
+          "min": 39196,
+          "max": 39696,
+          "iqr": 500.0
+        },
+        "save_amplification": {
+          "median": 1.3686176836861768,
+          "min": 1.3686176836861768,
+          "max": 1.3686176836861768,
+          "iqr": 0.0
+        }
+      }
+    },
+    {
+      "case": "function",
+      "size": 1024,
+      "mode": "native-memory",
+      "phase": "frontier",
+      "source_sha256": "589dd11182bee9dfd2e853fefd35e92a96a7746204ab6b9507da1e2512864214",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 979276,
+          "save_ns": 235232,
+          "restore_ns": 903545,
+          "continue_ns": 110387,
+          "before_bytes": 2216,
+          "after_save_bytes": 2216,
+          "restored_bytes": 2216,
+          "final_bytes": 132664,
+          "sampled_peak_owned": 132664,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 15,
+          "task_write_requests": 4,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 950,
+          "files": 6,
+          "result": "746783f9b54c139e18ed5936c54a246f255355eda9c25c80c39cdb56730bd88d",
+          "work": [
+            2057,
+            2057,
+            4106,
+            3079,
+            2,
+            0,
+            3
+          ],
+          "wall_seconds": 0.01819969200005289,
+          "peak_rss_kib": 40968
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 974598,
+          "save_ns": 227125,
+          "restore_ns": 921067,
+          "continue_ns": 113694,
+          "before_bytes": 2216,
+          "after_save_bytes": 2216,
+          "restored_bytes": 2216,
+          "final_bytes": 132664,
+          "sampled_peak_owned": 132664,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 15,
+          "task_write_requests": 4,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 950,
+          "files": 6,
+          "result": "746783f9b54c139e18ed5936c54a246f255355eda9c25c80c39cdb56730bd88d",
+          "work": [
+            2057,
+            2057,
+            4106,
+            3079,
+            2,
+            0,
+            3
+          ],
+          "wall_seconds": 0.017178998999952455,
+          "peak_rss_kib": 41124
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 1029881,
+          "save_ns": 213200,
+          "restore_ns": 917912,
+          "continue_ns": 109315,
+          "before_bytes": 2216,
+          "after_save_bytes": 2216,
+          "restored_bytes": 2216,
+          "final_bytes": 132664,
+          "sampled_peak_owned": 132664,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 15,
+          "task_write_requests": 4,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 950,
+          "files": 6,
+          "result": "746783f9b54c139e18ed5936c54a246f255355eda9c25c80c39cdb56730bd88d",
+          "work": [
+            2057,
+            2057,
+            4106,
+            3079,
+            2,
+            0,
+            3
+          ],
+          "wall_seconds": 0.017066277000139962,
+          "peak_rss_kib": 40200
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 979276,
+          "min": 974598,
+          "max": 1029881,
+          "iqr": 55283.0
+        },
+        "save_ns": {
+          "median": 227125,
+          "min": 213200,
+          "max": 235232,
+          "iqr": 22032.0
+        },
+        "restore_ns": {
+          "median": 917912,
+          "min": 903545,
+          "max": 921067,
+          "iqr": 17522.0
+        },
+        "continue_ns": {
+          "median": 110387,
+          "min": 109315,
+          "max": 113694,
+          "iqr": 4379.0
+        },
+        "before_bytes": {
+          "median": 2216,
+          "min": 2216,
+          "max": 2216,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 2216,
+          "min": 2216,
+          "max": 2216,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 2216,
+          "min": 2216,
+          "max": 2216,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 132664,
+          "min": 132664,
+          "max": 132664,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 132664,
+          "min": 132664,
+          "max": 132664,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 15,
+          "min": 15,
+          "max": 15,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 4,
+          "min": 4,
+          "max": 4,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 950,
+          "min": 950,
+          "max": 950,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 6,
+          "min": 6,
+          "max": 6,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.017178998999952455,
+          "min": 0.017066277000139962,
+          "max": 0.01819969200005289,
+          "iqr": 0.0011334149999129295
+        },
+        "peak_rss_kib": {
+          "median": 40968,
+          "min": 40200,
+          "max": 41124,
+          "iqr": 924.0
+        }
+      }
+    },
+    {
+      "case": "function",
+      "size": 1024,
+      "mode": "native-paged",
+      "phase": "frontier",
+      "source_sha256": "589dd11182bee9dfd2e853fefd35e92a96a7746204ab6b9507da1e2512864214",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 1005255,
+          "save_ns": 291247,
+          "restore_ns": 933521,
+          "continue_ns": 1333020,
+          "before_bytes": 97920,
+          "after_save_bytes": 0,
+          "restored_bytes": 98256,
+          "final_bytes": 147312,
+          "sampled_peak_owned": 147312,
+          "directory_bytes": 720,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 43,
+          "task_write_requests": 10,
+          "paging_reads": 7,
+          "paging_writes": 4,
+          "paging_bytes_read": 49538,
+          "paging_bytes_written": 65496,
+          "disk_bytes": 67090,
+          "files": 12,
+          "result": "746783f9b54c139e18ed5936c54a246f255355eda9c25c80c39cdb56730bd88d",
+          "work": [
+            2057,
+            2057,
+            4106,
+            3079,
+            2,
+            0,
+            3
+          ],
+          "wall_seconds": 0.018202027000370435,
+          "peak_rss_kib": 42472
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 1010746,
+          "save_ns": 301114,
+          "restore_ns": 917952,
+          "continue_ns": 1338130,
+          "before_bytes": 97920,
+          "after_save_bytes": 0,
+          "restored_bytes": 98256,
+          "final_bytes": 147312,
+          "sampled_peak_owned": 147312,
+          "directory_bytes": 720,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 43,
+          "task_write_requests": 10,
+          "paging_reads": 7,
+          "paging_writes": 4,
+          "paging_bytes_read": 49538,
+          "paging_bytes_written": 65496,
+          "disk_bytes": 67090,
+          "files": 12,
+          "result": "746783f9b54c139e18ed5936c54a246f255355eda9c25c80c39cdb56730bd88d",
+          "work": [
+            2057,
+            2057,
+            4106,
+            3079,
+            2,
+            0,
+            3
+          ],
+          "wall_seconds": 0.020261008000034053,
+          "peak_rss_kib": 42252
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 988654,
+          "save_ns": 297378,
+          "restore_ns": 936816,
+          "continue_ns": 1375139,
+          "before_bytes": 97920,
+          "after_save_bytes": 0,
+          "restored_bytes": 98256,
+          "final_bytes": 147312,
+          "sampled_peak_owned": 147312,
+          "directory_bytes": 720,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 43,
+          "task_write_requests": 10,
+          "paging_reads": 7,
+          "paging_writes": 4,
+          "paging_bytes_read": 49538,
+          "paging_bytes_written": 65496,
+          "disk_bytes": 67090,
+          "files": 12,
+          "result": "746783f9b54c139e18ed5936c54a246f255355eda9c25c80c39cdb56730bd88d",
+          "work": [
+            2057,
+            2057,
+            4106,
+            3079,
+            2,
+            0,
+            3
+          ],
+          "wall_seconds": 0.019266974999936792,
+          "peak_rss_kib": 42192
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 1005255,
+          "min": 988654,
+          "max": 1010746,
+          "iqr": 22092.0
+        },
+        "save_ns": {
+          "median": 297378,
+          "min": 291247,
+          "max": 301114,
+          "iqr": 9867.0
+        },
+        "restore_ns": {
+          "median": 933521,
+          "min": 917952,
+          "max": 936816,
+          "iqr": 18864.0
+        },
+        "continue_ns": {
+          "median": 1338130,
+          "min": 1333020,
+          "max": 1375139,
+          "iqr": 42119.0
+        },
+        "before_bytes": {
+          "median": 97920,
+          "min": 97920,
+          "max": 97920,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 98256,
+          "min": 98256,
+          "max": 98256,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 147312,
+          "min": 147312,
+          "max": 147312,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 147312,
+          "min": 147312,
+          "max": 147312,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 720,
+          "min": 720,
+          "max": 720,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 43,
+          "min": 43,
+          "max": 43,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 10,
+          "min": 10,
+          "max": 10,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 7,
+          "min": 7,
+          "max": 7,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 4,
+          "min": 4,
+          "max": 4,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 49538,
+          "min": 49538,
+          "max": 49538,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 65496,
+          "min": 65496,
+          "max": 65496,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 67090,
+          "min": 67090,
+          "max": 67090,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 12,
+          "min": 12,
+          "max": 12,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.019266974999936792,
+          "min": 0.018202027000370435,
+          "max": 0.020261008000034053,
+          "iqr": 0.0020589809996636177
+        },
+        "peak_rss_kib": {
+          "median": 42252,
+          "min": 42192,
+          "max": 42472,
+          "iqr": 280.0
+        }
+      }
+    },
+    {
+      "case": "function",
+      "size": 1024,
+      "mode": "topology-resident",
+      "phase": "frontier",
+      "source_sha256": "589dd11182bee9dfd2e853fefd35e92a96a7746204ab6b9507da1e2512864214",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 1138986,
+          "save_ns": 203422,
+          "restore_ns": 911880,
+          "continue_ns": 237515,
+          "before_bytes": 4676,
+          "after_save_bytes": 4676,
+          "restored_bytes": 4676,
+          "final_bytes": 79476,
+          "sampled_peak_owned": 87664,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 1594,
+          "files": 4,
+          "result": "a6d874206865f8999c61c1a12dc1d990b7fc8cd51cc4613b2096b365d7374ec0",
+          "work": [
+            2059,
+            4105,
+            2,
+            6,
+            9,
+            4119,
+            8210,
+            0,
+            4
+          ],
+          "wall_seconds": 0.020501450000210752,
+          "peak_rss_kib": 42448
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 988133,
+          "save_ns": 182723,
+          "restore_ns": 1571998,
+          "continue_ns": 536556,
+          "before_bytes": 4676,
+          "after_save_bytes": 4676,
+          "restored_bytes": 4676,
+          "final_bytes": 79476,
+          "sampled_peak_owned": 87664,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 1594,
+          "files": 4,
+          "result": "a6d874206865f8999c61c1a12dc1d990b7fc8cd51cc4613b2096b365d7374ec0",
+          "work": [
+            2059,
+            4105,
+            2,
+            6,
+            9,
+            4119,
+            8210,
+            0,
+            4
+          ],
+          "wall_seconds": 0.01823496899987731,
+          "peak_rss_kib": 42024
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 1071700,
+          "save_ns": 212368,
+          "restore_ns": 915627,
+          "continue_ns": 239118,
+          "before_bytes": 4676,
+          "after_save_bytes": 4676,
+          "restored_bytes": 4676,
+          "final_bytes": 79476,
+          "sampled_peak_owned": 87664,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 1594,
+          "files": 4,
+          "result": "a6d874206865f8999c61c1a12dc1d990b7fc8cd51cc4613b2096b365d7374ec0",
+          "work": [
+            2059,
+            4105,
+            2,
+            6,
+            9,
+            4119,
+            8210,
+            0,
+            4
+          ],
+          "wall_seconds": 0.020285193999825424,
+          "peak_rss_kib": 41456
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 1071700,
+          "min": 988133,
+          "max": 1138986,
+          "iqr": 150853.0
+        },
+        "save_ns": {
+          "median": 203422,
+          "min": 182723,
+          "max": 212368,
+          "iqr": 29645.0
+        },
+        "restore_ns": {
+          "median": 915627,
+          "min": 911880,
+          "max": 1571998,
+          "iqr": 660118.0
+        },
+        "continue_ns": {
+          "median": 239118,
+          "min": 237515,
+          "max": 536556,
+          "iqr": 299041.0
+        },
+        "before_bytes": {
+          "median": 4676,
+          "min": 4676,
+          "max": 4676,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 4676,
+          "min": 4676,
+          "max": 4676,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 4676,
+          "min": 4676,
+          "max": 4676,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 79476,
+          "min": 79476,
+          "max": 79476,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 87664,
+          "min": 87664,
+          "max": 87664,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 7,
+          "min": 7,
+          "max": 7,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 2,
+          "min": 2,
+          "max": 2,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 1594,
+          "min": 1594,
+          "max": 1594,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 4,
+          "min": 4,
+          "max": 4,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.020285193999825424,
+          "min": 0.01823496899987731,
+          "max": 0.020501450000210752,
+          "iqr": 0.0022664810003334424
+        },
+        "peak_rss_kib": {
+          "median": 42024,
+          "min": 41456,
+          "max": 42448,
+          "iqr": 992.0
+        }
+      }
+    },
+    {
+      "case": "function",
+      "size": 1024,
+      "mode": "topology-segmented",
+      "phase": "frontier",
+      "source_sha256": "589dd11182bee9dfd2e853fefd35e92a96a7746204ab6b9507da1e2512864214",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 1019061,
+          "save_ns": 272772,
+          "restore_ns": 912591,
+          "continue_ns": 239078,
+          "before_bytes": 4676,
+          "after_save_bytes": 0,
+          "restored_bytes": 4676,
+          "final_bytes": 79476,
+          "sampled_peak_owned": 87664,
+          "directory_bytes": 0,
+          "codec_buffers": 1780,
+          "logical_table_bytes": 1104,
+          "save_cas_added": 1984,
+          "save_segments": 3,
+          "restore_segments": 3,
+          "task_read_requests": 19,
+          "task_write_requests": 5,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 2131,
+          "files": 7,
+          "result": "a6d874206865f8999c61c1a12dc1d990b7fc8cd51cc4613b2096b365d7374ec0",
+          "work": [
+            2059,
+            4105,
+            2,
+            6,
+            9,
+            4119,
+            8210,
+            0,
+            4
+          ],
+          "wall_seconds": 0.017129524999745627,
+          "peak_rss_kib": 42300,
+          "save_amplification": 1.7971014492753623
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 984456,
+          "save_ns": 266509,
+          "restore_ns": 946315,
+          "continue_ns": 234630,
+          "before_bytes": 4676,
+          "after_save_bytes": 0,
+          "restored_bytes": 4676,
+          "final_bytes": 79476,
+          "sampled_peak_owned": 87664,
+          "directory_bytes": 0,
+          "codec_buffers": 1780,
+          "logical_table_bytes": 1104,
+          "save_cas_added": 1984,
+          "save_segments": 3,
+          "restore_segments": 3,
+          "task_read_requests": 19,
+          "task_write_requests": 5,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 2131,
+          "files": 7,
+          "result": "a6d874206865f8999c61c1a12dc1d990b7fc8cd51cc4613b2096b365d7374ec0",
+          "work": [
+            2059,
+            4105,
+            2,
+            6,
+            9,
+            4119,
+            8210,
+            0,
+            4
+          ],
+          "wall_seconds": 0.01704241200013712,
+          "peak_rss_kib": 42092,
+          "save_amplification": 1.7971014492753623
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 959429,
+          "save_ns": 266049,
+          "restore_ns": 904226,
+          "continue_ns": 248466,
+          "before_bytes": 4676,
+          "after_save_bytes": 0,
+          "restored_bytes": 4676,
+          "final_bytes": 79476,
+          "sampled_peak_owned": 87664,
+          "directory_bytes": 0,
+          "codec_buffers": 1780,
+          "logical_table_bytes": 1104,
+          "save_cas_added": 1984,
+          "save_segments": 3,
+          "restore_segments": 3,
+          "task_read_requests": 19,
+          "task_write_requests": 5,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 2131,
+          "files": 7,
+          "result": "a6d874206865f8999c61c1a12dc1d990b7fc8cd51cc4613b2096b365d7374ec0",
+          "work": [
+            2059,
+            4105,
+            2,
+            6,
+            9,
+            4119,
+            8210,
+            0,
+            4
+          ],
+          "wall_seconds": 0.016982540000299196,
+          "peak_rss_kib": 42552,
+          "save_amplification": 1.7971014492753623
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 984456,
+          "min": 959429,
+          "max": 1019061,
+          "iqr": 59632.0
+        },
+        "save_ns": {
+          "median": 266509,
+          "min": 266049,
+          "max": 272772,
+          "iqr": 6723.0
+        },
+        "restore_ns": {
+          "median": 912591,
+          "min": 904226,
+          "max": 946315,
+          "iqr": 42089.0
+        },
+        "continue_ns": {
+          "median": 239078,
+          "min": 234630,
+          "max": 248466,
+          "iqr": 13836.0
+        },
+        "before_bytes": {
+          "median": 4676,
+          "min": 4676,
+          "max": 4676,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 4676,
+          "min": 4676,
+          "max": 4676,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 79476,
+          "min": 79476,
+          "max": 79476,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 87664,
+          "min": 87664,
+          "max": 87664,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 1780,
+          "min": 1780,
+          "max": 1780,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 1104,
+          "min": 1104,
+          "max": 1104,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 1984,
+          "min": 1984,
+          "max": 1984,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 3,
+          "min": 3,
+          "max": 3,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 3,
+          "min": 3,
+          "max": 3,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 19,
+          "min": 19,
+          "max": 19,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 5,
+          "min": 5,
+          "max": 5,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 2131,
+          "min": 2131,
+          "max": 2131,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 7,
+          "min": 7,
+          "max": 7,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.01704241200013712,
+          "min": 0.016982540000299196,
+          "max": 0.017129524999745627,
+          "iqr": 0.00014698499944643117
+        },
+        "peak_rss_kib": {
+          "median": 42300,
+          "min": 42092,
+          "max": 42552,
+          "iqr": 460.0
+        },
+        "save_amplification": {
+          "median": 1.7971014492753623,
+          "min": 1.7971014492753623,
+          "max": 1.7971014492753623,
+          "iqr": 0.0
+        }
+      }
+    },
+    {
+      "case": "function",
+      "size": 1024,
+      "mode": "topology-resident",
+      "phase": "formula",
+      "source_sha256": "589dd11182bee9dfd2e853fefd35e92a96a7746204ab6b9507da1e2512864214",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 1184231,
+          "save_ns": 333856,
+          "restore_ns": 1019632,
+          "continue_ns": 114214,
+          "before_bytes": 61232,
+          "after_save_bytes": 61232,
+          "restored_bytes": 61232,
+          "final_bytes": 79476,
+          "sampled_peak_owned": 87664,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 12918,
+          "files": 4,
+          "result": "a6d874206865f8999c61c1a12dc1d990b7fc8cd51cc4613b2096b365d7374ec0",
+          "work": [
+            2059,
+            4105,
+            2,
+            6,
+            9,
+            4119,
+            8210,
+            0,
+            4
+          ],
+          "wall_seconds": 0.0173047440002847,
+          "peak_rss_kib": 42376
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 1193969,
+          "save_ns": 317836,
+          "restore_ns": 1036614,
+          "continue_ns": 116218,
+          "before_bytes": 61232,
+          "after_save_bytes": 61232,
+          "restored_bytes": 61232,
+          "final_bytes": 79476,
+          "sampled_peak_owned": 87664,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 12918,
+          "files": 4,
+          "result": "a6d874206865f8999c61c1a12dc1d990b7fc8cd51cc4613b2096b365d7374ec0",
+          "work": [
+            2059,
+            4105,
+            2,
+            6,
+            9,
+            4119,
+            8210,
+            0,
+            4
+          ],
+          "wall_seconds": 0.017195279000134178,
+          "peak_rss_kib": 42604
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 1202836,
+          "save_ns": 303790,
+          "restore_ns": 1016787,
+          "continue_ns": 114535,
+          "before_bytes": 61232,
+          "after_save_bytes": 61232,
+          "restored_bytes": 61232,
+          "final_bytes": 79476,
+          "sampled_peak_owned": 87664,
+          "directory_bytes": 0,
+          "codec_buffers": 0,
+          "logical_table_bytes": 0,
+          "save_cas_added": 0,
+          "save_segments": 0,
+          "restore_segments": 0,
+          "task_read_requests": 7,
+          "task_write_requests": 2,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 12918,
+          "files": 4,
+          "result": "a6d874206865f8999c61c1a12dc1d990b7fc8cd51cc4613b2096b365d7374ec0",
+          "work": [
+            2059,
+            4105,
+            2,
+            6,
+            9,
+            4119,
+            8210,
+            0,
+            4
+          ],
+          "wall_seconds": 0.017378562999965652,
+          "peak_rss_kib": 42648
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 1193969,
+          "min": 1184231,
+          "max": 1202836,
+          "iqr": 18605.0
+        },
+        "save_ns": {
+          "median": 317836,
+          "min": 303790,
+          "max": 333856,
+          "iqr": 30066.0
+        },
+        "restore_ns": {
+          "median": 1019632,
+          "min": 1016787,
+          "max": 1036614,
+          "iqr": 19827.0
+        },
+        "continue_ns": {
+          "median": 114535,
+          "min": 114214,
+          "max": 116218,
+          "iqr": 2004.0
+        },
+        "before_bytes": {
+          "median": 61232,
+          "min": 61232,
+          "max": 61232,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 61232,
+          "min": 61232,
+          "max": 61232,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 61232,
+          "min": 61232,
+          "max": 61232,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 79476,
+          "min": 79476,
+          "max": 79476,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 87664,
+          "min": 87664,
+          "max": 87664,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 7,
+          "min": 7,
+          "max": 7,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 2,
+          "min": 2,
+          "max": 2,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 12918,
+          "min": 12918,
+          "max": 12918,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 4,
+          "min": 4,
+          "max": 4,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.0173047440002847,
+          "min": 0.017195279000134178,
+          "max": 0.017378562999965652,
+          "iqr": 0.00018328399983147392
+        },
+        "peak_rss_kib": {
+          "median": 42604,
+          "min": 42376,
+          "max": 42648,
+          "iqr": 272.0
+        }
+      }
+    },
+    {
+      "case": "function",
+      "size": 1024,
+      "mode": "topology-segmented",
+      "phase": "formula",
+      "source_sha256": "589dd11182bee9dfd2e853fefd35e92a96a7746204ab6b9507da1e2512864214",
+      "samples": [
+        {
+          "stage_runs": 0,
+          "prefix_ns": 1191274,
+          "save_ns": 437150,
+          "restore_ns": 1020905,
+          "continue_ns": 113082,
+          "before_bytes": 61232,
+          "after_save_bytes": 0,
+          "restored_bytes": 61232,
+          "final_bytes": 79476,
+          "sampled_peak_owned": 87664,
+          "directory_bytes": 0,
+          "codec_buffers": 11860,
+          "logical_table_bytes": 12428,
+          "save_cas_added": 13612,
+          "save_segments": 5,
+          "restore_segments": 5,
+          "task_read_requests": 27,
+          "task_write_requests": 7,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 13759,
+          "files": 9,
+          "result": "a6d874206865f8999c61c1a12dc1d990b7fc8cd51cc4613b2096b365d7374ec0",
+          "work": [
+            2059,
+            4105,
+            2,
+            6,
+            9,
+            4119,
+            8210,
+            0,
+            4
+          ],
+          "wall_seconds": 0.017271972999878926,
+          "peak_rss_kib": 42116,
+          "save_amplification": 1.0952687479884133
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 1240036,
+          "save_ns": 449112,
+          "restore_ns": 1049027,
+          "continue_ns": 117240,
+          "before_bytes": 61232,
+          "after_save_bytes": 0,
+          "restored_bytes": 61232,
+          "final_bytes": 79476,
+          "sampled_peak_owned": 87664,
+          "directory_bytes": 0,
+          "codec_buffers": 11860,
+          "logical_table_bytes": 12428,
+          "save_cas_added": 13612,
+          "save_segments": 5,
+          "restore_segments": 5,
+          "task_read_requests": 27,
+          "task_write_requests": 7,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 13759,
+          "files": 9,
+          "result": "a6d874206865f8999c61c1a12dc1d990b7fc8cd51cc4613b2096b365d7374ec0",
+          "work": [
+            2059,
+            4105,
+            2,
+            6,
+            9,
+            4119,
+            8210,
+            0,
+            4
+          ],
+          "wall_seconds": 0.019399662999603606,
+          "peak_rss_kib": 42156,
+          "save_amplification": 1.0952687479884133
+        },
+        {
+          "stage_runs": 0,
+          "prefix_ns": 1215620,
+          "save_ns": 467496,
+          "restore_ns": 999815,
+          "continue_ns": 146635,
+          "before_bytes": 61232,
+          "after_save_bytes": 0,
+          "restored_bytes": 61232,
+          "final_bytes": 79476,
+          "sampled_peak_owned": 87664,
+          "directory_bytes": 0,
+          "codec_buffers": 11860,
+          "logical_table_bytes": 12428,
+          "save_cas_added": 13612,
+          "save_segments": 5,
+          "restore_segments": 5,
+          "task_read_requests": 27,
+          "task_write_requests": 7,
+          "paging_reads": 0,
+          "paging_writes": 0,
+          "paging_bytes_read": 0,
+          "paging_bytes_written": 0,
+          "disk_bytes": 13759,
+          "files": 9,
+          "result": "a6d874206865f8999c61c1a12dc1d990b7fc8cd51cc4613b2096b365d7374ec0",
+          "work": [
+            2059,
+            4105,
+            2,
+            6,
+            9,
+            4119,
+            8210,
+            0,
+            4
+          ],
+          "wall_seconds": 0.01716831799967622,
+          "peak_rss_kib": 42448,
+          "save_amplification": 1.0952687479884133
+        }
+      ],
+      "distributions": {
+        "stage_runs": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "prefix_ns": {
+          "median": 1215620,
+          "min": 1191274,
+          "max": 1240036,
+          "iqr": 48762.0
+        },
+        "save_ns": {
+          "median": 449112,
+          "min": 437150,
+          "max": 467496,
+          "iqr": 30346.0
+        },
+        "restore_ns": {
+          "median": 1020905,
+          "min": 999815,
+          "max": 1049027,
+          "iqr": 49212.0
+        },
+        "continue_ns": {
+          "median": 117240,
+          "min": 113082,
+          "max": 146635,
+          "iqr": 33553.0
+        },
+        "before_bytes": {
+          "median": 61232,
+          "min": 61232,
+          "max": 61232,
+          "iqr": 0.0
+        },
+        "after_save_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "restored_bytes": {
+          "median": 61232,
+          "min": 61232,
+          "max": 61232,
+          "iqr": 0.0
+        },
+        "final_bytes": {
+          "median": 79476,
+          "min": 79476,
+          "max": 79476,
+          "iqr": 0.0
+        },
+        "sampled_peak_owned": {
+          "median": 87664,
+          "min": 87664,
+          "max": 87664,
+          "iqr": 0.0
+        },
+        "directory_bytes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "codec_buffers": {
+          "median": 11860,
+          "min": 11860,
+          "max": 11860,
+          "iqr": 0.0
+        },
+        "logical_table_bytes": {
+          "median": 12428,
+          "min": 12428,
+          "max": 12428,
+          "iqr": 0.0
+        },
+        "save_cas_added": {
+          "median": 13612,
+          "min": 13612,
+          "max": 13612,
+          "iqr": 0.0
+        },
+        "save_segments": {
+          "median": 5,
+          "min": 5,
+          "max": 5,
+          "iqr": 0.0
+        },
+        "restore_segments": {
+          "median": 5,
+          "min": 5,
+          "max": 5,
+          "iqr": 0.0
+        },
+        "task_read_requests": {
+          "median": 27,
+          "min": 27,
+          "max": 27,
+          "iqr": 0.0
+        },
+        "task_write_requests": {
+          "median": 7,
+          "min": 7,
+          "max": 7,
+          "iqr": 0.0
+        },
+        "paging_reads": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_writes": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_read": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "paging_bytes_written": {
+          "median": 0,
+          "min": 0,
+          "max": 0,
+          "iqr": 0.0
+        },
+        "disk_bytes": {
+          "median": 13759,
+          "min": 13759,
+          "max": 13759,
+          "iqr": 0.0
+        },
+        "files": {
+          "median": 9,
+          "min": 9,
+          "max": 9,
+          "iqr": 0.0
+        },
+        "wall_seconds": {
+          "median": 0.017271972999878926,
+          "min": 0.01716831799967622,
+          "max": 0.019399662999603606,
+          "iqr": 0.002231344999927387
+        },
+        "peak_rss_kib": {
+          "median": 42156,
+          "min": 42116,
+          "max": 42448,
+          "iqr": 332.0
+        },
+        "save_amplification": {
+          "median": 1.0952687479884133,
+          "min": 1.0952687479884133,
+          "max": 1.0952687479884133,
+          "iqr": 0.0
+        }
+      }
+    }
+  ]
+}

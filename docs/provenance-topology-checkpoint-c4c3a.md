@@ -128,3 +128,6 @@ oracle 一致；按交付序号去重后的拓扑记录无遗漏/重复，Stage 
 ASan/UBSan 各 383/383 非 lit CTest；新增 6 项 checkpoint 单元和独立
 拓扑跨进程矩阵通过。C++ 格式、Python 编译、40 份 Markdown 的链接检查
 及 `git diff --check` 均通过。这些是正确性检查，不作为性能验收。
+
+后续 [C4c3b](provenance-topology-storage-c4c3b.md) 已加入显式 v4 分段保存、
+暂停卸载和查询测量；本页的 v3 编码保持兼容，拓扑恢复仍物化完整状态。

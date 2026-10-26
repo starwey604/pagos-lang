@@ -90,6 +90,11 @@ int topology_probe(std::string_view action, const fs::path& directory,
                    const FunctionEvidenceView& view,
                    QueryCheckpointBinding binding, NodeId root, int argc,
                    char** argv) {
+    const bool segmented = action.starts_with("topo-seg-");
+    const std::string normalized = segmented
+                                       ? "topo-" + std::string(action.substr(9))
+                                       : std::string(action);
+    action = normalized;
     const auto id = cache::fingerprint("probe.symbolic-topology.1", {});
     TopologyTask task(binding, id, root);
     std::optional<cache::TaskStore> store;
@@ -166,7 +171,15 @@ int topology_probe(std::string_view action, const fs::path& directory,
         const auto previous = store->head();
         if (!previous)
             throw std::runtime_error("topology head unavailable");
-        auto head = task.save(*store, *previous ? (**previous).generation : 0);
+        const auto generation = *previous ? (**previous).generation : 0;
+        auto head = segmented ? task.offload(*store, generation, 128)
+                              : task.save(*store, generation);
+        if (segmented &&
+            (!task.state_memory().offloaded || task.state_memory().queue ||
+             task.state_memory().formula_records ||
+             task.state_memory().delivery))
+            throw std::runtime_error(
+                "topology capacities retained after offload");
         if (!head)
             throw std::runtime_error("topology save failed");
     } else if (action == "topo-resume" || action == "topo-oracle") {

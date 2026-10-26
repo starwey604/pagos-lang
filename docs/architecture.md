@@ -498,8 +498,11 @@ Restore streams full validation without materializing all tables; directories,
 codec scratch and compatibility results are outside the buffer budget.
 [C4c3a](provenance-topology-checkpoint-c4c3a.md) adds disk-backed symbolic
 topology/formula preparation with bound checkpoints and acknowledged pages.
-Topology state remains resident; segmented release, formal measurements and the
-main explain CLI remain. Compressed-source execution checkpoints remain unsupported.
+[C4c3b](provenance-topology-storage-c4c3b.md) adds streamed segmented topology
+snapshots, actual paused-state release and independent real-source measurements.
+Restore still materializes topology tables; externally retained formula indexes
+are accounted separately. The main explain CLI and compressed-source execution
+checkpoints remain unsupported.
 Existing graph reference/span lifetimes and the default one-shot query interface
 remain intact until their replacements are explicitly validated; snapshot
 serialization alone does not reduce build peaks.

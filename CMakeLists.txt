@@ -224,6 +224,10 @@ add_executable(pagos_function_evidence_bench tools/function_evidence_bench/main.
 target_include_directories(pagos_function_evidence_bench PRIVATE "${CMAKE_BINARY_DIR}/generated")
 target_link_libraries(pagos_function_evidence_bench PRIVATE Pagos::stage pagos_project_options)
 
+add_executable(pagos_query_task_bench tools/query_task_bench/main.cpp)
+target_include_directories(pagos_query_task_bench PRIVATE "${CMAKE_BINARY_DIR}/generated")
+target_link_libraries(pagos_query_task_bench PRIVATE Pagos::stage pagos_project_options)
+
 add_executable(pagos_stage_spill_bench tools/stage_spill_bench/main.cpp)
 target_link_libraries(pagos_stage_spill_bench PRIVATE Pagos::stage pagos_project_options)
 

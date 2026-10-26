@@ -156,8 +156,10 @@ indexes and bounded append/read buffers. Restore validates all state with bounde
 buffers; directories and explicit compatibility results remain separate.
 [C4c3a](provenance-topology-checkpoint-c4c3a.md) adds disk-backed symbolic
 topology/formula checkpoints with strict binding and acknowledged replay.
-C4c3b/C4c3c still need topology state release, measurements and the explain CLI;
-compressed-source execution checkpoints remain a separate extension.
+[C4c3b](provenance-topology-storage-c4c3b.md) adds segmented topology state,
+paused release and real-source query measurements; active topology tables still
+remain resident. C4c3c still needs the explain CLI; compressed-source execution
+checkpoints remain a separate extension.
 C4b-C4e cover construction spill, persistent query checkpoints,
 finite-domain recursive explanations and pure detail replay. These extensions
 are explanation capabilities, not new Stage inference rules. Query work limits,
