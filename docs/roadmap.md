@@ -153,8 +153,11 @@ snapshot/source binding and acknowledged page redelivery across processes.
 heads, paused-state capacity release, quotas and lifecycle cleanup.
 [C4c2b](provenance-query-paging-c4c2b.md) adds active-query paging, sorted disk
 indexes and bounded append/read buffers. Restore validates all state with bounded
-buffers; directories and explicit compatibility results remain separate. C4c3
-still needs topology checkpoints, measurements and the main explain CLI.
+buffers; directories and explicit compatibility results remain separate.
+[C4c3a](provenance-topology-checkpoint-c4c3a.md) adds disk-backed symbolic
+topology/formula checkpoints with strict binding and acknowledged replay.
+C4c3b/C4c3c still need topology state release, measurements and the explain CLI;
+compressed-source execution checkpoints remain a separate extension.
 C4b-C4e cover construction spill, persistent query checkpoints,
 finite-domain recursive explanations and pure detail replay. These extensions
 are explanation capabilities, not new Stage inference rules. Query work limits,

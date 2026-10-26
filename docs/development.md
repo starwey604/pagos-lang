@@ -627,3 +627,17 @@ to a writable or larger-quota store. Read-only restoration makes no writes and
 pauses when continued traversal needs to seal a segment. The task process test
 also checks separate-process paged continuation and unconfirmed delivery replay.
 Topology checkpoints, performance acceptance and main-driver flags remain C4c3.
+
+[C4c3a](provenance-topology-checkpoint-c4c3a.md) adds bound `TopologyTask`
+checkpoints over verified function evidence, including partial symbolic formula
+preparation. Use `TopologyTask(binding, task_id, root)`, acknowledge consumed pages,
+then `save(store, expected_generation)` and restore with the exact binding/root.
+A read-only store can restore and continue this resident task without writing.
+Topology state remains resident and its single checkpoint has codec limits;
+there are no topology offload or main-driver checkpoint flags yet.
+
+```sh
+ctest --test-dir build/debug \
+  -R 'QueryCheckpointTest.Topology|ProvenanceTopology|pagos-topology-checkpoint-process' \
+  --output-on-failure
+```

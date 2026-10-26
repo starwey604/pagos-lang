@@ -138,7 +138,9 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
 - [Task storage C4c2a](docs/provenance-task-store-c4c2a.md): segmented snapshots,
   atomic heads, paused-state release, quotas and explicit lifecycle cleanup
 - [Active query paging C4c2b](docs/provenance-query-paging-c4c2b.md): bounded
-  append/read buffers, sorted disk indexes and streamed checkpoint validation.
+  append/read buffers, sorted disk indexes and streamed checkpoint validation
+- [Symbolic topology checkpoints C4c3a](docs/provenance-topology-checkpoint-c4c3a.md):
+  disk-backed formula preparation, saved cursors and acknowledged page replay
 - [Semantic examples](docs/semantic-examples.md): executable-design cases with
   expected stages, residual work, and errors
 - [Diagnostic conventions](docs/diagnostics.md): stable structure for stage and

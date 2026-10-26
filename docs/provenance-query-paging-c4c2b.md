@@ -126,3 +126,7 @@ C4c3 剩余工作：符号拓扑任务状态的保存/恢复；实际来源与�
 ASan/UBSan 各 376/376 非 lit CTest；C++ 格式、Python 编译、39 份
 Markdown 的链接检查和 `git diff --check` 均通过。扩展的任务跨进程测试
 在 ASan/UBSan 下约 15 秒完成；此处记录正确性运行，不作为性能结论。
+
+后续 [C4c3a](provenance-topology-checkpoint-c4c3a.md) 已支持符号拓扑/公式
+准备的驻留 checkpoint 和跨进程确认续接；尚未复用本页的活动分页后端。
+拓扑卸载与测量、主解释 CLI 分别继续拆分到 C4c3b/C4c3c。

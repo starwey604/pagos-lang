@@ -70,6 +70,10 @@ add_test(NAME pagos-query-task-process
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/query_task_process.py
             $<TARGET_FILE:pagos_query_checkpoint_probe>)
 set_tests_properties(pagos-query-task-process PROPERTIES TIMEOUT 180)
+add_test(NAME pagos-topology-checkpoint-process
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/topology_checkpoint_process.py
+            $<TARGET_FILE:pagos_query_checkpoint_probe>)
+set_tests_properties(pagos-topology-checkpoint-process PROPERTIES TIMEOUT 180)
 
 find_program(PAGOS_LIT NAMES lit llvm-lit HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
 find_program(PAGOS_FILECHECK NAMES FileCheck

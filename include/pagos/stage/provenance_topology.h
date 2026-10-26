@@ -25,9 +25,10 @@ struct TopologyStats {
     std::size_t formula_states{};
     std::size_t formula_edges{};
     std::size_t formula_reuses{};
-    std::size_t source_families{};        // Unique source node/channel pairs.
-    std::size_t formula_capacity_bytes{}; // Records, terms, calls; excludes
-                                          // hash buckets.
+    std::size_t source_families{}; // Unique source node/channel pairs.
+    // Final capacity of records, terms and calls; excludes hash buckets.
+    // Available after completion; recomputed rather than serialized.
+    std::size_t formula_capacity_bytes{};
 };
 class FormulaIndex : public std::enable_shared_from_this<FormulaIndex> {
   public:
@@ -48,8 +49,8 @@ class FormulaIndex : public std::enable_shared_from_this<FormulaIndex> {
 
   private:
     friend class TopologyTask;
-    explicit FormulaIndex(FrozenGraph graph);
-    FrozenGraph graph_;
+    explicit FormulaIndex(std::shared_ptr<const EvidenceView> view);
+    std::shared_ptr<const EvidenceView> evidence_;
     TopologyStats stats_;
     std::vector<DependencyFormula> formulas_;
     std::vector<NodeId> calls_;
@@ -62,12 +63,14 @@ struct TopologyRecord {
     Edge edge;
     SummaryId summary;
     QueryKind port{QueryKind::Value};
+    bool operator==(const TopologyRecord&) const = default;
 };
 struct TopologyPage {
     std::uint64_t sequence{};
     std::vector<TopologyRecord> records;
     QueryProgress progress{QueryProgress::Running};
     std::optional<EvidenceError> failure{};
+    std::optional<cache::Digest> task{};
 };
 // Slice-bounded physical topology over either evidence backend. This does not
 // prepare formulas or enumerate concrete invocation instances.
@@ -88,10 +91,30 @@ class EvidenceTopologyTask {
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
+inline constexpr std::uint32_t topology_engine_version = 1;
 // Physical topology, followed by slice-bounded formula preparation. This is
 // structural completeness; it does not assert all concrete sources were read.
 class TopologyTask {
   public:
+    // Both backends prepare the same finite symbolic formulas. graph() is
+    // available only for a memory-backed task/index.
+    TopologyTask(std::shared_ptr<const EvidenceView> view, NodeId root);
+    // Explicit checkpoint opt-in, with stop-and-wait page acknowledgement.
+    TopologyTask(QueryCheckpointBinding binding, cache::Digest task,
+                 NodeId root);
+    [[nodiscard]] bool acknowledge(std::uint64_t sequence);
+    [[nodiscard]] std::expected<cache::Bytes, CheckpointError>
+    checkpoint(cache::Limits limits = {}) const;
+    [[nodiscard]] static std::expected<TopologyTask, CheckpointError>
+    restore(QueryCheckpointBinding binding, cache::Digest task, NodeId root,
+            std::span<const std::uint8_t> bytes, cache::Limits limits = {});
+    [[nodiscard]] std::expected<cache::TaskHead, CheckpointError>
+    save(const cache::TaskStore& store, std::uint64_t expected_generation,
+         cache::Limits limits = {}) const;
+    [[nodiscard]] static std::expected<TopologyTask, CheckpointError>
+    restore(QueryCheckpointBinding binding, const cache::TaskStore& store,
+            const cache::TaskHead& head, NodeId root,
+            cache::Limits limits = {});
     ~TopologyTask();
     TopologyTask(TopologyTask&&) noexcept;
     TopologyTask& operator=(TopologyTask&&) noexcept;

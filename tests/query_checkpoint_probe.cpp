@@ -1,8 +1,10 @@
 #include "pagos/stage/function_evidence_view.h"
+#include "pagos/stage/provenance_topology.h"
 #include "pagos/stage/stage_analyzer.h"
 #include "pagos/syntax/lexer.h"
 #include "pagos/syntax/parser.h"
 
+#include <algorithm>
 #include <charconv>
 #include <fstream>
 #include <iostream>
@@ -83,6 +85,154 @@ void print_result(const QueryTask& task) {
               << stats.bindings << ',' << stats.witness_steps << ','
               << stats.queue_peak << "],\"issues\":" << task.coverage().issues
               << ",\"stage_runs\":0}" << '\n';
+}
+int topology_probe(std::string_view action, const fs::path& directory,
+                   const FunctionEvidenceView& view,
+                   QueryCheckpointBinding binding, NodeId root, int argc,
+                   char** argv) {
+    const auto id = cache::fingerprint("probe.symbolic-topology.1", {});
+    TopologyTask task(binding, id, root);
+    std::optional<cache::TaskStore> store;
+    if (action != "topo-oracle") {
+        auto opened = cache::TaskStore::open(
+            directory / "sessions", id,
+            action == "topo-resume" ? cache::TaskAccess::ReadOnly
+                                    : cache::TaskAccess::ReadWrite);
+        if (!opened)
+            throw std::runtime_error("topology store unavailable");
+        store = std::move(*opened);
+    }
+    if (action == "topo-resume") {
+        const auto head = store->head();
+        if (!head || !*head)
+            throw std::runtime_error("topology head missing");
+        auto restored = TopologyTask::restore(binding, *store, **head, root);
+        if (!restored)
+            throw std::runtime_error("topology cannot resume");
+        task = std::move(*restored);
+        task.resume();
+    }
+    std::cout << "{\"pages\":[";
+    bool first = true;
+    const auto print = [&](const TopologyPage& page) {
+        if (!page.sequence)
+            return;
+        if (!first)
+            std::cout << ',';
+        first = false;
+        std::cout << "{\"sequence\":" << page.sequence << ",\"records\":[";
+        bool first_record = true;
+        for (const auto& item : page.records) {
+            if (!first_record)
+                std::cout << ',';
+            first_record = false;
+            std::cout << '\"' << static_cast<unsigned>(item.kind) << ':'
+                      << item.node.value << ':' << item.edge.target.value << ':'
+                      << static_cast<unsigned>(item.edge.relation) << ':'
+                      << item.summary.value << ':'
+                      << static_cast<unsigned>(item.port) << '\"';
+        }
+        std::cout << "]}";
+    };
+    if (action == "topo-save" || action == "topo-save-formula") {
+        if (argc != 6)
+            return 2;
+        if (action == "topo-save-formula") {
+            for (unsigned step = 0; !task.stats().formula_states; ++step) {
+                const auto page = task.advance({1, 1, 1, 1});
+                if (page.progress == QueryProgress::Failed || step > 100000)
+                    throw std::runtime_error("formula preparation unavailable");
+                print(page);
+                if (page.sequence && !task.acknowledge(page.sequence))
+                    throw std::runtime_error("formula prefix ack failed");
+            }
+        }
+        const auto steps = std::stoull(argv[4]);
+        const bool ack = std::string_view(argv[5]) == "ack";
+        for (std::uint64_t i = 0; i < steps; ++i) {
+            const auto page = task.advance({1, 1, 1, 1});
+            if (page.progress == QueryProgress::Failed)
+                throw std::runtime_error("topology failed");
+            print(page);
+            if (page.sequence) {
+                if (!ack)
+                    break;
+                if (!task.acknowledge(page.sequence))
+                    throw std::runtime_error("topology ack failed");
+            }
+            if (page.progress == QueryProgress::Completed)
+                break;
+        }
+        const auto previous = store->head();
+        if (!previous)
+            throw std::runtime_error("topology head unavailable");
+        auto head = task.save(*store, *previous ? (**previous).generation : 0);
+        if (!head)
+            throw std::runtime_error("topology save failed");
+    } else if (action == "topo-resume" || action == "topo-oracle") {
+        for (unsigned step = 0; step < 100000; ++step) {
+            const auto page = task.advance({17, 23, 19, 7});
+            if (page.progress == QueryProgress::Failed)
+                throw std::runtime_error("topology failed");
+            print(page);
+            if (page.sequence && !task.acknowledge(page.sequence))
+                throw std::runtime_error("topology ack failed");
+            if (page.progress == QueryProgress::Completed)
+                break;
+            if (step == 99999)
+                throw std::runtime_error("topology stuck");
+        }
+    } else
+        return 2;
+    std::cout << ']';
+    std::string formulas;
+    if (const auto index = task.index()) {
+        for (const auto& formula : index->formulas()) {
+            formulas += std::to_string(formula.root.value) + ":" +
+                        std::to_string(static_cast<unsigned>(formula.kind)) +
+                        ":";
+            for (auto term : formula.terms)
+                formulas += std::to_string(term.value) + ",";
+            formulas += std::string(formula.fallback) + ";";
+        }
+        for (auto kind : {QueryKind::Value, QueryKind::Effects}) {
+            auto compressed = index->begin_sources(root, kind);
+            auto native = QueryTask(view.view(), root, kind);
+            (void)compressed.advance(QuerySlice::unlimited());
+            (void)native.advance(QuerySlice::unlimited());
+            const auto instances = [](const QueryResult& result) {
+                std::vector<std::string> values;
+                for (const auto& source : result.sources) {
+                    auto value = std::to_string(source.node.value) + ":" +
+                                 std::to_string(source.site);
+                    for (auto frame = source.context; frame;
+                         frame = result.invocations[frame].parent)
+                        value +=
+                            ":" + std::to_string(
+                                      result.invocations[frame].call.value);
+                    values.push_back(std::move(value));
+                }
+                std::ranges::sort(values);
+                return values;
+            };
+            if (instances(compressed.result()) != instances(native.result()) ||
+                compressed.result().complete != native.result().complete)
+                throw std::runtime_error(
+                    "restored formulas changed query results");
+        }
+    }
+    const auto result = cache::fingerprint(
+        "test.symbolic-formulas",
+        {reinterpret_cast<const std::uint8_t*>(formulas.data()),
+         formulas.size()});
+    const auto& stats = task.stats();
+    std::cout << ",\"result\":\"" << result.hex() << "\",\"work\":["
+              << stats.nodes << ',' << stats.edges << ',' << stats.summary_links
+              << ',' << stats.formulas << ',' << stats.formula_terms << ','
+              << stats.formula_states << ',' << stats.formula_edges << ','
+              << stats.formula_reuses << ',' << stats.source_families
+              << "],\"stage_runs\":0}\n";
+    return 0;
 }
 } // namespace
 int main(int argc, char** argv) {
@@ -208,6 +358,9 @@ int main(int argc, char** argv) {
         for (const auto& item : view->roots())
             if (item.name == "aa")
                 root = item.node;
+        if (original_action.starts_with("topo-"))
+            return topology_probe(original_action, directory, *view, *binding,
+                                  root, argc, argv);
         QueryTask task(*binding, task_id, root, QueryKind::Value, witness);
         if (paged && action == "save") {
             auto started = QueryTask::begin_paged(

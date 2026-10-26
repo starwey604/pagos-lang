@@ -1,6 +1,7 @@
 #include "../../lib/cache/wire.h"
 #include "cache_test_input.h"
 #include "pagos/stage/function_evidence_view.h"
+#include "pagos/stage/provenance_topology.h"
 #include "pagos/stage/stage_analyzer.h"
 
 #include <atomic>
@@ -1162,5 +1163,404 @@ TEST_F(QueryCheckpointTest,
             .code,
         CheckpointErrorCode::LimitExceeded);
     EXPECT_FALSE(fs::exists(store->directory() / "objects"));
+}
+void equal_topology_work(const TopologyStats& a, const TopologyStats& b) {
+    EXPECT_EQ(a.nodes, b.nodes);
+    EXPECT_EQ(a.edges, b.edges);
+    EXPECT_EQ(a.summary_links, b.summary_links);
+    EXPECT_EQ(a.formulas, b.formulas);
+    EXPECT_EQ(a.formula_terms, b.formula_terms);
+    EXPECT_EQ(a.formula_states, b.formula_states);
+    EXPECT_EQ(a.formula_edges, b.formula_edges);
+    EXPECT_EQ(a.formula_reuses, b.formula_reuses);
+    EXPECT_EQ(a.source_families, b.source_families);
+}
+void equal_formulas(const FormulaIndex& a, const FormulaIndex& b) {
+    ASSERT_EQ(a.formulas().size(), b.formulas().size());
+    for (std::size_t i = 0; i < a.formulas().size(); ++i) {
+        EXPECT_EQ(a.formulas()[i].root, b.formulas()[i].root);
+        EXPECT_EQ(a.formulas()[i].kind, b.formulas()[i].kind);
+        EXPECT_EQ(a.formulas()[i].terms, b.formulas()[i].terms);
+        EXPECT_EQ(a.formulas()[i].fallback, b.formulas()[i].fallback);
+    }
+}
+std::vector<TopologyRecord> finish_topology(TopologyTask& task,
+                                            QuerySlice slice = {1, 1, 1, 1}) {
+    std::vector<TopologyRecord> records;
+    for (unsigned step = 0; step < 100000; ++step) {
+        const auto page = task.advance(slice);
+        if (page.progress == QueryProgress::Failed) {
+            ADD_FAILURE() << "topology failed";
+            break;
+        }
+        records.insert(records.end(), page.records.begin(), page.records.end());
+        if (page.task && page.sequence) {
+            EXPECT_TRUE(task.acknowledge(page.sequence));
+        }
+        if (page.progress == QueryProgress::Completed)
+            return records;
+    }
+    ADD_FAILURE() << "topology did not finish";
+    return records;
+}
+TEST_F(QueryCheckpointTest,
+       TopologyEverySliceRestoresPhysicalAndFormulaPreparation) {
+    publish();
+    for (const auto name : {"aa", "rr"}) {
+        auto view = open();
+        const auto selected = root(view, name);
+        TopologyTask oracle(view.view(), selected);
+        const auto expected = finish_topology(oracle);
+        TopologyTask task(binding(view), task_id, selected);
+        std::vector<TopologyRecord> received;
+        std::size_t formula_cuts = 0;
+        for (unsigned step = 0; step < 10000; ++step) {
+            const auto bytes = task.checkpoint();
+            ASSERT_TRUE(bytes);
+            const auto work = task.stats();
+            view = open(); // Rebind to a new cold view, no Stage replay.
+            auto restored =
+                TopologyTask::restore(binding(view), task_id, selected, *bytes);
+            ASSERT_TRUE(restored) << static_cast<int>(restored.error().code);
+            equal_topology_work(work, restored->stats());
+            task = std::move(*restored);
+            const auto page = task.advance({1, 1, 1, 1});
+            ASSERT_NE(page.progress, QueryProgress::Failed);
+            if (task.stats().formula_states)
+                ++formula_cuts;
+            if (page.sequence) {
+                EXPECT_EQ(page.task, task_id);
+                EXPECT_FALSE(task.acknowledge(page.sequence + 1));
+                const auto unconfirmed = task.checkpoint();
+                ASSERT_TRUE(unconfirmed);
+                auto replayed = TopologyTask::restore(binding(open()), task_id,
+                                                      selected, *unconfirmed);
+                ASSERT_TRUE(replayed);
+                const auto before = replayed->stats();
+                const auto replay = replayed->advance({0, 0, 0, 0});
+                EXPECT_EQ(replay.sequence, page.sequence);
+                EXPECT_EQ(replay.records, page.records);
+                EXPECT_EQ(replay.progress, page.progress);
+                equal_topology_work(before, replayed->stats());
+                ASSERT_TRUE(replayed->acknowledge(page.sequence));
+                EXPECT_TRUE(replayed->acknowledge(page.sequence));
+                task = std::move(*replayed);
+                received.insert(received.end(), page.records.begin(),
+                                page.records.end());
+            }
+            if (page.progress == QueryProgress::Completed)
+                break;
+            ASSERT_LT(step, 9999U);
+        }
+        EXPECT_GT(formula_cuts, 0U);
+        EXPECT_EQ(received, expected);
+        equal_topology_work(task.stats(), oracle.stats());
+        ASSERT_TRUE(task.index());
+        equal_formulas(*task.index(), *oracle.index());
+        for (auto kind : {QueryKind::Value, QueryKind::Effects}) {
+            auto compressed = task.index()->begin_sources(selected, kind);
+            (void)compressed.advance(QuerySlice::unlimited());
+            QueryTask raw(view.view(), selected, kind);
+            (void)raw.advance(QuerySlice::unlimited());
+            EXPECT_EQ(compressed.result().sources, raw.result().sources);
+            EXPECT_EQ(compressed.result().complete, raw.result().complete);
+        }
+        EXPECT_THROW((void)task.graph(), std::logic_error);
+        EXPECT_THROW((void)task.index()->graph(), std::logic_error);
+    }
+}
+TEST_F(QueryCheckpointTest,
+       TopologyTaskHeadsReadOnlyCancellationAndPendingDelivery) {
+    publish();
+    auto view = open();
+    const auto selected = root(view);
+    auto store = cache::TaskStore::open(directory / "topology", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    TopologyTask task(binding(view), task_id, selected);
+    const auto page = task.advance({3, 4, 2, 2});
+    ASSERT_TRUE(page.sequence);
+    task.cancel();
+    const auto saved = task.save(*store, 0);
+    ASSERT_TRUE(saved);
+    EXPECT_EQ(saved->status, cache::TaskStatus::Cancelled);
+    unsigned reads = 0;
+    cache::TaskStoreOptions guarded;
+    guarded.store.fault = [&](cache::IoOperation operation, const fs::path&) {
+        reads += operation == cache::IoOperation::ReadFile ? 1U : 0U;
+        return std::error_code{};
+    };
+    auto bounded_reader = cache::TaskStore::open(
+        directory / "topology", task_id, cache::TaskAccess::ReadOnly, guarded);
+    ASSERT_TRUE(bounded_reader);
+    reads = 0;
+    EXPECT_EQ(TopologyTask::restore(
+                  binding(view), *bounded_reader, *saved, selected,
+                  {.bytes = static_cast<std::size_t>(saved->manifest.size - 1)})
+                  .error()
+                  .code,
+              CheckpointErrorCode::LimitExceeded);
+    EXPECT_EQ(reads,
+              0U); // Reject the reference size before reading its payload.
+    auto reader = cache::TaskStore::open(directory / "topology", task_id,
+                                         cache::TaskAccess::ReadOnly);
+    ASSERT_TRUE(reader);
+    auto restored =
+        TopologyTask::restore(binding(open()), *reader, *saved, selected);
+    ASSERT_TRUE(restored);
+    EXPECT_EQ(restored->progress(), QueryProgress::Cancelled);
+    EXPECT_EQ(restored->advance().records, page.records);
+    ASSERT_TRUE(restored->acknowledge(page.sequence));
+    EXPECT_EQ(restored->advance().progress, QueryProgress::Cancelled);
+    restored->resume();
+    (void)finish_topology(*restored, {7, 11, 3, 5});
+    EXPECT_EQ(restored->save(*reader, 1).error().storage->code,
+              cache::StoreErrorCode::ReadOnly);
+    const auto completed = restored->save(*store, 1);
+    ASSERT_TRUE(completed);
+    EXPECT_EQ(completed->status, cache::TaskStatus::Completed);
+    EXPECT_EQ(restored->save(*store, 1).error().storage->code,
+              cache::StoreErrorCode::StaleGeneration);
+    TopologyTask pending(binding(view), task_id, selected);
+    const auto all = pending.advance(QuerySlice::unlimited());
+    ASSERT_EQ(all.progress, QueryProgress::Completed);
+    ASSERT_TRUE(all.sequence);
+    const auto awaiting = pending.save(*store, 2);
+    ASSERT_TRUE(awaiting);
+    EXPECT_EQ(awaiting->status, cache::TaskStatus::AwaitingDelivery);
+    const auto retained = cache::reclaim_tasks(directory / "topology");
+    ASSERT_TRUE(retained);
+    EXPECT_EQ(retained->active, 1U);
+    auto bad_status = *awaiting;
+    bad_status.status = cache::TaskStatus::Completed;
+    EXPECT_EQ(TopologyTask::restore(binding(view), *store, bad_status, selected)
+                  .error()
+                  .code,
+              CheckpointErrorCode::Corrupt);
+    // Older authenticated heads remain independently readable.
+    ASSERT_TRUE(
+        TopologyTask::restore(binding(view), *reader, *saved, selected));
+}
+TEST_F(QueryCheckpointTest,
+       TopologyRejectsWrongBindingKindLimitsAndResealedCursors) {
+    publish();
+    auto view = open();
+    const auto selected = root(view);
+    TopologyTask task(binding(view), task_id, selected);
+    (void)task.advance({2, 3, 1, 2});
+    const auto bytes = task.checkpoint();
+    ASSERT_TRUE(bytes);
+    auto wrong = task_id;
+    ++wrong.bytes[0];
+    EXPECT_EQ(TopologyTask::restore(binding(view), wrong, selected, *bytes)
+                  .error()
+                  .code,
+              CheckpointErrorCode::BindingMismatch);
+    EXPECT_EQ(
+        TopologyTask::restore(binding(view), task_id, root(view, "rr"), *bytes)
+            .error()
+            .code,
+        CheckpointErrorCode::BindingMismatch);
+    const auto changed = view.checkpoint_binding(source_text + " ");
+    ASSERT_TRUE(changed);
+    EXPECT_EQ(
+        TopologyTask::restore(*changed, task_id, selected, *bytes).error().code,
+        CheckpointErrorCode::BindingMismatch);
+    EXPECT_EQ(TopologyTask::restore(binding(view), task_id, selected, *bytes,
+                                    {.elements = 0})
+                  .error()
+                  .code,
+              CheckpointErrorCode::LimitExceeded);
+    EXPECT_EQ(task.checkpoint({.bytes = 31}).error().code,
+              CheckpointErrorCode::LimitExceeded);
+    const auto reseal = [](cache::Bytes value) {
+        value.resize(value.size() - 32);
+        const auto hash = cache::fingerprint("pagos.topology-task.v1", value);
+        value.insert(value.end(), hash.bytes.begin(), hash.bytes.end());
+        return value;
+    };
+    for (const auto offset :
+         {9U, 13U, 17U, 153U, 242U, 250U, 258U, 266U, 269U, 277U, 285U, 297U}) {
+        SCOPED_TRACE(offset);
+        auto changed_bytes = *bytes;
+        changed_bytes[offset] = 255;
+        auto invalid = TopologyTask::restore(binding(view), task_id, selected,
+                                             reseal(changed_bytes));
+        EXPECT_FALSE(invalid);
+    }
+    TopologyTask completed(binding(view), task_id, selected);
+    (void)completed.advance(QuerySlice::unlimited());
+    const auto full = completed.checkpoint();
+    ASSERT_TRUE(full);
+    const auto payload = std::span(*full).first(full->size() - 32);
+    cache::wire::Reader layout(payload, {});
+    (void)layout.raw(293); // Fixed control fields, before the physical queue.
+    (void)layout.raw(layout.count(4) * 4);
+    const auto formulas = layout.count(10);
+    ASSERT_GE(formulas, 2U);
+    std::vector<std::size_t> formula_offsets;
+    std::size_t first_term = 0;
+    for (std::uint32_t i = 0; i < formulas; ++i) {
+        formula_offsets.push_back(payload.size() - layout.remaining());
+        (void)layout.raw(6);
+        const auto terms = layout.count(4);
+        if (terms && !first_term)
+            first_term = payload.size() - layout.remaining();
+        (void)layout.raw(terms * 4);
+    }
+    (void)layout.raw(layout.count(4) * 4); // Calls.
+    (void)layout.raw(layout.count(4) * 4); // Local queue (empty at completion).
+    ASSERT_TRUE(layout.boolean());
+    (void)layout.u8(); // Original delivery progress.
+    ASSERT_GT(layout.count(15), 0U);
+    const auto record_node = payload.size() - layout.remaining() + 1;
+    ASSERT_TRUE(layout.good());
+    ASSERT_NE(first_term, 0U);
+    for (unsigned damage = 0; damage < 4; ++damage) {
+        SCOPED_TRACE(damage);
+        auto invalid = *full;
+        if (damage == 0)
+            invalid[formula_offsets[0] + 5] = 3; // Unknown fallback.
+        else if (damage == 1)
+            std::fill_n(invalid.begin() +
+                            static_cast<std::ptrdiff_t>(first_term),
+                        4, 0);
+        else if (damage == 2) // Duplicate root/channel inventory entry.
+            std::copy_n(invalid.begin() +
+                            static_cast<std::ptrdiff_t>(formula_offsets[0]),
+                        5,
+                        invalid.begin() +
+                            static_cast<std::ptrdiff_t>(formula_offsets[1]));
+        else
+            std::fill_n(invalid.begin() +
+                            static_cast<std::ptrdiff_t>(record_node),
+                        4, 0);
+        EXPECT_FALSE(TopologyTask::restore(binding(view), task_id, selected,
+                                           reseal(invalid)));
+    }
+    auto truncated = *bytes;
+    truncated.pop_back();
+    EXPECT_FALSE(
+        TopologyTask::restore(binding(view), task_id, selected, truncated));
+    QueryTask native(binding(view), task_id, selected);
+    const auto native_bytes = native.checkpoint();
+    ASSERT_TRUE(native_bytes);
+    EXPECT_FALSE(
+        TopologyTask::restore(binding(view), task_id, selected, *native_bytes));
+    EXPECT_FALSE(QueryTask::restore(binding(view), task_id, selected,
+                                    QueryKind::Value, false, *bytes));
+}
+TEST_F(QueryCheckpointTest,
+       TopologyPublicationFailureRetainsPageAndNativeHeads) {
+    publish();
+    auto view = open();
+    const auto selected = root(view);
+    bool fail = false;
+    cache::TaskStoreOptions options;
+    options.store.fault = [&](cache::IoOperation operation, const fs::path&) {
+        return fail && operation == cache::IoOperation::PublishManifest
+                   ? std::make_error_code(std::errc::io_error)
+                   : std::error_code{};
+    };
+    auto store = cache::TaskStore::open(directory / "topology", task_id,
+                                        cache::TaskAccess::ReadWrite, options);
+    ASSERT_TRUE(store);
+    TopologyTask task(binding(view), task_id, selected);
+    ASSERT_TRUE(task.save(*store, 0));
+    const auto page = task.advance({2, 3, 1, 2});
+    const auto work = task.stats();
+    fail = true;
+    EXPECT_FALSE(task.save(*store, 1));
+    EXPECT_EQ((**store->head()).generation, 1U);
+    EXPECT_EQ(task.advance().records, page.records);
+    equal_topology_work(task.stats(), work);
+    fail = false;
+    ASSERT_TRUE(task.save(*store, 1));
+    const auto head = **store->head();
+    QueryTask native(binding(view), task_id, selected);
+    EXPECT_FALSE(native.save(*store, head.generation));
+    EXPECT_EQ((**store->head()).generation, head.generation);
+    auto native_store = cache::TaskStore::open(directory / "native", task_id,
+                                               cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(native_store);
+    ASSERT_TRUE(native.save(*native_store, 0));
+    EXPECT_FALSE(task.save(*native_store, 1));
+    EXPECT_EQ((**native_store->head()).generation, 1U);
+}
+TEST_F(QueryCheckpointTest,
+       TopologyFailedEvidenceAndMissingActiveBlocksCannotCheckpoint) {
+    publish();
+    auto view = open();
+    const auto selected = root(view);
+    TopologyTask task(binding(view), task_id, selected);
+    (void)task.advance({1, 0, 0, 1});
+    const auto bytes = task.checkpoint();
+    ASSERT_TRUE(bytes);
+    // Keep the authenticated hot closure but remove all cold detail objects.
+    auto closure =
+        FunctionEvidence::load(cache::FileStore(directory / "evidence"),
+                               identity, cache_test::context());
+    ASSERT_TRUE(closure);
+    for (const auto& group : closure->groups()) {
+        const auto hash = group.detail.digest.hex();
+        fs::remove(directory / "evidence" / "objects" / hash.substr(0, 2) /
+                   hash);
+    }
+    auto cold = open();
+    const auto rejected =
+        TopologyTask::restore(binding(cold), task_id, selected, *bytes);
+    ASSERT_FALSE(rejected);
+    EXPECT_EQ(rejected.error().code, CheckpointErrorCode::UnavailableEvidence);
+    TopologyTask unavailable(binding(cold), task_id, selected);
+    const auto page = unavailable.advance();
+    EXPECT_EQ(page.progress, QueryProgress::Failed);
+    ASSERT_TRUE(page.failure);
+    EXPECT_EQ(unavailable.checkpoint().error().code,
+              CheckpointErrorCode::InvalidState);
+}
+TEST_F(QueryCheckpointTest,
+       TopologyRestoredIndexOwnsEvidenceAndSelectedInvocation) {
+    publish();
+    std::shared_ptr<const FormulaIndex> index;
+    std::vector<NodeId> calls;
+    {
+        auto view = open();
+        const auto selected = root(view);
+        TopologyTask task(binding(view), task_id, selected);
+        (void)finish_topology(task);
+        const auto bytes = task.checkpoint();
+        ASSERT_TRUE(bytes);
+        auto restored =
+            TopologyTask::restore(binding(view), task_id, selected, *bytes);
+        ASSERT_TRUE(restored);
+        index = restored->index();
+        ASSERT_TRUE(index);
+        EXPECT_GT(index->stats().formula_capacity_bytes, 0U);
+        QueryTask raw(view.view(), selected);
+        (void)raw.advance(QuerySlice::unlimited());
+        const auto result = raw.result();
+        for (const auto& source : result.sources) {
+            if (!source.context)
+                continue;
+            for (auto frame = source.context; frame;
+                 frame = result.invocations[frame].parent)
+                calls.push_back(result.invocations[frame].call);
+            break;
+        }
+        std::ranges::reverse(calls);
+    }
+    ASSERT_FALSE(calls.empty());
+    auto selected = index->begin_invocation(calls);
+    (void)selected.advance(QuerySlice::unlimited());
+    EXPECT_FALSE(selected.result().sources.empty());
+    auto witness = index->begin_invocation(calls, QueryKind::Value, true);
+    (void)witness.advance(QuerySlice::unlimited());
+    EXPECT_FALSE(witness.result().witness.empty());
+    // A disk read failure in this synchronous factory is a public exception,
+    // never the private transport exception used by topology advancement.
+    const auto root_path = directory / "evidence" / "objects";
+    fs::remove_all(root_path);
+    selected.evidence().evict();
+    EXPECT_THROW((void)index->begin_invocation(calls), std::runtime_error);
 }
 } // namespace

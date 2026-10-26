@@ -164,3 +164,8 @@ IQR、min/max。最终采样期间未同时运行本次构建或测试，没有�
 构建验证：Debug 全量 CTest 256/256，包含 lit 387/387；GCC 和
 ASan/UBSan 的 Provenance/StageDecision 定向 CTest 各 51/51，Provenance
 CLI 各 8/8；文档检查 27 文件、clang-format 和 diff whitespace 检查通过。
+
+后续 [C4c3a](provenance-topology-checkpoint-c4c3a.md) 已将 TopologyTask 和
+FormulaIndex 适配到磁盘 EvidenceView，并显式保存/恢复物理游标、符号
+公式准备队列及未确认页。完成索引独立持有证据；任务状态仍驻留，压缩
+来源执行及指定调用链 QueryTask 的 checkpoint 仍未支持。

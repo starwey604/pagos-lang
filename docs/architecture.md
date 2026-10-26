@@ -495,8 +495,11 @@ segmented snapshots, atomic task heads and explicit paused-state capacity releas
 with quotas and lifecycle cleanup. [C4c2b](provenance-query-paging-c4c2b.md)
 adds opt-in active-query paging, sorted disk indexes and a bounded decoded cache.
 Restore streams full validation without materializing all tables; directories,
-codec scratch and compatibility results are outside the buffer budget. Topology
-checkpoints, formal measurements and the main explain CLI remain.
+codec scratch and compatibility results are outside the buffer budget.
+[C4c3a](provenance-topology-checkpoint-c4c3a.md) adds disk-backed symbolic
+topology/formula preparation with bound checkpoints and acknowledged pages.
+Topology state remains resident; segmented release, formal measurements and the
+main explain CLI remain. Compressed-source execution checkpoints remain unsupported.
 Existing graph reference/span lifetimes and the default one-shot query interface
 remain intact until their replacements are explicitly validated; snapshot
 serialization alone does not reduce build peaks.
