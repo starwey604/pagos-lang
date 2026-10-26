@@ -2,6 +2,7 @@
 #include "pagos/mir/lowering.h"
 #include "pagos/sema/type_checker.h"
 #include "pagos/stage/provenance_analysis.h"
+#include "pagos/stage/provenance_recursive.h"
 #include "pagos/stage/provenance_topology.h"
 #include "pagos/stage/stage_analyzer.h"
 #include "pagos/syntax/lexer.h"
@@ -446,6 +447,20 @@ TEST(StageProvenance, ExplainsConservativeRecursiveCompletionOfKnownValues) {
     EXPECT_EQ(reason->reason, stage::StageReason::RecursiveCompletion);
     EXPECT_EQ(module->provenance->site(result.sources[0].site).label,
               "recursive completion known");
+    bool retained_completion = false;
+    for (const auto& summary : module->provenance->evidence()->summaries()) {
+        RecursiveSummaryTask task(module->provenance->evidence(), summary.id);
+        while (task.progress() == QueryProgress::Running ||
+               task.progress() == QueryProgress::Paused)
+            (void)task.advance(1);
+        ASSERT_EQ(task.progress(), QueryProgress::Completed);
+        for (const auto& atom : task.result().atoms)
+            retained_completion |=
+                atom.kind == RecursiveAtomKind::SourceFamily &&
+                atom.node == reason->node.value;
+    }
+    EXPECT_TRUE(retained_completion);
+    EXPECT_EQ(root(*module->provenance, "result").stage, hir::Stage::Runtime);
     EXPECT_FALSE(query(*module, "result", QueryKind::Effects).complete);
 }
 
@@ -617,7 +632,11 @@ TEST(StageProvenanceQuery, QueriesDoNotChangeCompilationOrDiagnostics) {
           "fn nested(x: u32) -> u32 { let a = [7, x]; a[0] } comptime let r = "
           "nested(external_input());",
           "fn require(x: u32) -> u32 { comptime let local = if x == 0 { 7 } "
-          "else { 7 }; local } let r = require(external_input());"}) {
+          "else { 7 }; local } let r = require(external_input());",
+          "fn count(n: u32) -> u32 { if n == 0 { 0 } else { count(n - 1) } } "
+          "let r = count(external_input());",
+          "fn known(n: u32) -> u32 { if n == 0 { 0 } else { known(n - 1) }; "
+          "7 } let r = known(external_input());"}) {
         Input input(text);
         stage::StageAnalyzer analyzer(input.diagnostics, input.checker.types());
         const auto module = analyzer.analyze(*input.module);
@@ -636,6 +655,16 @@ TEST(StageProvenanceQuery, QueriesDoNotChangeCompilationOrDiagnostics) {
             EXPECT_NE(telemetry.str().find("provenance-query"),
                       std::string::npos);
         }
+        for (const auto& summary : module->provenance->evidence()->summaries())
+            for (const auto channel : {QueryKind::Value, QueryKind::Effects}) {
+                RecursiveSummaryTask task(module->provenance->evidence(),
+                                          summary.id, channel);
+                while (task.progress() == QueryProgress::Running ||
+                       task.progress() == QueryProgress::Paused)
+                    (void)task.advance(3);
+                EXPECT_EQ(task.progress(), QueryProgress::Completed);
+                EXPECT_FALSE(task.result().concrete_sources_complete);
+            }
         std::ostringstream hir_after, diagnostics_after;
         hir::print(*module, hir_after);
         input.diagnostics.render(diagnostics_after);

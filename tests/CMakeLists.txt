@@ -24,7 +24,8 @@ include(GoogleTest)
 gtest_discover_tests(pagos_unit_tests DISCOVERY_MODE PRE_TEST)
 
 add_executable(pagos_provenance_tests unit/provenance_test.cpp
-    unit/provenance_query_test.cpp unit/evidence_builder_test.cpp)
+    unit/provenance_query_test.cpp unit/provenance_recursive_test.cpp
+    unit/evidence_builder_test.cpp)
 target_link_libraries(pagos_provenance_tests
     PRIVATE Pagos::provenance GTest::gtest_main pagos_project_options)
 gtest_discover_tests(pagos_provenance_tests DISCOVERY_MODE PRE_TEST)

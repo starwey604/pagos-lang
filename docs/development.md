@@ -664,3 +664,13 @@ See the linked guide for budgets, precision fields and complete command examples
 ctest --test-dir build/debug -R 'pagos-query-cli-process|InvocationValueAccess' \
   --output-on-failure
 ```
+
+[C4d1](provenance-recursive-c4d1.md) exposes `RecursiveSummaryTask` as a C++
+experiment over immutable evidence. It computes formal dependencies with sliced
+SCC worklists and explicit precision/gap fields; it does not replace the native
+CLI, infer Stage, enumerate recursive instances or save solver checkpoints.
+
+```sh
+ctest --test-dir build/debug -R 'RecursiveSummary|StageProvenanceQuery' \
+  --output-on-failure
+```

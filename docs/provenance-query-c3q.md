@@ -171,3 +171,7 @@ CLI 各 8/8；文档检查 27 文件、clang-format 和 diff whitespace 检查�
 FormulaIndex 适配到磁盘 EvidenceView，并显式保存/恢复物理游标、符号
 公式准备队列及未确认页。完成索引独立持有证据；任务状态仍驻留，压缩
 来源执行及指定调用链 QueryTask 的 checkpoint 仍未支持。
+
+[C4d1](provenance-recursive-c4d1.md) 新增独立的有限递归摘要实验：对形式
+参数槽和来源族进行 SCC 不动点求解。它区分精确形式关系、实例合并和
+未支持缺口，不改变本文原生查询的具体上下文、递归截断或 checkpoint。

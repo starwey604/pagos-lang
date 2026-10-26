@@ -601,6 +601,12 @@ pin；不在旧 API 背后卸载。新逻辑身份包含证据单元/组件及�
 
 ### 10.7 递归拓扑与有限摘要求解
 
+[C4d1](provenance-recursive-c4d1.md) 已实现形式槽/来源族的有限内存
+方程求解、可切片 SCC worklist 和循环拓扑依据。参数依赖子集可精确；
+调用来源族的实例合并标 Conservative，缺口标 Unresolved。结果不是具体
+Source/context 清单，不改变 Stage 或 RecursiveCompletion。显式 CLI
+及求解状态 checkpoint 留给 C4d2/C4d3，原生查询截断仍保留。
+
 持久化保留 `SummaryRef`/调用回边、参数作用域和 SCC 组件，不枚举动态
 递归实例，也不把递归环当格式损坏。拓扑可完整保存，而来源求解仍可能
 Unresolved；前者不能代替后者。现有递归 Call 截断保留到替代方案验收。
@@ -609,7 +615,8 @@ C4d 首先研究有限的参数依赖槽、内部来源/效果族及现有关系
 摘要域。对支持的单调 transfer 以 SCC worklist 求不动点，保留规则依据和
 符号调用/替换关系。仅达到不动点不表示精确：抽象合并或不支持的条件须
 标为 Conservative/Unresolved；只有证明与声明记录模型等价的子集才能
-返回 ExactForRecordedModel。源族仍携带调用身份，不合并不同执行的读取。
+返回 ExactForRecordedModel。源族的有限调用关系仍须保留调用身份；若抽象
+集合合并实例，必须标 Conservative，不能将其当作具体读取实例清单。
 
 不求解任意终止性、参数值等价或实际动态次数。参数/上下文无法有限表示、
 缺关系或尚未支持 transfer 时返回结构化缺口，可继续展开有限拓扑但不能

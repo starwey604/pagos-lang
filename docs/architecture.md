@@ -506,6 +506,11 @@ main explain default to resumable memory queries with compatible text and adds
 explicit task save/resume, acknowledged JSON pages, read-only replay and cleanup.
 Compressed-source execution checkpoints and full LSP integration remain separate
 extensions.
+[C4d1](provenance-recursive-c4d1.md) adds a separate experimental finite
+summary solver with sliced SCC discovery and monotone parameter substitution.
+It distinguishes exact formal relations, merged source families and unresolved
+gaps, retaining finite cycle topology without expanding recursive invocations.
+Solver CLI/checkpoints remain future work; Stage and native query rules stay intact.
 Existing graph reference/span lifetimes and the default one-shot query interface
 remain intact until their replacements are explicitly validated; snapshot
 serialization alone does not reduce build peaks.

@@ -163,6 +163,10 @@ with compatible default text, explicit durable tasks, acknowledged pages and
 maintenance. C4c experimental acceptance is complete for native queries and
 symbolic preparation; compressed-source execution checkpoints and LSP integration
 remain separate extensions.
+[C4d1](provenance-recursive-c4d1.md) adds sliced finite-domain summary solving,
+SCC worklists and cycle topology. Formal parameter relations can be exact;
+source-instance merging is conservative and unsupported transfers stay unresolved.
+Explicit CLI integration and solver checkpoints remain C4d2/C4d3 work.
 C4b-C4e cover construction spill, persistent query checkpoints,
 finite-domain recursive explanations and pure detail replay. These extensions
 are explanation capabilities, not new Stage inference rules. Query work limits,
