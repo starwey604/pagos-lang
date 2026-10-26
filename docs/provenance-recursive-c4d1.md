@@ -5,7 +5,10 @@
 输入是一个不可变 EvidenceView、一个 SummaryId 和 Value/Effects 通道；
 输出是该摘要的有限符号依赖关系。构造不运行 Stage，也不展开调用帧。
 普通解释 CLI、原生 QueryTask 的递归截断和 C4c checkpoint 格式保持原有
-规则。C4d 尚未全部完成；CLI 和求解状态 checkpoint 分别留给后续迭代。
+规则。C4d1 不包含 CLI 或求解状态 checkpoint；C4d 尚未全部完成。
+
+后续 [C4d2](provenance-recursive-cli-c4d2.md) 已接入显式函数证据 CLI；
+本文的内存规则和精度保证继续适用，求解状态 checkpoint 仍留给 C4d3。
 
 ## 抽象域与准入
 
@@ -132,7 +135,8 @@ EvidenceView 的 memory/segmented 后端均可使用。节点 lease 仅在发现
 
 后续分轮：
 
-1. **C4d2：显式解释入口与实际证据验收。** 接入经验证的函数证据闭包和
+1. **C4d2：显式解释入口与实际证据验收，已完成。** 见
+   [实现记录](provenance-recursive-cli-c4d2.md)。接入经验证的函数证据闭包和
    摘要选择，输出符号精度、缺口及循环依据；明确具体调用实例与摘要形式
    槽的边界，扩充真实递归、控制/投影和双通道案例。不得默认替换原生
    来源查询或清除旧截断标志。

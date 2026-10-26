@@ -13,6 +13,7 @@
 #include "pagos/syntax/lexer.h"
 #include "pagos/syntax/parser.h"
 #include "query_tasks.h"
+#include "recursive_summaries.h"
 
 #include <algorithm>
 #include <charconv>
@@ -54,6 +55,7 @@ struct Options {
     pagos::stage::provenance::EvidenceBuildConfig spill;
     bool spill_stats{};
     pagos::driver::QueryTaskOptions query;
+    pagos::driver::RecursiveSummaryOptions recursive;
 };
 
 void print_usage() {
@@ -73,7 +75,10 @@ void print_usage() {
         "[--snapshot-write=DIR|--snapshot-read=DIR] "
         "[--evidence-write=DIR|--evidence-read=DIR] "
         "[--evidence-root=NAME] "
-        "[--evidence-mode=sources|witness|topology|decisions] "
+        "[--evidence-mode=sources|witness|topology|decisions|summaries|"
+        "recursive-summary] "
+        "[--evidence-summary=NAME|--evidence-summary-key=HEX] "
+        "[--evidence-channel=value|effects|both] [--recursive-max-steps=N|all] "
         "[--evidence-cache-bytes=N] "
         "[--query-dir=DIR] [--query-id=HEX] "
         "[--query-action=start|resume|cancel] "
@@ -144,6 +149,7 @@ std::expected<Options, std::string> parse_options(int argument_count,
     pagos::stage::ProvenanceQueryOptions provenance;
     provenance.mode = pagos::stage::ProvenanceQueryOptions::Mode::Resumable;
     pagos::driver::QueryTaskOptions query;
+    pagos::driver::RecursiveSummaryOptions recursive;
     std::optional<std::string> snapshot_write, snapshot_read;
     std::optional<std::string> evidence_write, evidence_read;
     std::string evidence_root, evidence_mode{"sources"};
@@ -167,7 +173,15 @@ std::expected<Options, std::string> parse_options(int argument_count,
             "--max-aggregate-members=";
         constexpr std::string_view aggregate_bytes_prefix =
             "--max-aggregate-bytes=";
-        if (argument.starts_with("--query-")) {
+        if (argument.starts_with("--evidence-summary=") ||
+            argument.starts_with("--evidence-summary-key=") ||
+            argument.starts_with("--evidence-channel=") ||
+            argument.starts_with("--recursive-max-steps=")) {
+            const auto parsed = pagos::driver::parse_recursive_summary_option(
+                argument, recursive);
+            if (!parsed)
+                return std::unexpected(parsed.error());
+        } else if (argument.starts_with("--query-")) {
             const auto parsed =
                 pagos::driver::parse_query_task_option(argument, query);
             if (!parsed)
@@ -226,7 +240,8 @@ std::expected<Options, std::string> parse_options(int argument_count,
         } else if (argument.starts_with("--evidence-mode=")) {
             evidence_mode = argument.substr(16);
             if (evidence_mode != "sources" && evidence_mode != "witness" &&
-                evidence_mode != "topology" && evidence_mode != "decisions")
+                evidence_mode != "topology" && evidence_mode != "decisions" &&
+                !pagos::driver::recursive_evidence_mode(evidence_mode))
                 return std::unexpected("invalid evidence query mode");
         } else if (argument.starts_with("--evidence-cache-bytes=")) {
             auto value = parse_limit(argument, "--evidence-cache-bytes=");
@@ -421,6 +436,16 @@ std::expected<Options, std::string> parse_options(int argument_count,
              pagos::stage::ProvenanceQueryOptions::Mode::Topology))
         return std::unexpected(
             "function evidence uses --evidence-mode for topology and sources");
+    const auto recursive_valid =
+        pagos::driver::validate_recursive_summary_options(
+            recursive, evidence_mode, evidence_root, query.specified);
+    if (!recursive_valid)
+        return std::unexpected(recursive_valid.error());
+    if (pagos::driver::recursive_evidence_mode(evidence_mode) &&
+        provenance.mode !=
+            pagos::stage::ProvenanceQueryOptions::Mode::Resumable)
+        return std::unexpected(
+            "recursive summaries require resumable query mode");
     if (query.specified) {
         const auto valid = pagos::driver::validate_query_task_options(
             query, evidence_read.has_value(), evidence_write.has_value(),
@@ -449,7 +474,8 @@ std::expected<Options, std::string> parse_options(int argument_count,
                    .evidence_cache_bytes = evidence_cache_bytes,
                    .spill = std::move(spill),
                    .spill_stats = spill_stats,
-                   .query = std::move(query)};
+                   .query = std::move(query),
+                   .recursive = std::move(recursive)};
 }
 
 std::expected<void, std::string> write_object(const std::string& input,
@@ -610,6 +636,11 @@ int main(int argument_count, char** arguments) {
                              static_cast<int>(view.error().code));
                 return 1;
             }
+            if (pagos::driver::recursive_evidence_mode(options->evidence_mode))
+                return pagos::driver::run_recursive_summaries(
+                    *view, source->text(), options->evidence_mode,
+                    options->provenance.slice, options->recursive, false,
+                    options->provenance.telemetry);
             if (options->query.enabled())
                 return pagos::driver::run_query_task(
                     *view, source->text(), options->evidence_root,
@@ -721,7 +752,8 @@ int main(int argument_count, char** arguments) {
     }
     if (diagnostics.has_error()) {
         if (options->command == Command::ExplainProvenance &&
-            !options->query.enabled())
+            !options->query.enabled() &&
+            !pagos::driver::recursive_evidence_mode(options->evidence_mode))
             pagos::stage::explain_provenance_experimental(
                 *hir_module->provenance, std::cout, std::cerr,
                 options->provenance);
@@ -746,6 +778,11 @@ int main(int argument_count, char** arguments) {
             std::move(*loaded), options->evidence_cache_bytes);
         if (!view)
             return 1;
+        if (pagos::driver::recursive_evidence_mode(options->evidence_mode))
+            return pagos::driver::run_recursive_summaries(
+                *view, source->text(), options->evidence_mode,
+                options->provenance.slice, options->recursive, true,
+                options->provenance.telemetry);
         if (options->query.enabled())
             return pagos::driver::run_query_task(
                 *view, source->text(), options->evidence_root,

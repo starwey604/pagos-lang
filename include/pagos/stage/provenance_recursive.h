@@ -61,7 +61,7 @@ struct RecursiveResult {
 // C4d1 experiment. Owns the evidence; never runs Stage or expands call frames.
 // Discovery, iterative SCC construction and monotone transfer are sliced by
 // primitive steps (one edge/fact/queue operation), not elapsed time or RSS.
-// There is no checkpoint or CLI protocol for this task yet.
+// C4d2 exposes an explicit summary CLI; this task has no checkpoint yet.
 class RecursiveSummaryTask {
   public:
     RecursiveSummaryTask(std::shared_ptr<const EvidenceView> evidence,

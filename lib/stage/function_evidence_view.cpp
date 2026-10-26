@@ -97,9 +97,9 @@ struct Mapping {
     }
 };
 } // namespace
-std::expected<QueryCheckpointBinding, cache::Error>
-FunctionEvidenceView::checkpoint_binding(std::string_view source_text,
-                                         cache::Limits limits) const {
+std::expected<FunctionEvidenceRevision, cache::Error>
+FunctionEvidenceView::revision(std::string_view source_text,
+                               cache::Limits limits) const {
     auto positions = closure_->position_fingerprint(limits);
     if (!positions)
         return std::unexpected(positions.error());
@@ -107,8 +107,17 @@ FunctionEvidenceView::checkpoint_binding(std::string_view source_text,
         "pagos.query-source-revision.v1",
         {reinterpret_cast<const std::uint8_t*>(source_text.data()),
          source_text.size()});
-    return QueryCheckpointBinding(view_, closure_->root_object().digest,
-                                  *positions, revision);
+    return FunctionEvidenceRevision{closure_->root_object().digest, *positions,
+                                    revision};
+}
+std::expected<QueryCheckpointBinding, cache::Error>
+FunctionEvidenceView::checkpoint_binding(std::string_view source_text,
+                                         cache::Limits limits) const {
+    auto binding = revision(source_text, limits);
+    if (!binding)
+        return std::unexpected(binding.error());
+    return QueryCheckpointBinding(view_, binding->closure, binding->positions,
+                                  binding->source);
 }
 std::expected<FunctionEvidenceView, EvidenceError>
 FunctionEvidenceView::open(FunctionEvidence evidence, std::size_t cache_bytes) {
@@ -129,6 +138,7 @@ FunctionEvidenceView::open(FunctionEvidence evidence, std::size_t cache_bytes) {
                 auto id = SummaryId{
                     static_cast<std::uint32_t>(summary_ids.size() + 1)};
                 summary_ids.emplace(entry.key.hex(), id);
+                result.summaries_.push_back({id, entry.key});
                 summaries.push_back({id, {}, {}});
                 result.scopes_.push_back(
                     {id, member.key.definition.name, {}, {}});

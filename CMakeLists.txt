@@ -191,7 +191,8 @@ else()
     target_link_libraries(pagos_codegen PRIVATE ${PAGOS_LLVM_LIBRARIES})
 endif()
 
-add_executable(pagosc tools/pagosc/main.cpp tools/pagosc/query_tasks.cpp)
+add_executable(pagosc tools/pagosc/main.cpp tools/pagosc/query_tasks.cpp
+    tools/pagosc/recursive_summaries.cpp)
 target_link_libraries(pagosc
     PRIVATE Pagos::syntax Pagos::sema Pagos::stage Pagos::mir Pagos::codegen
             pagos_project_options)

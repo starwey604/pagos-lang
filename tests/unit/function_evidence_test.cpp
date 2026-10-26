@@ -2,6 +2,7 @@
 #include "cache_test_input.h"
 #include "pagos/stage/function_evidence.h"
 #include "pagos/stage/function_evidence_view.h"
+#include "pagos/stage/provenance_recursive.h"
 #include "pagos/stage/provenance_topology.h"
 #include "pagos/stage/stage_analyzer.h"
 
@@ -859,5 +860,158 @@ TEST_F(FunctionEvidenceTest,
         thread.join();
     for (auto result : complete)
         EXPECT_TRUE(result);
+}
+
+std::string summary_name(std::span<const ProvenanceScope> scopes,
+                         SummaryId id) {
+    if (!id.value)
+        return "module";
+    const auto& scope = scopes[id.value];
+    std::ostringstream out;
+    out << scope.name;
+    for (const auto& argument : scope.specialization->arguments) {
+        out << ':' << sema::type_name(argument.type) << ':'
+            << static_cast<unsigned>(argument.stage) << ':'
+            << static_cast<unsigned>(argument.constraint);
+        if (argument.value)
+            print_constant(*argument.value, out);
+    }
+    return out.str();
+}
+std::vector<std::string>
+recursive_atoms(const RecursiveSummaryTask& task,
+                std::span<const ProvenanceScope> scopes,
+                const ProvenanceAnalysis* analysis = nullptr) {
+    std::vector<std::string> result;
+    for (const auto& atom : task.result().atoms) {
+        std::ostringstream out;
+        if (atom.kind == RecursiveAtomKind::Parameter)
+            out << "parameter:" << summary_name(scopes, {atom.owner}) << ':'
+                << atom.slot;
+        else {
+            const auto lease = task.evidence().pin({atom.node});
+            EXPECT_TRUE(lease);
+            if (!lease)
+                continue;
+            const auto* site = lease->site();
+            if (!site && analysis)
+                site = &analysis->site(lease->node().site);
+            EXPECT_NE(site, nullptr);
+            if (!site)
+                continue;
+            out << "family:" << static_cast<unsigned>(lease->node().rule) << ':'
+                << site->label << ':' << site->span.begin << ':'
+                << site->span.end;
+        }
+        result.push_back(out.str());
+    }
+    std::ranges::sort(result);
+    return result;
+}
+TEST_F(FunctionEvidenceTest,
+       RecursiveSummaryCatalogAndDiskRelationsMatchActualStageScopes) {
+    cache_test::Input input(
+        "fn rotate(x: u32, y: u32) -> u32 { if x == 0 { y } else { rotate(y, x "
+        "- 1) } } "
+        "fn even(n: u32) -> u32 { if n == 0 { 1 } else { odd(n - 1) } } "
+        "fn odd(n: u32) -> u32 { if n == 0 { 0 } else { even(n - 1) } } "
+        "fn known(n: u32) -> u32 { if n == 0 { 0 } else { known(n - 1) }; 7 } "
+        "fn input(n: u32) -> u32 { if n == 0 { external_input() } else { "
+        "input(n - 1) } } "
+        "fn project(x: u32, y: u32) -> u32 { [x, y][0] } "
+        "fn scale(k: u32, x: u32) -> u32 { k * x } "
+        "let a = external_input(); let b = external_input(); "
+        "let aa = [rotate(a, b), even(a), known(a), input(a), project(a, b), "
+        "scale(4, a), scale(5, b)];");
+    const auto prepared = prepare(input);
+    ASSERT_FALSE(input.diagnostics.has_error());
+    publish(prepared);
+    auto loaded = load(prepared);
+    ASSERT_TRUE(loaded);
+    std::map<std::string, cache::QueryKey> keys;
+    for (const auto& entry : loaded->catalog())
+        if (loaded->member(entry).key.definition.kind ==
+            cache::DefinitionKind::Function)
+            keys.emplace(entry.key.hex(), loaded->member(entry).key);
+    auto view = FunctionEvidenceView::open(std::move(*loaded), 0);
+    ASSERT_TRUE(view);
+    EXPECT_EQ(view->summary_catalog().size(), keys.size());
+    EXPECT_EQ(view->view()->read_stats().objects_read, 0U);
+    const auto binding = view->revision(input.source.text());
+    ASSERT_TRUE(binding);
+    auto changed = view->revision(input.source.text() + std::string(" "));
+    ASSERT_TRUE(changed);
+    EXPECT_EQ(binding->closure, changed->closure);
+    EXPECT_EQ(binding->positions, changed->positions);
+    EXPECT_NE(binding->source, changed->source);
+    EXPECT_EQ(view->view()->read_stats().objects_read, 0U);
+    std::size_t checked = 0;
+    for (const auto& entry : view->summary_catalog()) {
+        const auto& query = keys.at(entry.key.hex());
+        const auto& disk_scope = view->scopes()[entry.id.value];
+        EXPECT_EQ(disk_scope.specialization->arguments, query.arguments);
+        const auto memory_scope = std::ranges::find_if(
+            prepared.analysis->scopes(), [&](const auto& candidate) {
+                return candidate.specialization &&
+                       candidate.specialization->definition ==
+                           disk_scope.specialization->definition &&
+                       candidate.specialization->arguments == query.arguments;
+            });
+        ASSERT_NE(memory_scope, prepared.analysis->scopes().end());
+        for (const auto channel : {QueryKind::Value, QueryKind::Effects}) {
+            RecursiveSummaryTask memory(prepared.analysis->evidence(),
+                                        memory_scope->id, channel);
+            RecursiveSummaryTask disk(view->view(), entry.id, channel);
+            for (auto* task : {&memory, &disk})
+                while (task->progress() == QueryProgress::Running ||
+                       task->progress() == QueryProgress::Paused) {
+                    (void)task->advance(3);
+                    view->view()->evict();
+                }
+            ASSERT_EQ(disk.progress(), QueryProgress::Completed);
+            ASSERT_EQ(memory.progress(), QueryProgress::Completed);
+            EXPECT_EQ(disk.result().precision, memory.result().precision);
+            EXPECT_EQ(disk.result().issues, memory.result().issues);
+            EXPECT_EQ(disk.result().instances_merged,
+                      memory.result().instances_merged);
+            EXPECT_EQ(recursive_atoms(disk, view->scopes()),
+                      recursive_atoms(memory, prepared.analysis->scopes(),
+                                      prepared.analysis.get()));
+            EXPECT_EQ(disk.stats().nodes, memory.stats().nodes);
+            EXPECT_EQ(disk.stats().links, memory.stats().links);
+            EXPECT_EQ(disk.stats().cyclic_components,
+                      memory.stats().cyclic_components);
+            ++checked;
+        }
+    }
+    EXPECT_GE(checked, 16U);
+    EXPECT_EQ(view->view()->memory_graph(), nullptr);
+    EXPECT_TRUE(
+        prepared.analysis->graph_materialized()); // Original memory backend.
+}
+
+TEST_F(FunctionEvidenceTest,
+       RecursiveCatalogSurvivesMissingColdDetailWithoutSolvingOrStageFallback) {
+    cache_test::Input input(
+        "fn count(n: u32) -> u32 { if n == 0 { 0 } else { count(n - 1) } } "
+        "let a = count(external_input());");
+    const auto prepared = prepare(input);
+    publish(prepared);
+    auto loaded = load(prepared);
+    ASSERT_TRUE(loaded);
+    for (const auto& group : loaded->groups())
+        fs::remove(object(group.detail));
+    auto view = FunctionEvidenceView::open(std::move(*loaded), 0);
+    ASSERT_TRUE(view);
+    ASSERT_EQ(view->summary_catalog().size(), 1U);
+    ASSERT_TRUE(view->revision(input.source.text()));
+    EXPECT_EQ(view->view()->read_stats().objects_read, 0U);
+    RecursiveSummaryTask task(view->view(), view->summary_catalog()[0].id);
+    EXPECT_EQ(task.advance(0), QueryProgress::Paused);
+    EXPECT_EQ(view->view()->read_stats().objects_read, 0U);
+    EXPECT_EQ(task.advance(1), QueryProgress::Failed);
+    ASSERT_TRUE(task.failure());
+    EXPECT_EQ(task.failure()->code, EvidenceErrorCode::MissingBlock);
+    EXPECT_EQ(task.result().precision, EvidencePrecision::Unresolved);
 }
 } // namespace

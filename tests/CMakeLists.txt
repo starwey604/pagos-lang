@@ -84,6 +84,10 @@ add_test(NAME pagos-query-cli-process
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/query_cli_process.py
             $<TARGET_FILE:pagosc>)
 set_tests_properties(pagos-query-cli-process PROPERTIES TIMEOUT 240)
+add_test(NAME pagos-recursive-cli-process
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/recursive_cli_process.py
+            $<TARGET_FILE:pagosc>)
+set_tests_properties(pagos-recursive-cli-process PROPERTIES TIMEOUT 180)
 
 find_program(PAGOS_LIT NAMES lit llvm-lit HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
 find_program(PAGOS_FILECHECK NAMES FileCheck

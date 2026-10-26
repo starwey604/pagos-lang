@@ -670,7 +670,14 @@ experiment over immutable evidence. It computes formal dependencies with sliced
 SCC worklists and explicit precision/gap fields; it does not replace the native
 CLI, infer Stage, enumerate recursive instances or save solver checkpoints.
 
+[C4d2](provenance-recursive-cli-c4d2.md) adds explicit function-evidence modes
+`summaries` and `recursive-summary`. List actual specialization keys, then select
+one with `--evidence-summary=NAME` or `--evidence-summary-key=HEX`. Choose
+`--evidence-channel=value|effects|both`; `--recursive-max-steps=N|all` limits each
+channel. Budget exhaustion returns 3 with `restart_required`, without saving a
+continuation. Reads validate the closure/source and never run Stage.
+
 ```sh
-ctest --test-dir build/debug -R 'RecursiveSummary|StageProvenanceQuery' \
+ctest --test-dir build/debug -R 'RecursiveSummary|StageProvenanceQuery|FunctionEvidenceTest.Recursive|pagos-recursive-cli-process' \
   --output-on-failure
 ```

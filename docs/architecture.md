@@ -510,7 +510,9 @@ extensions.
 summary solver with sliced SCC discovery and monotone parameter substitution.
 It distinguishes exact formal relations, merged source families and unresolved
 gaps, retaining finite cycle topology without expanding recursive invocations.
-Solver CLI/checkpoints remain future work; Stage and native query rules stay intact.
+[C4d2](provenance-recursive-cli-c4d2.md) adds explicit specialization catalogs
+and recursive-summary JSON over validated function evidence, without Stage on
+read. Solver checkpoints remain C4d3 work; native query rules stay intact.
 Existing graph reference/span lifetimes and the default one-shot query interface
 remain intact until their replacements are explicitly validated; snapshot
 serialization alone does not reduce build peaks.

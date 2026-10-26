@@ -604,8 +604,10 @@ pin；不在旧 API 背后卸载。新逻辑身份包含证据单元/组件及�
 [C4d1](provenance-recursive-c4d1.md) 已实现形式槽/来源族的有限内存
 方程求解、可切片 SCC worklist 和循环拓扑依据。参数依赖子集可精确；
 调用来源族的实例合并标 Conservative，缺口标 Unresolved。结果不是具体
-Source/context 清单，不改变 Stage 或 RecursiveCompletion。显式 CLI
-及求解状态 checkpoint 留给 C4d2/C4d3，原生查询截断仍保留。
+Source/context 清单，不改变 Stage 或 RecursiveCompletion。
+[C4d2](provenance-recursive-cli-c4d2.md) 已接入实际函数证据的摘要目录、
+特化选择与显式 JSON 解释，独立读取不运行 Stage；求解状态 checkpoint
+留给 C4d3，原生查询截断仍保留。
 
 持久化保留 `SummaryRef`/调用回边、参数作用域和 SCC 组件，不枚举动态
 递归实例，也不把递归环当格式损坏。拓扑可完整保存，而来源求解仍可能
