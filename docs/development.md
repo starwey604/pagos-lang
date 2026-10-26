@@ -650,3 +650,17 @@ pause with `storage_failure()` and retry after repair. Topology restore still
 materializes all tables. The independent Release `pagos_query_task_bench` and
 `scripts/benchmark_query_tasks.py` compare native paging and topology state;
 `pagos-query-task-benchmark-smoke` runs small correctness checks in CTest.
+
+[C4c3c](provenance-query-cli-c4c3c.md) makes the main explain default resumable
+without changing small-query text or introducing implicit task files. Explicit
+`--query-dir` plus function evidence and one `--evidence-root` enables durable
+JSON pages; start generates a fresh task ID, resume/cancel require an ID and
+`--evidence-read`. Commit consumer records before `--query-ack=N`. Exit 3 means
+saved work or delivery remains. Read-only replay never confirms or advances work;
+`reclaim-queries` protects active/resumable tasks unless explicit discard is chosen.
+See the linked guide for budgets, precision fields and complete command examples.
+
+```sh
+ctest --test-dir build/debug -R 'pagos-query-cli-process|InvocationValueAccess' \
+  --output-on-failure
+```

@@ -1849,4 +1849,27 @@ TEST_F(QueryCheckpointTest,
     EXPECT_EQ(task.advance().records, page.records);
     EXPECT_FALSE(task.storage_failure());
 }
+TEST_F(QueryCheckpointTest,
+       InvocationValueAccessKeepsPagedContextsOutOfCompatibilityBuffers) {
+    publish();
+    auto view = open(1024 * 1024);
+    auto store = cache::TaskStore::open(directory / "paged", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    auto task = QueryTask::begin_paged(binding(view), *store, root(view),
+                                       QueryKind::Value, false, tiny_pages);
+    ASSERT_TRUE(task);
+    EXPECT_EQ(finish_paged(*task, tiny_pages).progress,
+              QueryProgress::Completed);
+    const auto expected = task->result().invocations;
+    ASSERT_GT(expected.size(), 1U);
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        task->evict_state_cache();
+        EXPECT_EQ(task->invocation(static_cast<std::uint32_t>(i)), expected[i]);
+        EXPECT_EQ(task->state_memory().compatibility, 0U);
+        paging_memory(*task, tiny_pages);
+    }
+    EXPECT_THROW((void)task->invocation(UINT32_MAX), std::out_of_range);
+    EXPECT_FALSE(task->storage_failure());
+}
 } // namespace

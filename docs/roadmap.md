@@ -158,8 +158,11 @@ buffers; directories and explicit compatibility results remain separate.
 topology/formula checkpoints with strict binding and acknowledged replay.
 [C4c3b](provenance-topology-storage-c4c3b.md) adds segmented topology state,
 paused release and real-source query measurements; active topology tables still
-remain resident. C4c3c still needs the explain CLI; compressed-source execution
-checkpoints remain a separate extension.
+remain resident. [C4c3c](provenance-query-cli-c4c3c.md) completes the explain CLI
+with compatible default text, explicit durable tasks, acknowledged pages and
+maintenance. C4c experimental acceptance is complete for native queries and
+symbolic preparation; compressed-source execution checkpoints and LSP integration
+remain separate extensions.
 C4b-C4e cover construction spill, persistent query checkpoints,
 finite-domain recursive explanations and pure detail replay. These extensions
 are explanation capabilities, not new Stage inference rules. Query work limits,

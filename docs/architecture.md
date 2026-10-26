@@ -501,8 +501,11 @@ topology/formula preparation with bound checkpoints and acknowledged pages.
 [C4c3b](provenance-topology-storage-c4c3b.md) adds streamed segmented topology
 snapshots, actual paused-state release and independent real-source measurements.
 Restore still materializes topology tables; externally retained formula indexes
-are accounted separately. The main explain CLI and compressed-source execution
-checkpoints remain unsupported.
+are accounted separately. [C4c3c](provenance-query-cli-c4c3c.md) switches the
+main explain default to resumable memory queries with compatible text and adds
+explicit task save/resume, acknowledged JSON pages, read-only replay and cleanup.
+Compressed-source execution checkpoints and full LSP integration remain separate
+extensions.
 Existing graph reference/span lifetimes and the default one-shot query interface
 remain intact until their replacements are explicitly validated; snapshot
 serialization alone does not reduce build peaks.

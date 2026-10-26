@@ -79,6 +79,10 @@ add_test(NAME pagos-query-task-benchmark-smoke
             --binary $<TARGET_FILE:pagos_query_task_bench> --smoke
             --output ${CMAKE_CURRENT_BINARY_DIR}/query-task-smoke.json)
 set_tests_properties(pagos-query-task-benchmark-smoke PROPERTIES TIMEOUT 180)
+add_test(NAME pagos-query-cli-process
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/query_cli_process.py
+            $<TARGET_FILE:pagosc>)
+set_tests_properties(pagos-query-cli-process PROPERTIES TIMEOUT 240)
 
 find_program(PAGOS_LIT NAMES lit llvm-lit HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
 find_program(PAGOS_FILECHECK NAMES FileCheck

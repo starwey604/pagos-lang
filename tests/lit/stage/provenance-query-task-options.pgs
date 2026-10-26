@@ -1,0 +1,24 @@
+// RUN: not %pagosc --query-action=resume explain-provenance %s 2>&1 | FileCheck %s --check-prefix=DIR
+// RUN: not %pagosc --query-dir=%t.tasks explain-provenance %s 2>&1 | FileCheck %s --check-prefix=EVIDENCE
+// RUN: not %pagosc --query-id=bad explain-provenance %s 2>&1 | FileCheck %s --check-prefix=ID
+// RUN: not %pagosc --query-max-records=0 explain-provenance %s 2>&1 | FileCheck %s --check-prefix=RECORDS
+// RUN: not %pagosc --query-storage=auto explain-provenance %s 2>&1 | FileCheck %s --check-prefix=STORAGE
+// RUN: not %pagosc --query-unknown=1 explain-provenance %s 2>&1 | FileCheck %s --check-prefix=UNKNOWN
+// RUN: not %pagosc --evidence-read=%t.evidence --evidence-root=aa --query-dir=%t.tasks --query-action=resume explain-provenance %s 2>&1 | FileCheck %s --check-prefix=RESUME
+// RUN: not %pagosc --evidence-read=%t.evidence --evidence-root=aa --evidence-mode=topology --query-dir=%t.tasks --query-storage=paged explain-provenance %s 2>&1 | FileCheck %s --check-prefix=TOPOLOGY
+// RUN: not %pagosc --evidence-read=%t.evidence --evidence-root=aa --query-dir=%t.tasks --query-action=resume --query-id=1111111111111111111111111111111111111111111111111111111111111111 --query-read-only --query-ack=1 explain-provenance %s 2>&1 | FileCheck %s --check-prefix=ACK
+// RUN: not %pagosc --evidence-read=%t.evidence --evidence-root=aa --query-dir=%t.tasks --query-action=resume --query-id=1111111111111111111111111111111111111111111111111111111111111111 --query-read-only --query-max-slices=0 explain-provenance %s 2>&1 | FileCheck %s --check-prefix=READONLY
+// RUN: not %pagosc reclaim-queries %t.tasks --unknown 2>&1 | FileCheck %s --check-prefix=RECLAIM
+// RUN: test ! -e %t.tasks
+// DIR: error: query options require --query-dir=DIR
+// EVIDENCE: error: query tasks require function evidence read or write
+// ID: error: query ID must contain 64 hexadecimal digits
+// RECORDS: error: query record limit must be between 1 and UINT32_MAX
+// STORAGE: error: invalid query storage mode
+// UNKNOWN: error: unknown query option: --query-unknown
+// RESUME: error: query resume/cancel requires --evidence-read and --query-id
+// TOPOLOGY: error: topology uses resident preparation and both channels
+// ACK: error: query acknowledgement requires writable resume
+// READONLY: error: read-only query access only replays/inspects a saved task
+// RECLAIM: usage: pagosc reclaim-queries <query-parent> [--discard-resumable]
+let aa = external_input();

@@ -12,6 +12,7 @@
 #include "pagos/stage/stage_analyzer.h"
 #include "pagos/syntax/lexer.h"
 #include "pagos/syntax/parser.h"
+#include "query_tasks.h"
 
 #include <algorithm>
 #include <charconv>
@@ -52,34 +53,44 @@ struct Options {
     std::size_t evidence_cache_bytes{4 * 1024 * 1024};
     pagos::stage::provenance::EvidenceBuildConfig spill;
     bool spill_stats{};
+    pagos::driver::QueryTaskOptions query;
 };
 
 void print_usage() {
-    std::println(stderr,
-                 "usage: pagosc [--max-fuel=N] "
-                 "[--max-recursion-depth=N] "
-                 "[--max-specializations=N] "
-                 "[--max-residual-specializations=N] "
-                 "[--max-array-elements=N] [--max-array-bytes=N] "
-                 "[--max-aggregate-members=N] [--max-aggregate-bytes=N] "
-                 "[--target=TRIPLE] [--cpu=CPU] [--features=FEATURES] "
-                 "[--stage-cache=off|read-write|read-only] "
-                 "[--cache-dir=PATH] [--cache-stats] "
-                 "[--provenance-query=legacy|resumable|compressed|topology] "
-                 "[--provenance-slice=N] [--provenance-query-stats] "
-                 "[--snapshot-write=DIR|--snapshot-read=DIR] "
-                 "[--evidence-write=DIR|--evidence-read=DIR] "
-                 "[--evidence-root=NAME] "
-                 "[--evidence-mode=sources|witness|topology|decisions] "
-                 "[--evidence-cache-bytes=N] "
-                 "[--evidence-spill=DIR] [--spill-block-bytes=N] "
-                 "[--spill-resident-bytes=N] [--spill-cache-bytes=N] "
-                 "[--spill-disk-bytes=N] [--spill-on-error=memory|unavailable] "
-                 "[--spill-stats] "
-                 "<check|emit-hir|emit-mir|emit-llvm|emit-obj|explain-stage|"
-                 "explain-provenance> "
-                 "<source.pgs> [-o output.o]\n"
-                 "       pagosc reclaim-evidence <temporary-parent>");
+    std::println(
+        stderr,
+        "usage: pagosc [--max-fuel=N] "
+        "[--max-recursion-depth=N] "
+        "[--max-specializations=N] "
+        "[--max-residual-specializations=N] "
+        "[--max-array-elements=N] [--max-array-bytes=N] "
+        "[--max-aggregate-members=N] [--max-aggregate-bytes=N] "
+        "[--target=TRIPLE] [--cpu=CPU] [--features=FEATURES] "
+        "[--stage-cache=off|read-write|read-only] "
+        "[--cache-dir=PATH] [--cache-stats] "
+        "[--provenance-query=legacy|resumable|compressed|topology] "
+        "[--provenance-slice=N] [--provenance-query-stats] "
+        "[--snapshot-write=DIR|--snapshot-read=DIR] "
+        "[--evidence-write=DIR|--evidence-read=DIR] "
+        "[--evidence-root=NAME] "
+        "[--evidence-mode=sources|witness|topology|decisions] "
+        "[--evidence-cache-bytes=N] "
+        "[--query-dir=DIR] [--query-id=HEX] "
+        "[--query-action=start|resume|cancel] "
+        "[--query-max-slices=N|all] [--query-ack=N] "
+        "[--query-channel=value|effects] [--query-storage=memory|paged] "
+        "[--query-read-only] [--query-disk-bytes=N] "
+        "[--query-segment-bytes=N] [--query-resident-bytes=N] "
+        "[--query-cache-bytes=N] [--query-max-records=N] "
+        "[--evidence-spill=DIR] [--spill-block-bytes=N] "
+        "[--spill-resident-bytes=N] [--spill-cache-bytes=N] "
+        "[--spill-disk-bytes=N] [--spill-on-error=memory|unavailable] "
+        "[--spill-stats] "
+        "<check|emit-hir|emit-mir|emit-llvm|emit-obj|explain-stage|"
+        "explain-provenance> "
+        "<source.pgs> [-o output.o]\n"
+        "       pagosc reclaim-evidence <temporary-parent>\n"
+        "       pagosc reclaim-queries <query-parent> [--discard-resumable]");
 }
 
 std::optional<Command> parse_command(std::string_view name) {
@@ -131,6 +142,8 @@ std::expected<Options, std::string> parse_options(int argument_count,
     pagos::stage::CacheConfig cache;
     bool cache_stats = false;
     pagos::stage::ProvenanceQueryOptions provenance;
+    provenance.mode = pagos::stage::ProvenanceQueryOptions::Mode::Resumable;
+    pagos::driver::QueryTaskOptions query;
     std::optional<std::string> snapshot_write, snapshot_read;
     std::optional<std::string> evidence_write, evidence_read;
     std::string evidence_root, evidence_mode{"sources"};
@@ -154,7 +167,12 @@ std::expected<Options, std::string> parse_options(int argument_count,
             "--max-aggregate-members=";
         constexpr std::string_view aggregate_bytes_prefix =
             "--max-aggregate-bytes=";
-        if (argument.starts_with("--evidence-spill=")) {
+        if (argument.starts_with("--query-")) {
+            const auto parsed =
+                pagos::driver::parse_query_task_option(argument, query);
+            if (!parsed)
+                return std::unexpected(parsed.error());
+        } else if (argument.starts_with("--evidence-spill=")) {
             const auto value = argument.substr(17);
             if (value.empty())
                 return std::unexpected("spill directory must be non-empty");
@@ -403,6 +421,17 @@ std::expected<Options, std::string> parse_options(int argument_count,
              pagos::stage::ProvenanceQueryOptions::Mode::Topology))
         return std::unexpected(
             "function evidence uses --evidence-mode for topology and sources");
+    if (query.specified) {
+        const auto valid = pagos::driver::validate_query_task_options(
+            query, evidence_read.has_value(), evidence_write.has_value(),
+            evidence_root, evidence_mode);
+        if (!valid)
+            return std::unexpected(valid.error());
+        if (provenance.mode !=
+            pagos::stage::ProvenanceQueryOptions::Mode::Resumable)
+            return std::unexpected(
+                "query tasks require the resumable provenance query mode");
+    }
     return Options{.command = *command,
                    .source_path = std::move(*source_path),
                    .limits = limits,
@@ -419,7 +448,8 @@ std::expected<Options, std::string> parse_options(int argument_count,
                    .evidence_mode = evidence_mode,
                    .evidence_cache_bytes = evidence_cache_bytes,
                    .spill = std::move(spill),
-                   .spill_stats = spill_stats};
+                   .spill_stats = spill_stats,
+                   .query = std::move(query)};
 }
 
 std::expected<void, std::string> write_object(const std::string& input,
@@ -455,6 +485,9 @@ std::expected<void, std::string> write_object(const std::string& input,
 } // namespace
 
 int main(int argument_count, char** arguments) {
+    if (argument_count >= 2 &&
+        std::string_view(arguments[1]) == "reclaim-queries")
+        return pagos::driver::reclaim_query_tasks(argument_count, arguments);
     if (argument_count == 3 &&
         std::string_view(arguments[1]) == "reclaim-evidence") {
         const auto result =
@@ -577,6 +610,11 @@ int main(int argument_count, char** arguments) {
                              static_cast<int>(view.error().code));
                 return 1;
             }
+            if (options->query.enabled())
+                return pagos::driver::run_query_task(
+                    *view, source->text(), options->evidence_root,
+                    options->evidence_mode, options->provenance.slice,
+                    options->query, false, options->provenance.telemetry);
             return pagos::stage::explain_function_evidence(
                        *view, std::cout, std::cerr, options->evidence_root,
                        options->evidence_mode, options->provenance.slice,
@@ -682,7 +720,8 @@ int main(int argument_count, char** arguments) {
             stats.resource_ns, stats.restore_ns, stats.evaluate_ns);
     }
     if (diagnostics.has_error()) {
-        if (options->command == Command::ExplainProvenance)
+        if (options->command == Command::ExplainProvenance &&
+            !options->query.enabled())
             pagos::stage::explain_provenance_experimental(
                 *hir_module->provenance, std::cout, std::cerr,
                 options->provenance);
@@ -707,6 +746,11 @@ int main(int argument_count, char** arguments) {
             std::move(*loaded), options->evidence_cache_bytes);
         if (!view)
             return 1;
+        if (options->query.enabled())
+            return pagos::driver::run_query_task(
+                *view, source->text(), options->evidence_root,
+                options->evidence_mode, options->provenance.slice,
+                options->query, true, options->provenance.telemetry);
         return pagos::stage::explain_function_evidence(
                    *view, std::cout, std::cerr, options->evidence_root,
                    options->evidence_mode, options->provenance.slice,

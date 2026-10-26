@@ -179,3 +179,7 @@ ASan/UBSan 各 390/390 非 lit CTest；本轮新增 6 项分段/卸载单元测�
 扩展跨进程 v3/v4 矩阵与 benchmark smoke。C++ 格式、Python 编译、
 41 份 Markdown 链接和 `git diff --check` 均通过。正式 Release 测量在
 这些构建/测试结束后串行运行；正确性运行与性能样本分开记录。
+
+后续 [C4c3c](provenance-query-cli-c4c3c.md) 已接入显式保存/恢复、暂停、
+取消、只读重放及维护，并将普通解释默认切到可续接内存任务。现有测量
+记录描述 C4c3b 的基线，源码哈希与新 CLI 提交不同是预期的历史边界。

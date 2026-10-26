@@ -728,6 +728,18 @@ std::span<const Invocation> QueryTask::invocations() const {
     }
     return impl_->contexts.resident_span();
 }
+Invocation QueryTask::invocation(std::uint32_t context) const {
+    if (!ensure_resident())
+        throw std::runtime_error("query state unavailable");
+    if (context >= impl_->contexts.size())
+        throw std::out_of_range("invalid query context");
+    try {
+        return impl_->contexts[context];
+    } catch (const CheckpointError& error) {
+        (void)impl_->pause_storage(error);
+        throw std::runtime_error("query context unavailable");
+    }
+}
 void QueryTask::suspend() {
     if (impl_->progress == QueryProgress::Running)
         impl_->progress = QueryProgress::Paused;

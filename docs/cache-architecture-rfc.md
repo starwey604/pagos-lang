@@ -520,7 +520,9 @@ ProvenanceAnalysis 本身不拥有源码文本或文件名，不能隐式恢复�
 [C4c3a](provenance-topology-checkpoint-c4c3a.md) 补入符号拓扑/公式准备的
 驻留 checkpoint、磁盘证据适配及确认重送；拓扑分段卸载、正式测量与主
 解释 CLI 分别由 [C4c3b](provenance-topology-storage-c4c3b.md) 的流式分段、
-暂停释放/测量和后续 C4c3c 承接；拓扑恢复仍完整驻留，外部保留索引单独
+暂停释放/测量和 [C4c3c](provenance-query-cli-c4c3c.md) 的显式 CLI 承接；
+默认解释改用可续接内存任务，持久化页先保存后输出，消费端明确确认。
+拓扑恢复仍完整驻留，外部保留索引单独
 计量。压缩来源执行中状态仍不支持 checkpoint。
 checkpoint 记录 engine 版本、查询目标、语义图 manifest/闭包指纹、
 位置对象/源码修订、稳定局部

@@ -1,10 +1,13 @@
-// RUN: %pagosc explain-provenance %s > %t.legacy
-// RUN: %pagosc --provenance-query-stats explain-provenance %s > %t.legacystats 2> %t.legacytelemetry
+// RUN: %pagosc --provenance-query=legacy explain-provenance %s > %t.legacy
+// RUN: %pagosc --provenance-query=legacy --provenance-query-stats explain-provenance %s > %t.legacystats 2> %t.legacytelemetry
 // RUN: diff %t.legacy %t.legacystats
 // RUN: FileCheck %s --check-prefix=LEGACY < %t.legacytelemetry
 // RUN: %pagosc --provenance-query=resumable --provenance-slice=1 --provenance-query-stats explain-provenance %s > %t.resumable 2> %t.stats
 // RUN: diff %t.legacy %t.resumable
 // RUN: FileCheck %s --check-prefix=STATS < %t.stats
+// RUN: %pagosc --provenance-slice=1 --provenance-query-stats explain-provenance %s > %t.default 2> %t.defaultstats
+// RUN: diff %t.legacy %t.default
+// RUN: FileCheck %s --check-prefix=STATS < %t.defaultstats
 // RUN: %pagosc --provenance-query=compressed --provenance-slice=1 --provenance-query-stats explain-provenance %s > %t.compressed 2> %t.formulas
 // RUN: diff %t.legacy %t.compressed
 // RUN: FileCheck %s --check-prefix=FORMULAS < %t.formulas

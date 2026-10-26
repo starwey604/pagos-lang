@@ -218,6 +218,9 @@ class QueryTask {
     [[nodiscard]] const EvidenceView& evidence() const;
     [[nodiscard]] const std::optional<EvidenceError>& failure() const;
     [[nodiscard]] std::span<const Invocation> invocations() const;
+    // Value access for page renderers, without materializing all contexts.
+    // Throws out_of_range for an invalid context; runtime_error on IO failure.
+    [[nodiscard]] Invocation invocation(std::uint32_t context) const;
     // Sorted, detached compatibility view; obtaining it does not advance work.
     [[nodiscard]] QueryResult result() const;
 

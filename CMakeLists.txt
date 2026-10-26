@@ -190,7 +190,7 @@ else()
     target_link_libraries(pagos_codegen PRIVATE ${PAGOS_LLVM_LIBRARIES})
 endif()
 
-add_executable(pagosc tools/pagosc/main.cpp)
+add_executable(pagosc tools/pagosc/main.cpp tools/pagosc/query_tasks.cpp)
 target_link_libraries(pagosc
     PRIVATE Pagos::syntax Pagos::sema Pagos::stage Pagos::mir Pagos::codegen
             pagos_project_options)
@@ -201,6 +201,7 @@ file(GLOB_RECURSE PAGOS_IDENTITY_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/include/pagos/*.h"
     "${CMAKE_SOURCE_DIR}/lib/*.h" "${CMAKE_SOURCE_DIR}/lib/*.cpp"
     "${CMAKE_SOURCE_DIR}/tools/pagosc/*.cpp"
+    "${CMAKE_SOURCE_DIR}/tools/pagosc/*.h"
     "${CMAKE_SOURCE_DIR}/tools/pagosc/*.h.in")
 list(SORT PAGOS_IDENTITY_SOURCES)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS

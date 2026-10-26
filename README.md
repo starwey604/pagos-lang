@@ -143,6 +143,8 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
   disk-backed formula preparation, saved cursors and acknowledged page replay
 - [Topology state storage C4c3b](docs/provenance-topology-storage-c4c3b.md): segmented
   snapshots, paused-state release and independent query measurements
+- [Resumable explain CLI C4c3c](docs/provenance-query-cli-c4c3c.md): explicit task
+  pause/resume, acknowledged JSON pages, read-only access and maintenance
 - [Semantic examples](docs/semantic-examples.md): executable-design cases with
   expected stages, residual work, and errors
 - [Diagnostic conventions](docs/diagnostics.md): stable structure for stage and

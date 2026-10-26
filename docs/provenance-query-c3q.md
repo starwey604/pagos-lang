@@ -101,11 +101,13 @@ build/debug/pagosc --provenance-query=compressed \
 build/debug/pagosc --provenance-query=topology explain-provenance example.pgs
 ```
 
-默认 mode 为 legacy。只有 explain-provenance 接受这些选项；slice 必须
+主解释 CLI 现默认 mode 为 resumable，显式 legacy 和旧同步 C++ 接口
+仍保留；迁移记录见 [C4c3c](provenance-query-cli-c4c3c.md)。
+只有 explain-provenance 接受这些选项；slice 必须
 为正数。CLI 将 N 同时用于四类额度，C++ 接口可分别设置。
 resumable/compressed 持续推进并输出来源，topology 仅输出有限
-结构。遥测独立输出到 stderr，不混入 AnalysisStats。CLI 不暴露跨进程
-续接游标；正常 check、诊断路径与残留执行不增加求解任务。
+结构。遥测独立输出到 stderr，不混入 AnalysisStats。C4c3c 另提供显式
+磁盘任务与确认续接；正常 check、诊断路径与残留执行不增加完整来源求解。
 
 ## 验证与测量
 
