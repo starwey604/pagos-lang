@@ -154,3 +154,7 @@ closure 缺失和失败 Stage 的 stdout。所有读取用 max-fuel=0，检查�
 C4d2 的显式解释验收范围完成。下一轮 C4d3 为目录、SCC、worklist 及
 活动替换游标引入版本化持久续接，复用 C4c 的绑定、发布、配额和确认
 基础；当前输出不因此宣称持久化或具体递归调用实例求全。
+
+后续 [C4d3a](provenance-recursive-checkpoint-c4d3a.md) 已加入 C++ 驻留
+快照和严格恢复；本页 CLI 尚未接入 TaskStore/结果确认，仍按上述协议
+报告 continuation_available=false。

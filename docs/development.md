@@ -677,7 +677,15 @@ one with `--evidence-summary=NAME` or `--evidence-summary-key=HEX`. Choose
 channel. Budget exhaustion returns 3 with `restart_required`, without saving a
 continuation. Reads validate the closure/source and never run Stage.
 
+[C4d3a](provenance-recursive-checkpoint-c4d3a.md) adds explicit bound
+`RecursiveSummaryTask::checkpoint/restore` for resident execution state. Store
+the bytes as `QueryTaskManifest` if using FileStore directly; the codec has no
+implicit writes, TaskStore head, offload or delivery acknowledgement. C4d2 CLI
+remains a fresh-query interface until persistent delivery is integrated.
+
 ```sh
 ctest --test-dir build/debug -R 'RecursiveSummary|StageProvenanceQuery|FunctionEvidenceTest.Recursive|pagos-recursive-cli-process' \
+  --output-on-failure
+ctest --test-dir build/debug -R 'RecursiveCheckpointTest|pagos-recursive-checkpoint-process' \
   --output-on-failure
 ```

@@ -8,7 +8,9 @@
 规则。C4d1 不包含 CLI 或求解状态 checkpoint；C4d 尚未全部完成。
 
 后续 [C4d2](provenance-recursive-cli-c4d2.md) 已接入显式函数证据 CLI；
-本文的内存规则和精度保证继续适用，求解状态 checkpoint 仍留给 C4d3。
+本文的内存规则和精度保证继续适用；
+[C4d3a](provenance-recursive-checkpoint-c4d3a.md) 已补入驻留快照，分段
+卸载和持久 CLI 继续由 C4d3b/C4d3c 承接。
 
 ## 抽象域与准入
 

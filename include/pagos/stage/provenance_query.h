@@ -28,6 +28,7 @@ class QueryCheckpointBinding {
     friend class pagos::stage::FunctionEvidenceView;
     friend class QueryTask;
     friend class TopologyTask;
+    friend class RecursiveSummaryTask;
     QueryCheckpointBinding(std::shared_ptr<const EvidenceView> view,
                            cache::Digest closure, cache::Digest positions,
                            cache::Digest revision)

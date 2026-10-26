@@ -1,4 +1,5 @@
 #include "pagos/stage/function_evidence_view.h"
+#include "pagos/stage/provenance_recursive.h"
 #include "pagos/stage/provenance_topology.h"
 #include "pagos/stage/stage_analyzer.h"
 #include "pagos/syntax/lexer.h"
@@ -9,6 +10,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <sstream>
 
 using namespace pagos;
 using namespace pagos::stage;
@@ -85,6 +87,111 @@ void print_result(const QueryTask& task) {
               << stats.bindings << ',' << stats.witness_steps << ','
               << stats.queue_peak << "],\"issues\":" << task.coverage().issues
               << ",\"stage_runs\":0}" << '\n';
+}
+int recursive_probe(std::string_view action, const fs::path& directory,
+                    const FunctionEvidenceView& view,
+                    QueryCheckpointBinding binding, int argc, char** argv) {
+    if (argc < 6)
+        return 2;
+    SummaryId selected;
+    for (const auto& summary : view.summary_catalog())
+        if (view.scopes()[summary.id.value].name == argv[4])
+            selected = summary.id;
+    if (!selected.value)
+        throw std::runtime_error("recursive summary missing");
+    const auto channel = std::string_view(argv[5]) == "effects"
+                             ? QueryKind::Effects
+                             : QueryKind::Value;
+    const auto id = cache::fingerprint("probe.recursive-task.1", {});
+    RecursiveSummaryTask task(binding, id, selected, channel);
+    cache::FileStore store(directory / "recursive-state");
+    if (action == "rec-resume") {
+        if (argc != 8)
+            return 2;
+        auto bytes =
+            store.read_object({cache::ObjectKind::QueryTaskManifest,
+                               parse_digest(argv[6]), std::stoull(argv[7])});
+        if (!bytes)
+            throw std::runtime_error("recursive object unavailable");
+        auto restored = RecursiveSummaryTask::restore(binding, id, selected,
+                                                      channel, *bytes);
+        if (!restored)
+            throw std::runtime_error("recursive cannot resume");
+        task = std::move(*restored);
+        task.resume();
+    }
+    if (action == "rec-save" || action == "rec-save-phase") {
+        if (argc != 8)
+            return 2;
+        const auto cut = std::stoull(argv[6]);
+        if (action == "rec-save")
+            (void)task.advance(static_cast<std::size_t>(cut));
+        else {
+            for (std::size_t i = 0; i < 10000; ++i) {
+                const auto bytes = task.checkpoint();
+                if (!bytes)
+                    throw std::runtime_error("recursive checkpoint failed");
+                if (bytes->at(159) == cut)
+                    break;
+                if (task.progress() == QueryProgress::Completed)
+                    throw std::runtime_error("recursive phase unreachable");
+                (void)task.advance(1);
+            }
+        }
+        if (std::string_view(argv[7]) == "cancel")
+            task.cancel();
+        auto bytes = task.checkpoint();
+        if (!bytes)
+            throw std::runtime_error("recursive checkpoint failed");
+        const auto phase = bytes->at(159);
+        auto ref = store.write_object(cache::ObjectKind::QueryTaskManifest,
+                                      std::move(*bytes));
+        if (!ref)
+            throw std::runtime_error("recursive publication failed");
+        std::cout << "{\"digest\":\"" << ref->digest.hex()
+                  << "\",\"size\":" << ref->size
+                  << ",\"phase\":" << static_cast<unsigned>(phase)
+                  << ",\"stage_runs\":0,\"steps\":" << task.stats().steps
+                  << "}\n";
+        return 0;
+    }
+    while (task.progress() == QueryProgress::Running ||
+           task.progress() == QueryProgress::Paused)
+        (void)task.advance(13);
+    if (task.progress() != QueryProgress::Completed)
+        throw std::runtime_error("recursive query failed");
+    const auto result = task.result();
+    std::ostringstream content;
+    content << static_cast<unsigned>(result.precision) << ':' << result.issues
+            << ':' << result.instances_merged;
+    for (const auto& atom : result.atoms)
+        content << "A" << static_cast<unsigned>(atom.kind) << ':' << atom.owner
+                << ':' << atom.slot << ':' << atom.node << ';';
+    for (const auto& link : task.links())
+        content << "L" << link.from.value << ':' << link.to.value << ':'
+                << static_cast<unsigned>(link.kind) << ':'
+                << static_cast<unsigned>(link.relation) << ':' << link.slot
+                << ';';
+    for (const auto& component : task.components()) {
+        content << "C" << component.cyclic << ':';
+        for (const auto node : component.nodes)
+            content << node.value << ',';
+        content << ':';
+        for (const auto summary : component.summaries)
+            content << summary.value << ',';
+        content << ';';
+    }
+    const auto text = content.str();
+    const auto hash = cache::fingerprint(
+        "test.recursive-result",
+        {reinterpret_cast<const std::uint8_t*>(text.data()), text.size()});
+    const auto& work = task.stats();
+    std::cout << "{\"result\":\"" << hash.hex() << "\",\"work\":[" << work.steps
+              << ',' << work.nodes << ',' << work.links << ','
+              << work.components << ',' << work.cyclic_components << ','
+              << work.evaluations << ',' << work.facts_added << ','
+              << work.queue_peak << "],\"stage_runs\":0}\n";
+    return 0;
 }
 int topology_probe(std::string_view action, const fs::path& directory,
                    const FunctionEvidenceView& view,
@@ -366,6 +473,9 @@ int main(int argc, char** argv) {
         auto binding = view->checkpoint_binding(source.text());
         if (!binding || argc < 5)
             return 2;
+        if (original_action.starts_with("rec-"))
+            return recursive_probe(original_action, directory, *view, *binding,
+                                   argc, argv);
         const bool witness = std::string_view(argv[4]) == "witness";
         NodeId root;
         for (const auto& item : view->roots())

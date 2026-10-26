@@ -33,7 +33,8 @@ gtest_discover_tests(pagos_provenance_tests DISCOVERY_MODE PRE_TEST)
 add_executable(pagos_cache_tests
     unit/cache_codec_test.cpp unit/cache_key_test.cpp unit/cache_store_test.cpp
     unit/stage_cache_test.cpp unit/evidence_view_test.cpp unit/function_evidence_test.cpp
-    unit/stage_spill_test.cpp unit/query_checkpoint_test.cpp unit/task_store_test.cpp)
+    unit/stage_spill_test.cpp unit/query_checkpoint_test.cpp
+    unit/recursive_checkpoint_test.cpp unit/task_store_test.cpp)
 target_link_libraries(pagos_cache_tests
     PRIVATE Pagos::stage Pagos::mir GTest::gtest_main pagos_project_options)
 gtest_discover_tests(pagos_cache_tests DISCOVERY_MODE PRE_TEST)
@@ -67,6 +68,10 @@ add_test(NAME pagos-query-checkpoint-process
             $<TARGET_FILE:pagos_query_checkpoint_probe>)
 # This matrix starts more than sixty compiler processes, including under ASan.
 set_tests_properties(pagos-query-checkpoint-process PROPERTIES TIMEOUT 180)
+add_test(NAME pagos-recursive-checkpoint-process
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/recursive_checkpoint_process.py
+            $<TARGET_FILE:pagos_query_checkpoint_probe>)
+set_tests_properties(pagos-recursive-checkpoint-process PROPERTIES TIMEOUT 180)
 add_test(NAME pagos-query-task-process
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/query_task_process.py
             $<TARGET_FILE:pagos_query_checkpoint_probe>)

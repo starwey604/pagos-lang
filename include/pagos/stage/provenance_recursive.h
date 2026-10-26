@@ -61,12 +61,23 @@ struct RecursiveResult {
 // C4d1 experiment. Owns the evidence; never runs Stage or expands call frames.
 // Discovery, iterative SCC construction and monotone transfer are sliced by
 // primitive steps (one edge/fact/queue operation), not elapsed time or RSS.
-// C4d2 exposes an explicit summary CLI; this task has no checkpoint yet.
+inline constexpr std::uint32_t recursive_engine_version = 1;
+// C4d2 exposes an explicit summary CLI. C4d3a snapshots are resident, with no
+// TaskStore publication, automatic unloading or result-delivery receipts yet.
 class RecursiveSummaryTask {
   public:
     RecursiveSummaryTask(std::shared_ptr<const EvidenceView> evidence,
                          SummaryId summary,
                          QueryKind channel = QueryKind::Value);
+    RecursiveSummaryTask(QueryCheckpointBinding binding, cache::Digest task,
+                         SummaryId summary,
+                         QueryKind channel = QueryKind::Value);
+    [[nodiscard]] std::expected<cache::Bytes, CheckpointError>
+    checkpoint(cache::Limits limits = {}) const;
+    [[nodiscard]] static std::expected<RecursiveSummaryTask, CheckpointError>
+    restore(QueryCheckpointBinding binding, cache::Digest task,
+            SummaryId summary, QueryKind channel,
+            std::span<const std::uint8_t> bytes, cache::Limits limits = {});
     ~RecursiveSummaryTask();
     RecursiveSummaryTask(RecursiveSummaryTask&&) noexcept;
     RecursiveSummaryTask& operator=(RecursiveSummaryTask&&) noexcept;
