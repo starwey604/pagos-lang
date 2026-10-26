@@ -93,6 +93,24 @@ int recursive_probe(std::string_view action, const fs::path& directory,
                     QueryCheckpointBinding binding, int argc, char** argv) {
     if (argc < 6)
         return 2;
+    const bool segmented = action.starts_with("rec-seg-");
+    const std::string normalized = segmented
+                                       ? "rec-" + std::string(action.substr(8))
+                                       : std::string(action);
+    action = normalized;
+    const auto parent = directory / "recursive-sessions" /
+                        (std::string(argv[4]) + "-" + argv[5]);
+    if (action == "rec-cleanup-all" || action == "rec-cleanup") {
+        const auto cleaned = cache::reclaim_tasks(
+            parent, action == "rec-cleanup-all"
+                        ? cache::TaskCleanupPolicy::AllInactive
+                        : cache::TaskCleanupPolicy::TerminalOnly);
+        if (!cleaned)
+            throw std::runtime_error("recursive cleanup failed");
+        std::cout << "{\"reclaimed\":" << cleaned->reclaimed
+                  << ",\"skipped\":" << cleaned->skipped << "}\n";
+        return 0;
+    }
     SummaryId selected;
     for (const auto& summary : view.summary_catalog())
         if (view.scopes()[summary.id.value].name == argv[4])
@@ -108,16 +126,34 @@ int recursive_probe(std::string_view action, const fs::path& directory,
     if (action == "rec-resume") {
         if (argc != 8)
             return 2;
-        auto bytes =
-            store.read_object({cache::ObjectKind::QueryTaskManifest,
-                               parse_digest(argv[6]), std::stoull(argv[7])});
-        if (!bytes)
-            throw std::runtime_error("recursive object unavailable");
-        auto restored = RecursiveSummaryTask::restore(binding, id, selected,
-                                                      channel, *bytes);
-        if (!restored)
-            throw std::runtime_error("recursive cannot resume");
-        task = std::move(*restored);
+        if (segmented) {
+            auto session =
+                cache::TaskStore::open(parent, id, cache::TaskAccess::ReadOnly);
+            if (!session)
+                throw std::runtime_error("recursive session unavailable");
+            auto head = session->head();
+            if (!head || !*head)
+                throw std::runtime_error("recursive head unavailable");
+            if ((**head).manifest.digest != parse_digest(argv[6]) ||
+                (**head).manifest.size != std::stoull(argv[7]))
+                throw std::runtime_error("recursive head changed");
+            auto restored = RecursiveSummaryTask::restore(
+                binding, *session, **head, selected, channel);
+            if (!restored)
+                throw std::runtime_error("recursive cannot resume");
+            task = std::move(*restored);
+        } else {
+            auto bytes = store.read_object(
+                {cache::ObjectKind::QueryTaskManifest, parse_digest(argv[6]),
+                 std::stoull(argv[7])});
+            if (!bytes)
+                throw std::runtime_error("recursive object unavailable");
+            auto restored = RecursiveSummaryTask::restore(binding, id, selected,
+                                                          channel, *bytes);
+            if (!restored)
+                throw std::runtime_error("recursive cannot resume");
+            task = std::move(*restored);
+        }
         task.resume();
     }
     if (action == "rec-save" || action == "rec-save-phase") {
@@ -144,6 +180,26 @@ int recursive_probe(std::string_view action, const fs::path& directory,
         if (!bytes)
             throw std::runtime_error("recursive checkpoint failed");
         const auto phase = bytes->at(159);
+        if (segmented) {
+            auto session = cache::TaskStore::open(parent, id,
+                                                  cache::TaskAccess::ReadWrite);
+            if (!session)
+                throw std::runtime_error("recursive session unavailable");
+            auto old = session->head();
+            if (!old)
+                throw std::runtime_error("recursive head unavailable");
+            auto head =
+                task.offload(*session, *old ? (**old).generation : 0, 128);
+            if (!head || !task.state_memory().offloaded)
+                throw std::runtime_error("recursive offload failed");
+            std::cout << "{\"digest\":\"" << head->manifest.digest.hex()
+                      << "\",\"size\":" << head->manifest.size
+                      << ",\"phase\":" << static_cast<unsigned>(phase)
+                      << ",\"stage_runs\":0,\"steps\":" << task.stats().steps
+                      << ",\"released\":true,\"segments\":"
+                      << task.storage_stats().segment_writes << "}\n";
+            return 0;
+        }
         auto ref = store.write_object(cache::ObjectKind::QueryTaskManifest,
                                       std::move(*bytes));
         if (!ref)

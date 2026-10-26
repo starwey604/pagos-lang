@@ -57,13 +57,25 @@ struct RecursiveResult {
     bool concrete_sources_complete{false};
     bool operator==(const RecursiveResult&) const = default;
 };
+// Container payload/capacities, excluding tree links, allocator metadata,
+// deque baseline allocation, evidence/cache leases and detached result copies.
+struct RecursiveStateMemory {
+    std::size_t equations{}, facts{}, relations{}, indexes{}, scc{}, worklist{};
+    bool offloaded{};
+};
+struct RecursiveStorageStats {
+    std::size_t segment_reads{}, segment_writes{}, bytes_read{},
+        bytes_submitted{}, cas_bytes_added{}, reused_objects{},
+        peak_codec_buffers{}, logical_bytes{}, directory_bytes{},
+        validation_payload_bytes{};
+};
 
 // C4d1 experiment. Owns the evidence; never runs Stage or expands call frames.
 // Discovery, iterative SCC construction and monotone transfer are sliced by
 // primitive steps (one edge/fact/queue operation), not elapsed time or RSS.
 inline constexpr std::uint32_t recursive_engine_version = 1;
-// C4d2 exposes an explicit summary CLI. C4d3a snapshots are resident, with no
-// TaskStore publication, automatic unloading or result-delivery receipts yet.
+// C4d3b supports explicit segmented TaskStore saves and paused unloading.
+// Active state/restore are resident; result receipts remain C4d3c work.
 class RecursiveSummaryTask {
   public:
     RecursiveSummaryTask(std::shared_ptr<const EvidenceView> evidence,
@@ -78,6 +90,21 @@ class RecursiveSummaryTask {
     restore(QueryCheckpointBinding binding, cache::Digest task,
             SummaryId summary, QueryKind channel,
             std::span<const std::uint8_t> bytes, cache::Limits limits = {});
+    [[nodiscard]] std::expected<cache::TaskHead, CheckpointError>
+    save_segmented(const cache::TaskStore& store,
+                   std::uint64_t expected_generation,
+                   std::size_t segment_bytes = 16 * 1024,
+                   cache::Limits limits = {}) const;
+    [[nodiscard]] static std::expected<RecursiveSummaryTask, CheckpointError>
+    restore(QueryCheckpointBinding binding, const cache::TaskStore& store,
+            const cache::TaskHead& head, SummaryId summary, QueryKind channel,
+            cache::Limits limits = {});
+    [[nodiscard]] std::expected<cache::TaskHead, CheckpointError>
+    offload(const cache::TaskStore& store, std::uint64_t expected_generation,
+            std::size_t segment_bytes = 16 * 1024, cache::Limits limits = {});
+    [[nodiscard]] RecursiveStateMemory state_memory() const;
+    [[nodiscard]] const RecursiveStorageStats& storage_stats() const;
+    [[nodiscard]] const std::optional<CheckpointError>& storage_failure() const;
     ~RecursiveSummaryTask();
     RecursiveSummaryTask(RecursiveSummaryTask&&) noexcept;
     RecursiveSummaryTask& operator=(RecursiveSummaryTask&&) noexcept;
@@ -92,6 +119,9 @@ class RecursiveSummaryTask {
     [[nodiscard]] const std::optional<EvidenceError>& failure() const;
     // Detached copy; early results are explicitly Unresolved. Parameter atoms
     // belonging to the selected summary remain symbolic, not unbound inputs.
+    // result/links/components/checkpoint explicitly restore unloaded state;
+    // result/links/components throw runtime_error if storage is unavailable.
+    // References/spans remain valid until the next mutation or restoration.
     [[nodiscard]] RecursiveResult result() const;
     // Retain evidence() to inspect the original rules and call payloads.
     [[nodiscard]] std::span<const RecursiveLink> links() const;
@@ -100,6 +130,7 @@ class RecursiveSummaryTask {
 
   private:
     struct Impl;
-    std::unique_ptr<Impl> impl_;
+    [[nodiscard]] std::expected<void, CheckpointError> ensure_resident() const;
+    mutable std::unique_ptr<Impl> impl_;
 };
 } // namespace pagos::stage::provenance

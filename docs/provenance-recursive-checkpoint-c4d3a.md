@@ -5,6 +5,9 @@
 worklist 和活动参数替换状态；恢复不重新运行 Stage，也不从根重新求解。
 本轮是 C4d3 的第一切片，后续分段存储和持久 CLI 尚未完成。
 
+后续 [C4d3b](provenance-recursive-storage-c4d3b.md) 已实现分段 TaskStore、
+暂停卸载和存储重试；本页 v5 格式继续兼容，持久 CLI/结果确认仍待 C4d3c。
+
 ## 身份与接口
 
 绑定必须来自 FunctionEvidenceView.checkpoint_binding，包含已验证的完整

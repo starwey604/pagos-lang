@@ -51,15 +51,17 @@ struct RecursiveSummaryTask::Impl {
         Done
     };
     Impl(std::shared_ptr<const EvidenceView> view, SummaryId selected,
-         QueryKind kind)
+         QueryKind kind, bool seed = true)
         : view(std::move(view)), selected(selected), channel(kind) {
         if (!this->view || !selected.value ||
             selected.value > this->view->summaries().size())
             throw std::out_of_range("invalid recursive summary");
         if (kind != QueryKind::Value && kind != QueryKind::Effects)
             throw std::invalid_argument("invalid recursive channel");
-        register_summary(selected);
-        (void)admit(root(selected));
+        if (seed) {
+            register_summary(selected);
+            (void)admit(root(selected));
+        }
     }
     std::shared_ptr<const EvidenceView> view;
     std::optional<QueryCheckpointBinding> binding;
@@ -70,6 +72,15 @@ struct RecursiveSummaryTask::Impl {
     Phase phase{Phase::Discover};
     RecursiveStats stats;
     std::optional<EvidenceError> failure;
+    struct Offloaded {
+        cache::TaskStore store;
+        cache::TaskHead head;
+        cache::Limits limits;
+        QueryProgress resume_progress;
+    };
+    std::optional<Offloaded> offloaded;
+    std::optional<CheckpointError> storage_error;
+    RecursiveStorageStats io;
     std::vector<Equation> equations;
     std::unordered_map<std::uint32_t, std::size_t> ids;
     std::vector<RecursiveLink> links;
@@ -93,6 +104,14 @@ struct RecursiveSummaryTask::Impl {
     void write_state(cache::wire::Writer& writer) const;
     void read_state(cache::wire::Reader& reader);
     void validate_state(bool active);
+    void rebind(const std::optional<RecursiveAtom>& saved_atom,
+                const std::optional<RecursiveAtom>& saved_argument);
+    void write_identity(cache::wire::Writer& writer,
+                        std::uint32_t version) const;
+    static void identity(cache::wire::Reader& reader,
+                         const QueryCheckpointBinding& binding,
+                         cache::Digest task, SummaryId summary,
+                         QueryKind channel, std::uint32_t version);
 
     std::size_t input_count(const Equation& equation) const {
         return equation.node.rule == Rule::Call

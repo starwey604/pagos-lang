@@ -169,8 +169,10 @@ source-instance merging is conservative and unsupported transfers stay unresolve
 [C4d2](provenance-recursive-cli-c4d2.md) adds explicit summary selection and
 dual-channel symbolic JSON with precision, cycle evidence and source bindings.
 [C4d3a](provenance-recursive-checkpoint-c4d3a.md) adds strict resident solver
-checkpoints across process boundaries; segmented TaskStore integration and durable
-CLI delivery remain C4d3b/C4d3c work.
+checkpoints across process boundaries.
+[C4d3b](provenance-recursive-storage-c4d3b.md) adds segmented TaskStore saves,
+paused release, storage retry and separate codec/validation accounting.
+Durable CLI delivery remains C4d3c work.
 C4b-C4e cover construction spill, persistent query checkpoints,
 finite-domain recursive explanations and pure detail replay. These extensions
 are explanation capabilities, not new Stage inference rules. Query work limits,

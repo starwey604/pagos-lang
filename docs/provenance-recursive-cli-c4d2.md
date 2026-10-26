@@ -158,3 +158,6 @@ C4d2 的显式解释验收范围完成。下一轮 C4d3 为目录、SCC、workli
 后续 [C4d3a](provenance-recursive-checkpoint-c4d3a.md) 已加入 C++ 驻留
 快照和严格恢复；本页 CLI 尚未接入 TaskStore/结果确认，仍按上述协议
 报告 continuation_available=false。
+
+[C4d3b](provenance-recursive-storage-c4d3b.md) 又增加了分段任务存储和
+暂停卸载，仍未改变本页 CLI 的新查询与结果交付协议。

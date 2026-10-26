@@ -608,8 +608,10 @@ Source/context 清单，不改变 Stage 或 RecursiveCompletion。
 [C4d2](provenance-recursive-cli-c4d2.md) 已接入实际函数证据的摘要目录、
 特化选择与显式 JSON 解释，独立读取不运行 Stage；
 [C4d3a](provenance-recursive-checkpoint-c4d3a.md) 加入绑定修订的递归驻留
-快照和严格恢复，保留 SCC/worklist 及活动替换位置。分段任务存储、暂停
-卸载与持久 CLI/消费确认留给 C4d3b/C4d3c，原生查询截断仍保留。
+快照和严格恢复，保留 SCC/worklist 及活动替换位置。
+[C4d3b](provenance-recursive-storage-c4d3b.md) 加入九表分段 TaskStore、
+暂停卸载和存储重试；恢复仍完整驻留。持久 CLI/消费确认留给 C4d3c，
+完成 head 暂保持 AwaitingDelivery，原生查询截断仍保留。
 
 持久化保留 `SummaryRef`/调用回边、参数作用域和 SCC 组件，不枚举动态
 递归实例，也不把递归环当格式损坏。拓扑可完整保存，而来源求解仍可能

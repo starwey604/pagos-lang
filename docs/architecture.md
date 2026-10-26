@@ -514,8 +514,10 @@ gaps, retaining finite cycle topology without expanding recursive invocations.
 and recursive-summary JSON over validated function evidence, without Stage on
 read. [C4d3a](provenance-recursive-checkpoint-c4d3a.md) adds bound resident
 solver checkpoints, validated SCC/worklist restoration and value-based iterator
-positions. Segmented task storage and durable CLI delivery remain C4d3b/C4d3c
-work; native query rules stay intact.
+positions. [C4d3b](provenance-recursive-storage-c4d3b.md) adds streamed segmented
+TaskStore publication, actual paused release and retryable unloaded reads.
+Restore remains resident; completed heads await delivery. Durable CLI receipts
+remain C4d3c work; native query rules stay intact.
 Existing graph reference/span lifetimes and the default one-shot query interface
 remain intact until their replacements are explicitly validated; snapshot
 serialization alone does not reduce build peaks.

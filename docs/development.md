@@ -683,6 +683,13 @@ the bytes as `QueryTaskManifest` if using FileStore directly; the codec has no
 implicit writes, TaskStore head, offload or delivery acknowledgement. C4d2 CLI
 remains a fresh-query interface until persistent delivery is integrated.
 
+[C4d3b](provenance-recursive-storage-c4d3b.md) adds `save_segmented`, `offload`
+and TaskStore `restore`. State streams into nine tables; only successful head
+publication releases task containers. `storage_failure()` distinguishes retryable
+unloaded IO from inference failure; `state_memory()` and `storage_stats()` keep
+payload/codec/directory/validation accounting separate. Completed heads remain
+AwaitingDelivery until C4d3c integrates consumer receipts. v5 remains supported.
+
 ```sh
 ctest --test-dir build/debug -R 'RecursiveSummary|StageProvenanceQuery|FunctionEvidenceTest.Recursive|pagos-recursive-cli-process' \
   --output-on-failure

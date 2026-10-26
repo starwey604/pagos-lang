@@ -20,6 +20,10 @@ RecursiveSummaryTask&
 RecursiveSummaryTask::operator=(RecursiveSummaryTask&&) noexcept = default;
 QueryProgress RecursiveSummaryTask::advance(std::size_t steps,
                                             std::stop_token cancellation) {
+    if (impl_->offloaded && cancellation.stop_requested())
+        cancel();
+    if (!ensure_resident())
+        return impl_->progress;
     auto& task = *impl_;
     if (task.progress == QueryProgress::Completed ||
         task.progress == QueryProgress::Failed ||
@@ -51,11 +55,26 @@ QueryProgress RecursiveSummaryTask::advance(std::size_t steps,
     return task.progress;
 }
 void RecursiveSummaryTask::cancel() {
+    if (impl_->offloaded) {
+        auto& progress = impl_->offloaded->resume_progress;
+        if (progress != QueryProgress::Completed &&
+            progress != QueryProgress::Failed)
+            progress = impl_->progress = QueryProgress::Cancelled;
+        return;
+    }
     if (impl_->progress != QueryProgress::Completed &&
         impl_->progress != QueryProgress::Failed)
         impl_->progress = QueryProgress::Cancelled;
 }
 void RecursiveSummaryTask::resume() {
+    if (impl_->offloaded) {
+        auto& progress = impl_->offloaded->resume_progress;
+        if (progress == QueryProgress::Cancelled ||
+            progress == QueryProgress::Paused)
+            progress = QueryProgress::Running;
+        impl_->progress = progress;
+        return;
+    }
     if (impl_->progress == QueryProgress::Cancelled ||
         impl_->progress == QueryProgress::Paused)
         impl_->progress = QueryProgress::Running;
@@ -68,6 +87,8 @@ const std::optional<EvidenceError>& RecursiveSummaryTask::failure() const {
     return impl_->failure;
 }
 RecursiveResult RecursiveSummaryTask::result() const {
+    if (!ensure_resident())
+        throw std::runtime_error("recursive state unavailable");
     const auto& task = *impl_;
     const auto& equation = task.equations.front();
     RecursiveResult result{
@@ -90,9 +111,13 @@ RecursiveResult RecursiveSummaryTask::result() const {
     return result;
 }
 std::span<const RecursiveLink> RecursiveSummaryTask::links() const {
+    if (!ensure_resident())
+        throw std::runtime_error("recursive state unavailable");
     return impl_->links;
 }
 std::span<const RecursiveComponent> RecursiveSummaryTask::components() const {
+    if (!ensure_resident())
+        throw std::runtime_error("recursive state unavailable");
     return impl_->components;
 }
 const EvidenceView& RecursiveSummaryTask::evidence() const {

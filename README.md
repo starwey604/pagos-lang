@@ -143,6 +143,8 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
   disk-backed formula preparation, saved cursors and acknowledged page replay
 - [Topology state storage C4c3b](docs/provenance-topology-storage-c4c3b.md): segmented
   snapshots, paused-state release and independent query measurements
+- [Recursive task storage C4d3b](docs/provenance-recursive-storage-c4d3b.md):
+  segmented TaskStore publication, paused release and retryable restoration.
 - [Recursive checkpoints C4d3a](docs/provenance-recursive-checkpoint-c4d3a.md):
   bound resident execution state, SCC/worklist cursors and strict restoration.
 - [Recursive summary CLI C4d2](docs/provenance-recursive-cli-c4d2.md): actual

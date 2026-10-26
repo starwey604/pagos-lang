@@ -1,4 +1,4 @@
-"""C4d3a resident recursive execution state crosses actual process boundaries."""
+"""C4d3a/b resident and segmented recursive state crosses process boundaries."""
 import hashlib
 import json
 from pathlib import Path
@@ -46,7 +46,21 @@ with tempfile.TemporaryDirectory(prefix="pagos-recursive-process-") as temporary
                               saved["digest"], saved["size"])
                 assert resumed == oracle, (name, channel, phase)
                 assert files(directory / "recursive-state") == before, "restore wrote state"
-            print(f"{name}/{channel}: seven saved phases resumed with identical work", flush=True)
+                segmented = run("rec-seg-save-phase", directory, source, name, channel,
+                                phase, "cancel" if phase % 2 else "keep")
+                assert segmented["phase"] == phase and segmented["released"] and segmented["segments"] > 0
+                parent = directory / "recursive-sessions" / (name + "-" + channel)
+                before = files(parent)
+                actual = run("rec-seg-resume", directory, source, name, channel,
+                             segmented["digest"], segmented["size"])
+                assert actual == oracle and files(parent) == before
+                cleaned = run("rec-cleanup", directory, source, name, channel)
+                if phase % 2 and phase != 6:
+                    assert cleaned["reclaimed"] == 1
+                else:
+                    assert cleaned["skipped"] == 1
+                    assert run("rec-cleanup-all", directory, source, name, channel)["reclaimed"] == 1
+            print(f"{name}/{channel}: resident/segmented phases resumed with identical work", flush=True)
     assert files(directory / "evidence") == evidence, "queries changed semantic evidence"
     saved = run("rec-save", directory, source, "rotate", "value", 7, "keep")
     assert "cannot resume" in run("rec-resume", directory, source, "rotate", "effects",
@@ -67,5 +81,5 @@ with tempfile.TemporaryDirectory(prefix="pagos-recursive-process-") as temporary
         saved["digest"], saved["size"], ok=False).stderr
     assert files(directory / "evidence") == evidence
     assert not (directory / "recursive-state" / "queries").exists()
-    assert not (directory / "sessions").exists(), "resident checkpoint is not a TaskStore task"
+    assert not (directory / "sessions").exists(), "recursive storage is a separate task namespace"
 print("recursive checkpoint phases, bindings, read-only CAS restore and failures verified")

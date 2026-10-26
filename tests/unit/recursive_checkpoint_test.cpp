@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <fstream>
+#include <iostream>
 #include <set>
 
 namespace {
@@ -401,5 +402,406 @@ TEST_F(RecursiveCheckpointTest, InvalidReferencesAndIteratorValuesAreRejected) {
           "transfer-input", "notify-user", "bound-argument", "source-iterator",
           "argument-iterator"})
         EXPECT_TRUE(covered.contains(field)) << field;
+}
+std::size_t payload(const RecursiveStateMemory& memory) {
+    return memory.equations + memory.facts + memory.relations + memory.indexes +
+           memory.scc + memory.worklist;
+}
+TEST_F(RecursiveCheckpointTest,
+       SegmentedPhaseAndTransferBoundariesPreserveResidentWireState) {
+    auto view = open();
+    for (const auto* name : {"rotate", "read"})
+        for (const auto channel : {QueryKind::Value, QueryKind::Effects}) {
+            const auto id = summary(view, name);
+            const auto parent =
+                directory /
+                (std::string(name) + std::to_string(static_cast<int>(channel)));
+            auto store = cache::TaskStore::open(parent, task_id,
+                                                cache::TaskAccess::ReadWrite);
+            ASSERT_TRUE(store);
+            RecursiveSummaryTask baseline(binding(view), task_id, id, channel);
+            finish_task(baseline);
+            RecursiveSummaryTask task(binding(view), task_id, id, channel);
+            std::uint64_t generation = 0;
+            std::set<std::string> shapes;
+            for (std::size_t turn = 0; turn < 10000; ++turn) {
+                const auto before = task.checkpoint();
+                ASSERT_TRUE(before);
+                std::string shape = std::to_string(phase(*before));
+                for (const auto& field : references(*before))
+                    if (field.kind.ends_with("iterator") ||
+                        field.kind == "bound-argument")
+                        shape += field.kind;
+                if (shapes.insert(shape).second) {
+                    EXPECT_GT(payload(task.state_memory()), 0U);
+                    auto saved = task.offload(*store, generation, 128);
+                    ASSERT_TRUE(saved);
+                    generation = saved->generation;
+                    EXPECT_TRUE(task.state_memory().offloaded);
+                    EXPECT_EQ(payload(task.state_memory()), 0U);
+                    const auto writes = task.storage_stats().segment_writes;
+                    EXPECT_GT(writes, 0U);
+                    EXPECT_EQ(task.progress() == QueryProgress::Completed,
+                              saved->status ==
+                                  cache::TaskStatus::AwaitingDelivery);
+                    auto after = task.checkpoint();
+                    ASSERT_TRUE(after);
+                    EXPECT_EQ(*before, *after);
+                    EXPECT_FALSE(task.state_memory().offloaded);
+                    EXPECT_EQ(task.storage_stats().segment_reads, writes);
+                    EXPECT_GT(task.storage_stats().validation_payload_bytes,
+                              0U);
+                }
+                if (task.progress() == QueryProgress::Completed)
+                    break;
+                (void)task.advance(1);
+            }
+            EXPECT_GE(shapes.size(), 7U);
+            EXPECT_EQ(task.result(), baseline.result());
+            same_work(task.stats(), baseline.stats());
+            auto repeat = task.save_segmented(*store, generation, 128);
+            ASSERT_TRUE(repeat);
+            EXPECT_GT(task.storage_stats().reused_objects, 0U);
+            EXPECT_EQ(task.storage_stats().cas_bytes_added, 0U);
+        }
+}
+TEST_F(RecursiveCheckpointTest,
+       SegmentedQuotaPublicationReadonlyAndStaleWritesRetainState) {
+    auto view = open();
+    const auto id = summary(view);
+    RecursiveSummaryTask task(binding(view), task_id, id);
+    (void)task.advance(50);
+    auto store = cache::TaskStore::open(directory / "sessions", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    auto first = task.save_segmented(*store, 0, 128);
+    ASSERT_TRUE(first);
+    const auto wire = task.checkpoint();
+    ASSERT_TRUE(wire);
+    auto stale = task.offload(*store, 0, 128);
+    ASSERT_FALSE(stale);
+    ASSERT_TRUE(stale.error().storage);
+    EXPECT_EQ(stale.error().storage->code,
+              cache::StoreErrorCode::StaleGeneration);
+    auto readonly = cache::TaskStore::open(directory / "sessions", task_id,
+                                           cache::TaskAccess::ReadOnly);
+    ASSERT_TRUE(readonly);
+    auto failed = task.offload(*readonly, first->generation, 128);
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().storage->code, cache::StoreErrorCode::ReadOnly);
+    cache::TaskStoreOptions small;
+    small.disk_bytes = 256;
+    auto limited = cache::TaskStore::open(directory / "small", task_id,
+                                          cache::TaskAccess::ReadWrite, small);
+    ASSERT_TRUE(limited);
+    failed = task.offload(*limited, 0, 128);
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(failed.error().code, CheckpointErrorCode::LimitExceeded);
+    auto enough = cache::TaskStore::open(directory / "small", task_id,
+                                         cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(enough);
+    EXPECT_TRUE(task.save_segmented(*enough, 0, 128));
+    cache::TaskStoreOptions fault;
+    fault.store.fault = [](cache::IoOperation operation, const fs::path& path) {
+        return operation == cache::IoOperation::PublishManifest &&
+                       path.filename() == "head"
+                   ? std::make_error_code(std::errc::io_error)
+                   : std::error_code{};
+    };
+    auto broken = cache::TaskStore::open(directory / "sessions", task_id,
+                                         cache::TaskAccess::ReadWrite, fault);
+    ASSERT_TRUE(broken);
+    failed = task.offload(*broken, first->generation, 128);
+    ASSERT_FALSE(failed);
+    EXPECT_EQ(*task.checkpoint(), *wire);
+    EXPECT_FALSE(task.state_memory().offloaded);
+    EXPECT_EQ(**store->head(), *first);
+    EXPECT_FALSE(task.save_segmented(*store, first->generation, 75));
+    EXPECT_FALSE(
+        task.save_segmented(*store, first->generation, 128, {.elements = 1}));
+    const auto other_id = cache::fingerprint("wrong-task", {});
+    auto other = cache::TaskStore::open(directory / "sessions", other_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(other);
+    EXPECT_EQ(task.save_segmented(*other, 0, 128).error().code,
+              CheckpointErrorCode::BindingMismatch);
+    RecursiveSummaryTask wrong(binding(view), task_id, summary(view, "read"));
+    EXPECT_EQ(wrong.save_segmented(*store, first->generation, 128).error().code,
+              CheckpointErrorCode::BindingMismatch);
+    auto old = RecursiveSummaryTask::restore(binding(view), *readonly, *first,
+                                             id, QueryKind::Value);
+    ASSERT_TRUE(old);
+    EXPECT_EQ(*old->checkpoint(), *wire);
+    EXPECT_TRUE(task.save_segmented(*store, first->generation, 128));
+    auto latest = store->head();
+    ASSERT_TRUE(latest);
+    ASSERT_TRUE(*latest);
+    cache::TaskStoreOptions after_commit;
+    after_commit.store.fault = [](cache::IoOperation operation,
+                                  const fs::path& path) {
+        return operation == cache::IoOperation::ManifestPublished &&
+                       path.filename() == "head"
+                   ? std::make_error_code(std::errc::io_error)
+                   : std::error_code{};
+    };
+    auto ambiguous =
+        cache::TaskStore::open(directory / "sessions", task_id,
+                               cache::TaskAccess::ReadWrite, after_commit);
+    ASSERT_TRUE(ambiguous);
+    EXPECT_FALSE(task.offload(*ambiguous, (**latest).generation, 128));
+    EXPECT_FALSE(task.state_memory().offloaded);
+    EXPECT_EQ(*task.checkpoint(), *wire);
+    EXPECT_GT((**store->head()).generation, (**latest).generation);
+    auto legacy = cache::TaskStore::open(directory / "v5", task_id,
+                                         cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(legacy);
+    cache::TaskHead resident;
+    {
+        auto transaction = legacy->begin(0);
+        ASSERT_TRUE(transaction);
+        auto object =
+            transaction->write(cache::ObjectKind::QueryTaskManifest, *wire);
+        ASSERT_TRUE(object);
+        auto saved = transaction->commit(*object, cache::TaskStatus::Paused);
+        ASSERT_TRUE(saved);
+        resident = *saved;
+    }
+    auto restored_v5 = RecursiveSummaryTask::restore(
+        binding(view), *legacy, resident, id, QueryKind::Value);
+    ASSERT_TRUE(restored_v5);
+    EXPECT_EQ(*restored_v5->checkpoint(), *wire);
+    EXPECT_TRUE(restored_v5->save_segmented(*legacy, resident.generation, 128));
+}
+TEST_F(RecursiveCheckpointTest,
+       OffloadedReadFailureCanRetryWithoutLogicalWorkOrStateLoss) {
+    auto view = open();
+    const auto id = summary(view);
+    RecursiveSummaryTask task(binding(view), task_id, id);
+    (void)task.advance(80);
+    const auto before = task.checkpoint();
+    ASSERT_TRUE(before);
+    bool fail = false;
+    cache::TaskStoreOptions options;
+    options.store.fault = [&](cache::IoOperation op, const fs::path&) {
+        return fail && op == cache::IoOperation::ReadFile
+                   ? std::make_error_code(std::errc::io_error)
+                   : std::error_code{};
+    };
+    auto store = cache::TaskStore::open(directory / "retry", task_id,
+                                        cache::TaskAccess::ReadWrite, options);
+    ASSERT_TRUE(store);
+    auto saved = task.offload(*store, 0, 128);
+    ASSERT_TRUE(saved);
+    const auto steps = task.stats().steps;
+    fail = true;
+    EXPECT_EQ(task.advance(), QueryProgress::Paused);
+    EXPECT_TRUE(task.storage_failure());
+    EXPECT_FALSE(task.failure());
+    EXPECT_TRUE(task.state_memory().offloaded);
+    EXPECT_EQ(task.stats().steps, steps);
+    EXPECT_THROW((void)task.result(), std::runtime_error);
+    task.cancel();
+    EXPECT_EQ(task.advance(), QueryProgress::Cancelled);
+    fail = false;
+    EXPECT_TRUE(task.checkpoint());
+    EXPECT_FALSE(task.storage_failure());
+    EXPECT_EQ(task.progress(), QueryProgress::Cancelled);
+    task.resume();
+    auto restored = RecursiveSummaryTask::restore(binding(view), *store, *saved,
+                                                  id, QueryKind::Value);
+    ASSERT_TRUE(restored);
+    EXPECT_EQ(*restored->checkpoint(), *before);
+    finish_task(task);
+    finish_task(*restored);
+    EXPECT_EQ(task.result(), restored->result());
+    same_work(task.stats(), restored->stats());
+}
+TEST_F(RecursiveCheckpointTest,
+       CompletedHeadsWaitForDeliveryAndCancelledHeadsAreReclaimable) {
+    auto view = open();
+    const auto id = summary(view);
+    const auto parent = directory / "maintenance";
+    {
+        auto store = cache::TaskStore::open(parent, task_id,
+                                            cache::TaskAccess::ReadWrite);
+        ASSERT_TRUE(store);
+        RecursiveSummaryTask task(binding(view), task_id, id);
+        finish_task(task);
+        const auto saved = task.offload(*store, 0, 128);
+        ASSERT_TRUE(saved);
+        EXPECT_EQ(saved->status, cache::TaskStatus::AwaitingDelivery);
+        store = std::unexpected(
+            cache::StoreError{cache::StoreErrorCode::NotFound, {}, {}});
+        EXPECT_EQ(
+            cache::reclaim_tasks(parent, cache::TaskCleanupPolicy::AllInactive)
+                ->active,
+            1U);
+        task.cancel();
+        EXPECT_EQ(task.progress(), QueryProgress::Completed);
+        EXPECT_TRUE(task.result().fixed_point);
+    }
+    EXPECT_EQ(cache::reclaim_tasks(parent)->skipped, 1U);
+    EXPECT_EQ(
+        cache::reclaim_tasks(parent, cache::TaskCleanupPolicy::AllInactive)
+            ->reclaimed,
+        1U);
+    {
+        auto store = cache::TaskStore::open(parent, task_id,
+                                            cache::TaskAccess::ReadWrite);
+        ASSERT_TRUE(store);
+        RecursiveSummaryTask task(binding(view), task_id, id);
+        task.cancel();
+        auto saved = task.offload(*store, 0, 128);
+        ASSERT_TRUE(saved);
+        EXPECT_EQ(saved->status, cache::TaskStatus::Cancelled);
+    }
+    EXPECT_EQ(cache::reclaim_tasks(parent)->reclaimed, 1U);
+}
+TEST_F(RecursiveCheckpointTest,
+       MissingSegmentsCanBeRepairedAndMalformedDirectoriesAreRejected) {
+    auto view = open();
+    const auto id = summary(view);
+    RecursiveSummaryTask task(binding(view), task_id, id);
+    auto store = cache::TaskStore::open(directory / "segments", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    const auto before = task.checkpoint();
+    ASSERT_TRUE(before);
+    auto head = task.offload(*store, 0, 128);
+    ASSERT_TRUE(head);
+    auto manifest = store->read(head->manifest);
+    ASSERT_TRUE(manifest);
+    // Initial v6 control is 267 bytes; table zero starts with two counts.
+    constexpr std::size_t first_segment = 267 + 8;
+    cache::wire::Reader reader{std::span(*manifest).subspan(first_segment), {}};
+    EXPECT_EQ(reader.u32(), 0U);
+    EXPECT_EQ(reader.u32(), 1U);
+    cache::ObjectRef leaf{static_cast<cache::ObjectKind>(reader.u8()), {}, 0};
+    const auto digest_bytes = reader.raw(32);
+    std::ranges::copy(digest_bytes, leaf.digest.bytes.begin());
+    leaf.size = reader.u64();
+    const auto hash = leaf.digest.hex();
+    const auto path = store->directory() / "objects" / hash.substr(0, 2) / hash;
+    const auto missing = fs::path(path.string() + ".missing");
+    fs::rename(path, missing);
+    EXPECT_EQ(task.advance(0), QueryProgress::Paused);
+    ASSERT_TRUE(task.storage_failure());
+    ASSERT_TRUE(task.storage_failure()->storage);
+    EXPECT_EQ(task.storage_failure()->storage->code,
+              cache::StoreErrorCode::MissingObject);
+    EXPECT_TRUE(task.state_memory().offloaded);
+    EXPECT_EQ(task.stats().steps, 0U);
+    fs::rename(missing, path);
+    EXPECT_EQ(*task.checkpoint(), *before);
+    EXPECT_FALSE(task.storage_failure());
+    {
+        auto transaction = store->begin(head->generation);
+        ASSERT_TRUE(transaction);
+        auto corrupt = *manifest;
+        corrupt[first_segment] = 1;
+        resign(corrupt);
+        auto object = transaction->write(cache::ObjectKind::QueryTaskManifest,
+                                         std::move(corrupt));
+        ASSERT_TRUE(object);
+        auto bad = transaction->commit(*object, head->status);
+        ASSERT_TRUE(bad);
+        auto result = RecursiveSummaryTask::restore(binding(view), *store, *bad,
+                                                    id, QueryKind::Value);
+        ASSERT_FALSE(result);
+        EXPECT_EQ(result.error().code, CheckpointErrorCode::Corrupt);
+    }
+    auto old = RecursiveSummaryTask::restore(binding(view), *store, *head, id,
+                                             QueryKind::Value);
+    ASSERT_TRUE(old);
+    EXPECT_EQ(*old->checkpoint(), *before);
+    {
+        auto current = store->head();
+        ASSERT_TRUE(current);
+        ASSERT_TRUE(*current);
+        auto transaction = store->begin((**current).generation);
+        ASSERT_TRUE(transaction);
+        auto bytes = store->read(leaf);
+        ASSERT_TRUE(bytes);
+        (*bytes)[45] =
+            8; // A valid CAS payload with the wrong logical table tag.
+        auto wrong = transaction->write(cache::ObjectKind::QueryStateSegment,
+                                        std::move(*bytes));
+        ASSERT_TRUE(wrong);
+        auto corrupt = *manifest;
+        std::ranges::copy(wrong->digest.bytes,
+                          corrupt.begin() + first_segment + 9);
+        resign(corrupt);
+        auto object = transaction->write(cache::ObjectKind::QueryTaskManifest,
+                                         std::move(corrupt));
+        ASSERT_TRUE(object);
+        auto bad = transaction->commit(*object, head->status);
+        ASSERT_TRUE(bad);
+        auto result = RecursiveSummaryTask::restore(binding(view), *store, *bad,
+                                                    id, QueryKind::Value);
+        ASSERT_FALSE(result);
+        EXPECT_EQ(result.error().code, CheckpointErrorCode::Corrupt);
+    }
+}
+TEST_F(RecursiveCheckpointTest,
+       SegmentedStateExceedsSingleObjectLimitAndReportsActualRelease) {
+    std::string text = "fn wide(x: u32) -> u32 { let n0 = x + 1; ";
+    for (unsigned i = 1; i < 512; ++i)
+        text += "let n" + std::to_string(i) + " = n" + std::to_string(i - 1) +
+                " + 1; ";
+    text += "n511 } let aa = wide(external_input());";
+    cache_test::Input input(text);
+    auto identity = input.identity();
+    ASSERT_TRUE(identity);
+    StageAnalyzer analyzer(input.diagnostics, input.checker.types(), {},
+                           cache_test::context());
+    auto module = analyzer.analyze(*input.module);
+    ASSERT_FALSE(input.diagnostics.has_error());
+    const auto evidence_dir = directory / "wide-evidence";
+    ASSERT_TRUE(FunctionEvidence::publish(cache::FileStore(evidence_dir),
+                                          *module->provenance, *identity,
+                                          cache_test::context()));
+    auto closure = FunctionEvidence::load(cache::FileStore(evidence_dir),
+                                          *identity, cache_test::context());
+    ASSERT_TRUE(closure);
+    auto view = FunctionEvidenceView::open(std::move(*closure));
+    ASSERT_TRUE(view);
+    auto binding = view->checkpoint_binding(text);
+    ASSERT_TRUE(binding);
+    ASSERT_EQ(view->summary_catalog().size(), 1U);
+    RecursiveSummaryTask task(*binding, task_id, view->summary_catalog()[0].id);
+    finish_task(task);
+    const auto before = task.checkpoint();
+    ASSERT_TRUE(before);
+    cache::Limits limits{.bytes = 16 * 1024};
+    ASSERT_GT(before->size(), limits.bytes);
+    EXPECT_FALSE(task.checkpoint(limits));
+    const auto resident = payload(task.state_memory());
+    EXPECT_GT(resident, before->size());
+    auto store = cache::TaskStore::open(directory / "wide-task", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    auto head = task.offload(*store, 0, 2048, limits);
+    ASSERT_TRUE(head);
+    const auto written = task.storage_stats();
+    EXPECT_EQ(payload(task.state_memory()), 0U);
+    EXPECT_GT(written.logical_bytes, limits.bytes);
+    EXPECT_LT(written.peak_codec_buffers, before->size());
+    EXPECT_LE(written.peak_codec_buffers, 2 * limits.bytes);
+    EXPECT_EQ(*task.checkpoint(), *before);
+    const auto read = task.storage_stats();
+    EXPECT_EQ(read.segment_reads, written.segment_writes);
+    EXPECT_GT(read.validation_payload_bytes, 0U);
+    EXPECT_GT(read.directory_bytes, 0U);
+    std::cout << "recursive-storage rows=" << task.stats().nodes
+              << " resident-payload=" << resident
+              << " v5-bytes=" << before->size()
+              << " logical-bytes=" << written.logical_bytes
+              << " submitted=" << written.bytes_submitted
+              << " cas-added=" << written.cas_bytes_added
+              << " segments=" << written.segment_writes << " codec-peak="
+              << std::max(written.peak_codec_buffers, read.peak_codec_buffers)
+              << " directory=" << read.directory_bytes
+              << " validation-payload=" << read.validation_payload_bytes
+              << '\n';
 }
 } // namespace

@@ -114,6 +114,7 @@ add_library(pagos_provenance lib/stage/provenance_graph.cpp
     lib/stage/provenance_query.cpp lib/stage/provenance_topology.cpp
     lib/stage/provenance_recursive.cpp
     lib/stage/recursive_checkpoint.cpp
+    lib/stage/recursive_storage.cpp
     lib/stage/query_storage.cpp
     lib/stage/evidence_view.cpp lib/stage/evidence_topology.cpp
     lib/stage/evidence_builder.cpp

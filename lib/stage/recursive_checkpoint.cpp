@@ -1,94 +1,7 @@
-#include "../cache/wire.h"
-#include "pagos/stage/provenance_snapshot.h"
-#include "recursive_state.h"
+#include "recursive_codec.h"
 
 namespace pagos::stage::provenance {
-namespace {
-constexpr std::uint32_t manifest_version = 5;
-constexpr std::string_view checksum_domain = "pagos.recursive-task.v1";
-void require(bool value) {
-    if (!value)
-        throw CheckpointError{CheckpointErrorCode::Corrupt, {}};
-}
-CheckpointError codec_error(cache::Error error) {
-    return {error == cache::Error::LimitExceeded
-                ? CheckpointErrorCode::LimitExceeded
-            : error == cache::Error::IncompatibleVersion
-                ? CheckpointErrorCode::IncompatibleVersion
-                : CheckpointErrorCode::Corrupt,
-            {}};
-}
-void finish(cache::wire::Reader& reader) {
-    if (auto result = reader.finish(); !result)
-        throw codec_error(result.error());
-}
-cache::Digest digest(cache::wire::Reader& reader) {
-    cache::Digest value;
-    const auto bytes = reader.raw(value.bytes.size());
-    if (reader.good())
-        std::ranges::copy(bytes, value.bytes.begin());
-    return value;
-}
-std::size_t size(cache::wire::Reader& reader) {
-    const auto value = reader.u64();
-    if (value > std::numeric_limits<std::size_t>::max())
-        throw CheckpointError{CheckpointErrorCode::LimitExceeded, {}};
-    return static_cast<std::size_t>(value);
-}
-void index(cache::wire::Writer& writer, std::size_t value) {
-    writer.u64(value == absent ? UINT64_MAX : value);
-}
-std::size_t index(cache::wire::Reader& reader) {
-    const auto value = reader.u64();
-    if (value == UINT64_MAX)
-        return absent;
-    if (value >= std::numeric_limits<std::size_t>::max())
-        throw CheckpointError{CheckpointErrorCode::LimitExceeded, {}};
-    return static_cast<std::size_t>(value);
-}
-void atom(cache::wire::Writer& writer, const RecursiveAtom& value) {
-    writer.u8(static_cast<std::uint8_t>(value.kind));
-    writer.u32(value.owner);
-    writer.u32(value.slot);
-    writer.u32(value.node);
-}
-RecursiveAtom atom(cache::wire::Reader& reader) {
-    RecursiveAtom value{static_cast<RecursiveAtomKind>(reader.u8()),
-                        reader.u32(), reader.u32(), reader.u32()};
-    require(value.kind == RecursiveAtomKind::Parameter ||
-            value.kind == RecursiveAtomKind::SourceFamily);
-    return value;
-}
-template <class F> void counters(RecursiveStats& stats, F f) {
-    f(stats.steps);
-    f(stats.slices);
-    f(stats.nodes);
-    f(stats.links);
-    f(stats.components);
-    f(stats.cyclic_components);
-    f(stats.evaluations);
-    f(stats.facts_added);
-    f(stats.queue_peak);
-}
-template <class Set, class Iterator>
-void position(cache::wire::Writer& writer, const Set& values,
-              Iterator iterator) {
-    writer.boolean(iterator != values.end());
-    if (iterator != values.end())
-        atom(writer, *iterator);
-}
-std::optional<RecursiveAtom> position(cache::wire::Reader& reader) {
-    return reader.boolean() ? std::optional(atom(reader)) : std::nullopt;
-}
-template <class Set>
-auto locate(const Set& values, const std::optional<RecursiveAtom>& value) {
-    if (!value)
-        return values.end();
-    const auto found = values.find(*value);
-    require(found != values.end());
-    return found;
-}
-} // namespace
+using namespace recursive_wire;
 
 void RecursiveSummaryTask::Impl::write_state(
     cache::wire::Writer& writer) const {
@@ -245,6 +158,12 @@ void RecursiveSummaryTask::Impl::read_state(cache::wire::Reader& reader) {
     }
     finish(reader);
     validate_state(active);
+    rebind(saved_atom, saved_argument);
+}
+
+void RecursiveSummaryTask::Impl::rebind(
+    const std::optional<RecursiveAtom>& saved_atom,
+    const std::optional<RecursiveAtom>& saved_argument) {
     if (transfer.node != absent && transfer.started && !transfer.notifying) {
         const auto& destination = equations[transfer.node];
         const auto source = input_at(destination, transfer.input);
@@ -392,6 +311,15 @@ void RecursiveSummaryTask::Impl::validate_state(bool active) {
     else
         require(seen.size() == n);
     std::vector<bool> ordered(n), stacked(n), assigned(n), queued(n);
+    io.validation_payload_bytes =
+        seeds.capacity() * sizeof(decltype(seeds)::value_type) +
+        local_issues.capacity() * sizeof(std::uint32_t) +
+        universe.size() * sizeof(RecursiveAtom) +
+        (ordered.capacity() + stacked.capacity() + assigned.capacity() +
+         queued.capacity()) /
+            8;
+    for (const auto& seed : seeds)
+        io.validation_payload_bytes += seed.size() * sizeof(RecursiveAtom);
     for (const auto value : order) {
         require(value < n && !ordered[value]);
         ordered[value] = true;
@@ -545,8 +473,53 @@ void RecursiveSummaryTask::Impl::validate_state(bool active) {
     }
 }
 
+void RecursiveSummaryTask::Impl::write_identity(cache::wire::Writer& writer,
+                                                std::uint32_t version) const {
+    cache::wire::header(writer, cache::ObjectKind::QueryTaskManifest);
+    writer.u32(version);
+    writer.u32(recursive_engine_version);
+    writer.u32(query_engine_version);
+    writer.u32(provenance_record_model);
+    writer.raw(binding->closure_.bytes);
+    writer.raw(binding->positions_.bytes);
+    writer.raw(binding->revision_.bytes);
+    writer.raw(task_id.bytes);
+    writer.u32(selected.value);
+    writer.u8(static_cast<std::uint8_t>(channel));
+}
+
+void RecursiveSummaryTask::Impl::identity(cache::wire::Reader& reader,
+                                          const QueryCheckpointBinding& binding,
+                                          cache::Digest task, SummaryId summary,
+                                          QueryKind channel,
+                                          std::uint32_t version) {
+    cache::wire::header(reader, cache::ObjectKind::QueryTaskManifest);
+    const auto format = reader.u32(), engine = reader.u32(),
+               layout = reader.u32(), model = reader.u32();
+    if (!reader.good())
+        finish(reader);
+    if (format != version || engine != recursive_engine_version ||
+        layout != query_engine_version || model != provenance_record_model)
+        throw CheckpointError{CheckpointErrorCode::IncompatibleVersion, {}};
+    const auto closure = digest(reader), positions = digest(reader),
+               revision = digest(reader), identity = digest(reader);
+    const SummaryId selected{reader.u32()};
+    const auto kind = static_cast<QueryKind>(reader.u8());
+    if (!reader.good())
+        finish(reader);
+    if (closure != binding.closure_ || positions != binding.positions_ ||
+        revision != binding.revision_ || identity != task ||
+        selected != summary || kind != channel)
+        throw CheckpointError{CheckpointErrorCode::BindingMismatch, {}};
+    require(selected.value &&
+            selected.value <= binding.view_->summaries().size() &&
+            (kind == QueryKind::Value || kind == QueryKind::Effects));
+}
+
 std::expected<cache::Bytes, CheckpointError>
 RecursiveSummaryTask::checkpoint(cache::Limits limits) const {
+    if (auto ready = ensure_resident(); !ready)
+        return std::unexpected(ready.error());
     try {
         const auto& task = *impl_;
         if (!task.binding || task.failure ||
@@ -554,17 +527,7 @@ RecursiveSummaryTask::checkpoint(cache::Limits limits) const {
             return std::unexpected(
                 CheckpointError{CheckpointErrorCode::InvalidState, {}});
         cache::wire::Writer writer(limits);
-        cache::wire::header(writer, cache::ObjectKind::QueryTaskManifest);
-        writer.u32(manifest_version);
-        writer.u32(recursive_engine_version);
-        writer.u32(query_engine_version);
-        writer.u32(provenance_record_model);
-        writer.raw(task.binding->closure_.bytes);
-        writer.raw(task.binding->positions_.bytes);
-        writer.raw(task.binding->revision_.bytes);
-        writer.raw(task.task_id.bytes);
-        writer.u32(task.selected.value);
-        writer.u8(static_cast<std::uint8_t>(task.channel));
+        task.write_identity(writer, manifest_version);
         task.write_state(writer);
         auto bytes = writer.finish();
         if (!bytes)
@@ -599,27 +562,8 @@ RecursiveSummaryTask::restore(QueryCheckpointBinding binding,
         const auto hash = cache::fingerprint(checksum_domain, payload);
         require(std::ranges::equal(hash.bytes, bytes.last(32)));
         cache::wire::Reader reader(payload, limits);
-        cache::wire::header(reader, cache::ObjectKind::QueryTaskManifest);
-        const auto version = reader.u32(), engine = reader.u32(),
-                   layout = reader.u32(), model = reader.u32();
-        if (!reader.good())
-            finish(reader);
-        if (version != manifest_version || engine != recursive_engine_version ||
-            layout != query_engine_version || model != provenance_record_model)
-            throw CheckpointError{CheckpointErrorCode::IncompatibleVersion, {}};
-        const auto closure = digest(reader), positions = digest(reader),
-                   revision = digest(reader), identity = digest(reader);
-        const SummaryId selected{reader.u32()};
-        const auto kind = static_cast<QueryKind>(reader.u8());
-        if (!reader.good())
-            finish(reader);
-        if (closure != binding.closure_ || positions != binding.positions_ ||
-            revision != binding.revision_ || identity != task ||
-            selected != summary || kind != channel)
-            throw CheckpointError{CheckpointErrorCode::BindingMismatch, {}};
-        require(selected.value &&
-                selected.value <= binding.view_->summaries().size() &&
-                (kind == QueryKind::Value || kind == QueryKind::Effects));
+        Impl::identity(reader, binding, task, summary, channel,
+                       manifest_version);
         RecursiveSummaryTask result(std::move(binding), task, summary, channel);
         result.impl_->read_state(reader);
         return result;
