@@ -14,6 +14,7 @@
 #include "pagos/syntax/parser.h"
 #include "query_tasks.h"
 #include "recursive_summaries.h"
+#include "scalar_replay.h"
 
 #include <algorithm>
 #include <charconv>
@@ -36,7 +37,8 @@ enum class Command {
     EmitLlvm,
     EmitObject,
     ExplainStage,
-    ExplainProvenance
+    ExplainProvenance,
+    ExplainReplay
 };
 
 struct Options {
@@ -56,6 +58,7 @@ struct Options {
     bool spill_stats{};
     pagos::driver::QueryTaskOptions query;
     pagos::driver::RecursiveSummaryOptions recursive;
+    pagos::driver::ScalarReplayOptions replay;
 };
 
 void print_usage() {
@@ -92,8 +95,13 @@ void print_usage() {
         "[--spill-resident-bytes=N] [--spill-cache-bytes=N] "
         "[--spill-disk-bytes=N] [--spill-on-error=memory|unavailable] "
         "[--spill-stats] "
+        "[--replay-read=DIR] [--replay-function=NAME] [--replay-arg=VALUE] "
+        "[--replay-fuel=N] [--replay-value-bytes=N] "
+        "[--replay-output-records=N] "
+        "[--replay-detail-bytes=N] [--replay-render-bytes=N] "
+        "[--replay-first=N] [--replay-count=N|all] [--replay-stats] "
         "<check|emit-hir|emit-mir|emit-llvm|emit-obj|explain-stage|"
-        "explain-provenance> "
+        "explain-provenance|explain-replay> "
         "<source.pgs> [-o output.o]\n"
         "       pagosc reclaim-evidence <temporary-parent>\n"
         "       pagosc reclaim-queries <query-parent> [--discard-resumable]");
@@ -117,6 +125,8 @@ std::optional<Command> parse_command(std::string_view name) {
     if (name == "explain-stage") {
         return Command::ExplainStage;
     }
+    if (name == "explain-replay")
+        return Command::ExplainReplay;
     if (name == "explain-provenance") {
         return Command::ExplainProvenance;
     }
@@ -151,6 +161,7 @@ std::expected<Options, std::string> parse_options(int argument_count,
     provenance.mode = pagos::stage::ProvenanceQueryOptions::Mode::Resumable;
     pagos::driver::QueryTaskOptions query;
     pagos::driver::RecursiveSummaryOptions recursive;
+    pagos::driver::ScalarReplayOptions replay;
     std::optional<std::string> snapshot_write, snapshot_read;
     std::optional<std::string> evidence_write, evidence_read;
     std::string evidence_root, evidence_mode{"sources"};
@@ -174,10 +185,15 @@ std::expected<Options, std::string> parse_options(int argument_count,
             "--max-aggregate-members=";
         constexpr std::string_view aggregate_bytes_prefix =
             "--max-aggregate-bytes=";
-        if (argument.starts_with("--evidence-summary=") ||
-            argument.starts_with("--evidence-summary-key=") ||
-            argument.starts_with("--evidence-channel=") ||
-            argument.starts_with("--recursive-max-steps=")) {
+        if (argument.starts_with("--replay-")) {
+            const auto parsed =
+                pagos::driver::parse_scalar_replay_option(argument, replay);
+            if (!parsed)
+                return std::unexpected(parsed.error());
+        } else if (argument.starts_with("--evidence-summary=") ||
+                   argument.starts_with("--evidence-summary-key=") ||
+                   argument.starts_with("--evidence-channel=") ||
+                   argument.starts_with("--recursive-max-steps=")) {
             const auto parsed = pagos::driver::parse_recursive_summary_option(
                 argument, recursive);
             if (!parsed)
@@ -396,6 +412,24 @@ std::expected<Options, std::string> parse_options(int argument_count,
     if (!command || !source_path) {
         return std::unexpected("a command and source file are required");
     }
+    if (*command != Command::ExplainReplay && replay.specified)
+        return std::unexpected("replay options require explain-replay");
+    if (*command == Command::ExplainReplay) {
+        if (replay.directory.empty() || replay.function.empty())
+            return std::unexpected(
+                "explain-replay requires --replay-read and --replay-function");
+        if (cache.mode != pagos::stage::CacheMode::Off ||
+            !cache.directory.empty() || cache_stats ||
+            cache.evidence != pagos::stage::CacheEvidence::Value ||
+            provenance_options || snapshot_write || snapshot_read ||
+            evidence_write || evidence_read || !evidence_root.empty() ||
+            evidence_mode != "sources" ||
+            evidence_cache_bytes != 4 * 1024 * 1024 || query.specified ||
+            recursive.specified || spill_options ||
+            spill.mode != pagos::stage::provenance::EvidenceBuildMode::Memory)
+            return std::unexpected("explain-replay excludes Stage cache, "
+                                   "snapshot, evidence and query-task options");
+    }
     if ((*command == Command::EmitObject) != output_path.has_value())
         return std::unexpected(
             "emit-obj requires -o; other commands do not accept -o");
@@ -492,7 +526,8 @@ std::expected<Options, std::string> parse_options(int argument_count,
                    .spill = std::move(spill),
                    .spill_stats = spill_stats,
                    .query = std::move(query),
-                   .recursive = std::move(recursive)};
+                   .recursive = std::move(recursive),
+                   .replay = std::move(replay)};
 }
 
 std::expected<void, std::string> write_object(const std::string& input,
@@ -583,7 +618,8 @@ int main(int argument_count, char** arguments) {
         diagnostics.render(std::cerr);
         return 1;
     }
-    if (std::ranges::any_of(
+    if (options->command != Command::ExplainReplay &&
+        std::ranges::any_of(
             syntax_module->functions,
             [](const auto& function) {
                 return function->linkage !=
@@ -620,6 +656,16 @@ int main(int argument_count, char** arguments) {
                 .compiler_build = pagos_cache_build_id,
                 .semantic_options = "pagos.staging.v1"};
         }
+    }
+    if (options->command == Command::ExplainReplay) {
+        if (!query_context) {
+            std::println(stderr,
+                         "error: replay requires a stable module identity");
+            return 1;
+        }
+        return pagos::driver::run_scalar_replay(
+            *syntax_module, type_checker.types(), *query_context, *source,
+            options->replay);
     }
     std::optional<pagos::stage::CacheIdentity> snapshot_identity;
     if (options->snapshot_read || options->snapshot_write ||
@@ -832,6 +878,9 @@ int main(int argument_count, char** arguments) {
         }
     }
     switch (options->command) {
+    case Command::ExplainReplay:
+        return 1; // Handled before Stage analysis.
+
     case Command::Check:
         return 0;
     case Command::EmitHir:

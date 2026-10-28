@@ -723,7 +723,7 @@ read-write/read-only Stage caching to require source-bound replay evidence for
 C2 scalar hits. Missing evidence causes ordinary evaluation; default value reuse
 and array/residual contracts remain unchanged. `load_scalar_replay` reads the
 separate versioned evidence index without Stage or recipe execution. Actual execution is explicit through C4e2a below; production detail output
-remains C4e2b work.
+is described below in C4e2b.
 
 ```sh
 ctest --test-dir build/debug -R 'ScalarReplay|pagos-scalar-replay-process' \
@@ -740,10 +740,29 @@ retention, not dependency execution. Failures return typed errors/statistics;
 retry restarts. There are no Stage calls, cache writes or saved continuations.
 
 `--cache-evidence=scalar-replay` still controls C2 source-bound evidence admission;
-it does not invoke the executor on normal cache hits. The public detail CLI is
-C4e2b work. Output payload bounds do not yet limit rendered JSON bytes or RSS.
+it does not invoke the executor on normal cache hits. The explicit detail CLI is
+described below in C4e2b. Output payload bounds do not yet limit rendered JSON bytes or RSS.
 
 ```sh
 ctest --test-dir build/debug \
   -R 'ScalarReplayExecution|pagos-scalar-replay-process' --output-on-failure
+```
+
+## Explicit scalar replay CLI
+
+[C4e2b](provenance-scalar-cli-c4e2b.md) adds `explain-replay` with
+`--replay-read=DIR`, `--replay-function=NAME` and ordered `--replay-arg=VALUE`
+inputs. Reads run before StageAnalyzer, including with `--max-fuel=0`; missing
+records return unavailable without writes or implicit recomputation. Select
+retained nodes with replay-first/count and configure independent replay Fuel,
+value/detail payload and stdout UTF-8 render limits. Only verified values and
+steps appear on success; SIGINT returns cancellation. Default compile/explain
+and C3 P0 graphs retain their contracts.
+
+```sh
+pagosc --target=riscv32-unknown-elf --stage-cache=read-write \
+  --cache-dir=.pagos/cache --cache-evidence=scalar-replay check input.pgs
+pagosc --target=riscv32-unknown-elf --replay-read=.pagos/cache \
+  --replay-function=square --replay-arg=7 --max-fuel=0 \
+  explain-replay input.pgs
 ```

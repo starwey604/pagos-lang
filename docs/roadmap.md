@@ -182,8 +182,10 @@ canonical CAS objects and current-binding validation.
 versioned capability publication and non-executing source-bound reads. Bounded
 evaluation and result checks are provided by
 [C4e2a](provenance-scalar-execution-c4e2a.md), with independent budgets and
-success-only selected details. The explicit detail CLI remains C4e2b work; the
-scalar evidence does not upgrade C3 graphs.
+success-only selected details. [C4e2b](provenance-scalar-cli-c4e2b.md) connects
+explicit specialization selection, current source locations and bounded verified
+JSON to explain-replay without Stage fallback. The scalar evidence does not
+upgrade C3 graphs; generator admission/replay remains C4e3 work.
 C4b-C4e cover construction spill, persistent query checkpoints,
 finite-domain recursive explanations and pure detail replay. These extensions
 are explanation capabilities, not new Stage inference rules. Query work limits,

@@ -197,7 +197,7 @@ else()
 endif()
 
 add_executable(pagosc tools/pagosc/main.cpp tools/pagosc/query_tasks.cpp
-    tools/pagosc/recursive_summaries.cpp)
+    tools/pagosc/recursive_summaries.cpp tools/pagosc/scalar_replay.cpp)
 target_link_libraries(pagosc
     PRIVATE Pagos::syntax Pagos::sema Pagos::stage Pagos::mir Pagos::codegen
             pagos_project_options)

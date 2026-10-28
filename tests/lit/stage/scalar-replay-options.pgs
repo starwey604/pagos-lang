@@ -1,0 +1,17 @@
+// RUN: rm -rf %t.cache
+// RUN: not %pagosc --replay-read=%t.cache check %s 2>&1 | FileCheck %s --check-prefix=COMMAND
+// RUN: not %pagosc explain-replay %s 2>&1 | FileCheck %s --check-prefix=SELECT
+// RUN: not %pagosc --replay-read=%t.cache --replay-function=square --query-dir=%t.tasks explain-replay %s 2>&1 | FileCheck %s --check-prefix=ISOLATE
+// RUN: not %pagosc --replay-read=%t.cache --replay-function=square --replay-fuel=-1 explain-replay %s 2>&1 | FileCheck %s --check-prefix=NUMBER
+// RUN: %pagosc --stage-cache=read-write --cache-dir=%t.cache emit-hir %s > %t.hir
+// RUN: %pagosc --max-fuel=0 --replay-read=%t.cache --replay-function=square --replay-arg=7 explain-replay %s | FileCheck %s --check-prefix=DETAIL
+// RUN: test ! -e %t.tasks
+// COMMAND: error: replay options require explain-replay
+// SELECT: error: explain-replay requires --replay-read and --replay-function
+// ISOLATE: error: explain-replay excludes Stage cache, snapshot, evidence and query-task options
+// NUMBER: error: invalid replay numeric value
+// DETAIL: {"schema":1,"type":"scalar-replay","status":"verified","stage_runs":0
+// DETAIL-SAME: "result":{"type":"u32","value":"49"}
+// DETAIL-SAME: "operation":"multiply"
+fn square(x: u32) -> u32 { x * x }
+let answer = square(7);

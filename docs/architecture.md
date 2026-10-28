@@ -530,7 +530,11 @@ causes normal recomputation. C3 graphs remain P0.
 [C4e2a](provenance-scalar-execution-c4e2a.md) adds one-shot evaluation with
 independent node Fuel, value/output payload bounds and cancellation. Selected
 details are returned only after actual result verification; failures do not
-write caches or expose unverified values. The detail CLI remains C4e2b work.
+write caches or expose unverified values.
+[C4e2b](provenance-scalar-cli-c4e2b.md) adds the explicit explain-replay CLI:
+function/typed-input selection, verified values with source locations, bounded
+UTF-8 JSON and SIGINT cancellation. It reads before Stage and never implicitly
+recomputes missing evidence. Generator replay remains C4e3 work.
 Existing graph reference/span lifetimes and the default one-shot query interface
 remain intact until their replacements are explicitly validated; snapshot
 serialization alone does not reduce build peaks.

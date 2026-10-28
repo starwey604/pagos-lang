@@ -52,6 +52,9 @@ target_link_libraries(pagos_cache_store_probe
 add_executable(pagos_scalar_replay_probe scalar_replay_probe.cpp)
 target_link_libraries(pagos_scalar_replay_probe PRIVATE Pagos::stage pagos_project_options)
 
+add_executable(pagos_scalar_replay_cli_fixture scalar_replay_cli_fixture.cpp)
+target_link_libraries(pagos_scalar_replay_cli_fixture PRIVATE Pagos::stage pagos_project_options)
+
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME pagos-cache-identity-process
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/cache_identity_process.py
@@ -64,6 +67,11 @@ add_test(NAME pagos-scalar-replay-process
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scalar_replay_process.py
             $<TARGET_FILE:pagos_scalar_replay_probe> $<TARGET_FILE:pagosc>)
 set_tests_properties(pagos-scalar-replay-process PROPERTIES TIMEOUT 120)
+add_test(NAME pagos-scalar-replay-cli-process
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scalar_replay_cli_process.py
+            $<TARGET_FILE:pagosc> $<TARGET_FILE:pagos_scalar_replay_cli_fixture>)
+set_tests_properties(pagos-scalar-replay-cli-process PROPERTIES TIMEOUT 180)
+
 
 add_executable(pagos_stage_spill_probe stage_spill_probe.cpp)
 target_link_libraries(pagos_stage_spill_probe PRIVATE Pagos::stage pagos_project_options)
