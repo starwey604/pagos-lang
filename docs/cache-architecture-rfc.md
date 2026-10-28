@@ -643,8 +643,11 @@ ReplayDescriptor：完整 Comptime 特化键、验证依赖指纹、结果锚点
 本轮提供显式 CAS 对象与静态准入，不声称配方来源或计算结果已被证明。
 [C4e1b](provenance-scalar-replay-c4e1b.md) 已将真实成功的标量函数体关联到
 独立 kind 6/v1 的值/描述能力项；要求新能力时缺项正常重算，独立读取逐项
-重建源码配方且不运行 Stage。C3 图仍为 P0。C4e2 负责独立预算下的执行与
-实际结果核验，旧 Literal 无描述时不推测折叠前历史。
+重建源码配方且不运行 Stage。C3 图仍为 P0。
+[C4e2a](provenance-scalar-execution-c4e2a.md) 已提供独立 Fuel、工作值和选定
+输出额度的一次性执行器，实际 TypedValue 与记录结果核验成功后才公开详情。
+失败/取消不输出未验证值，不改写缓存；显式详情 CLI 留给 C4e2b，旧 Literal
+无描述时不推测折叠前历史。
 
 P1 的有限 Comptime 理由需要 Analyzer 在真实决策点提供规则、已知输入、
 被选分支、特化/生成器范围和结果引用。当前 P0 通常将纯折叠表达式记为

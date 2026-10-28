@@ -526,8 +526,11 @@ lifetime dependency and admit no calls, branches or memory effects.
 [C4e1b](provenance-scalar-replay-c4e1b.md) records successful real scalar
 bodies and publishes a distinct versioned value/recipe capability. Independent
 reads compare the full current source recipe, and a missing required capability
-causes normal recomputation. C3 graphs remain P0; actual budgeted evaluation and
-mathematical result validation remain C4e2 work.
+causes normal recomputation. C3 graphs remain P0.
+[C4e2a](provenance-scalar-execution-c4e2a.md) adds one-shot evaluation with
+independent node Fuel, value/output payload bounds and cancellation. Selected
+details are returned only after actual result verification; failures do not
+write caches or expose unverified values. The detail CLI remains C4e2b work.
 Existing graph reference/span lifetimes and the default one-shot query interface
 remain intact until their replacements are explicitly validated; snapshot
 serialization alone does not reduce build peaks.

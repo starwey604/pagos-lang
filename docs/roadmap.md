@@ -180,7 +180,10 @@ C4e work; the default native recursion cut is unchanged.
 canonical CAS objects and current-binding validation.
 [C4e1b](provenance-scalar-replay-c4e1b.md) adds real Stage recording, separate
 versioned capability publication and non-executing source-bound reads. Bounded
-evaluation remains C4e2 work; the new scalar evidence does not upgrade C3 graphs.
+evaluation and result checks are provided by
+[C4e2a](provenance-scalar-execution-c4e2a.md), with independent budgets and
+success-only selected details. The explicit detail CLI remains C4e2b work; the
+scalar evidence does not upgrade C3 graphs.
 C4b-C4e cover construction spill, persistent query checkpoints,
 finite-domain recursive explanations and pure detail replay. These extensions
 are explanation capabilities, not new Stage inference rules. Query work limits,

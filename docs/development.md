@@ -722,10 +722,28 @@ bodies during Stage cache writes. Use `--cache-evidence=scalar-replay` with
 read-write/read-only Stage caching to require source-bound replay evidence for
 C2 scalar hits. Missing evidence causes ordinary evaluation; default value reuse
 and array/residual contracts remain unchanged. `load_scalar_replay` reads the
-separate versioned evidence index without Stage or recipe execution. Mathematical
-result checks and detail output remain C4e2 work.
+separate versioned evidence index without Stage or recipe execution. Actual execution is explicit through C4e2a below; production detail output
+remains C4e2b work.
 
 ```sh
 ctest --test-dir build/debug -R 'ScalarReplay|pagos-scalar-replay-process' \
   --output-on-failure
+```
+
+## Bounded scalar execution
+
+[C4e2a](provenance-scalar-execution-c4e2a.md) adds `execute_scalar_replay` for
+records loaded by `load_scalar_replay`. It uses independent Fuel/value/output
+payload limits and a stop token, computes the full recipe, then verifies the
+recorded result before returning any selected values. A detail window changes
+retention, not dependency execution. Failures return typed errors/statistics;
+retry restarts. There are no Stage calls, cache writes or saved continuations.
+
+`--cache-evidence=scalar-replay` still controls C2 source-bound evidence admission;
+it does not invoke the executor on normal cache hits. The public detail CLI is
+C4e2b work. Output payload bounds do not yet limit rendered JSON bytes or RSS.
+
+```sh
+ctest --test-dir build/debug \
+  -R 'ScalarReplayExecution|pagos-scalar-replay-process' --output-on-failure
 ```

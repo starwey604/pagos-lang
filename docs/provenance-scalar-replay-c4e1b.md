@@ -9,6 +9,9 @@
 **标量函数体的重放证据 v1**，不是完整 Stage Evidence P1，也不为所有
 Comptime 结果提供理由。默认编译关闭 Stage 缓存时不生成或写入这些对象。
 
+后续 [C4e2a](provenance-scalar-execution-c4e2a.md) 已实现独立有界执行与
+实际结果核验，详情 CLI 仍待 C4e2b；本页记录源对应性和存储能力的边界。
+
 ## 从实际计算记录
 
 ScalarCache 已有的准入要求函数为内部定义、没有语句、只有尾表达式，

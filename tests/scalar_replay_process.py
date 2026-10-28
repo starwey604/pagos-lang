@@ -20,8 +20,11 @@ with tempfile.TemporaryDirectory(prefix="pagos-scalar-replay-process-") as tempo
     source, store = root / "input.pgs", root / "store"
     source.write_text(PROGRAM)
 
-    def probe(action, bits="32", build="probe-build-v1", codes=(0,)):
-        process = subprocess.run([PROBE, action, str(store), str(source), bits, build],
+    def probe(action, bits="32", build="probe-build-v1", codes=(0,), fuel=None):
+        args = [PROBE, action, str(store), str(source), bits, build]
+        if fuel is not None:
+            args.append(str(fuel))
+        process = subprocess.run(args,
                                  text=True, capture_output=True, timeout=30)
         assert process.returncode in codes, (action, process.returncode, process.stdout, process.stderr)
         if process.returncode:
@@ -36,6 +39,16 @@ with tempfile.TemporaryDirectory(prefix="pagos-scalar-replay-process-") as tempo
     assert first["stage_runs"] == 0 and first["value"] == 49 and first["nodes"] == 3
     for _ in range(3):
         assert probe("read") == first
+        executed = probe("execute")
+        assert executed["stage_runs"] == 0 and executed["nodes"] == first["nodes"]
+        assert executed["fuel"] == first["nodes"] + 1
+        assert executed["descriptor"] == first["descriptor"] and executed["value"] == first["value"]
+        assert executed["details"] == [{"node": 0, "value": 7}, {"node": 1, "value": 7}, {"node": 2, "value": 49}]
+    for fuel in range(first["nodes"] + 1):
+        failed = probe("execute", codes=(3,), fuel=fuel)
+        assert "execution unavailable" in failed.stderr
+    assert probe("execute", fuel=first["nodes"] + 1) == executed
+
     warm = probe("require")
     assert warm["replay_hits"] == warm["hits"] == 1 and warm["evaluations"] == 0
     assert warm["fuel"] == cold["fuel"]
@@ -117,6 +130,16 @@ with tempfile.TemporaryDirectory(prefix="pagos-scalar-replay-process-") as tempo
     cli_before = files(cli_store)
     failed = compiler("read-only", "--cache-evidence=scalar-replay", "--max-fuel=1", codes=(1,))
     assert "E4004" in failed.stderr and files(cli_store) == cli_before
+    # A fresh 64-bit production/consumption pair also executes without Stage.
+    store = root / "store64"
+    cold64 = probe("publish", bits="64")
+    assert cold64["replay_writes"] == 1
+    snapshot64 = files(store)
+    replay64 = probe("execute", bits="64")
+    assert replay64["stage_runs"] == 0 and replay64["value"] == 49
+    assert replay64["fuel"] == replay64["nodes"] + 1
+    assert files(store) == snapshot64
+
     compiler("off", "--cache-evidence=scalar-replay", codes=(2,))
     compiler("read-only", "--cache-evidence=other", codes=(2,))
 print("scalar replay: real Stage, independent reads, source/target bindings, missing/corrupt evidence and CLI capability verified")
