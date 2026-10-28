@@ -143,6 +143,8 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
   disk-backed formula preparation, saved cursors and acknowledged page replay
 - [Topology state storage C4c3b](docs/provenance-topology-storage-c4c3b.md): segmented
   snapshots, paused-state release and independent query measurements
+- [Recorded generator replay C4e3b](docs/provenance-generator-replay-c4e3b.md):
+  real bounds, isolated evidence capabilities and verified selected elements
 - [Closed generator admission C4e3a](docs/provenance-generator-admission-c4e3a.md):
   versioned bound/body recipes, complete captures and source-derived independence
 - [Explicit replay CLI C4e2b](docs/provenance-scalar-cli-c4e2b.md):

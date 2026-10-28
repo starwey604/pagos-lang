@@ -4,6 +4,7 @@
 #include "pagos/hir/hir.h"
 #include "pagos/stage/cache_config.h"
 #include "pagos/stage/cache_identity.h"
+#include "pagos/stage/generator_replay_record.h"
 #include "pagos/stage/replay_descriptor.h"
 
 #include <chrono>
@@ -27,6 +28,7 @@ struct ScalarQuery {
     cache::Bytes recipe;
     bool residual{};
     std::optional<ReplayDescriptor> replay;
+    std::optional<GeneratorReplayAdmission> generator;
     [[nodiscard]] source::Span fuel_span(std::size_t index) const;
 };
 
@@ -37,6 +39,8 @@ struct ResourceCapture {
     std::size_t fuel{};
     std::size_t constructions{};
     bool valid{true};
+    std::optional<std::pair<std::uint32_t, std::uint32_t>> generator_range;
+    void bounds(std::uint32_t first, std::uint32_t last, source::Span span);
     void consume(source::Span span);
     void construct(std::size_t count, const sema::Type& type,
                    source::Span span);
@@ -105,6 +109,7 @@ class ScalarCache {
     std::optional<SourceAnchor> anchor(const DefinitionIdentity& definition,
                                        source::Span span) const;
 
+    const syntax::Module& module_;
     const sema::TypeTable& types_;
     cache::QueryContext context_;
     CacheMode mode_;

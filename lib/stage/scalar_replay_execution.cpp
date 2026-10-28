@@ -1,84 +1,12 @@
 #include "pagos/stage/scalar_replay_execution.h"
+#include "scalar_replay_evaluator.h"
 
 #include <memory>
 #include <stdexcept>
 
 namespace pagos::stage {
 namespace {
-using Op = ScalarReplayOp;
 using Code = ScalarReplayExecutionErrorCode;
-IntegerOperation operation(Op op) {
-    switch (op) {
-    case Op::Add:
-        return IntegerOperation::Add;
-    case Op::Subtract:
-        return IntegerOperation::Subtract;
-    case Op::Multiply:
-        return IntegerOperation::Multiply;
-    case Op::Divide:
-        return IntegerOperation::Divide;
-    case Op::Remainder:
-        return IntegerOperation::Remainder;
-    case Op::BitAnd:
-        return IntegerOperation::BitAnd;
-    case Op::BitOr:
-        return IntegerOperation::BitOr;
-    case Op::BitXor:
-        return IntegerOperation::BitXor;
-    case Op::ShiftLeft:
-        return IntegerOperation::ShiftLeft;
-    case Op::ShiftRight:
-        return IntegerOperation::ShiftRight;
-    default:
-        throw std::logic_error("unvalidated scalar replay operation");
-    }
-}
-ScalarConstant scalar(const Constant& value) {
-    if (const auto* integer = std::get_if<IntegerValue>(&value))
-        return *integer;
-    return std::get<bool>(value);
-}
-std::expected<ScalarConstant, IntegerError>
-evaluate(const ScalarReplayNode& node, const ReplayDescriptor& descriptor,
-         const ScalarConstant* values) {
-    if (node.operation == Op::Input)
-        return scalar(*descriptor.specialization.arguments[*node.input].value);
-    if (node.operation == Op::Constant)
-        return scalar(*node.constant);
-    const auto& left = values[node.operands[0]];
-    if (node.operation == Op::Not)
-        return !std::get<bool>(left);
-    if (node.operation == Op::Negate)
-        return std::get<IntegerValue>(left).negate();
-    if (node.operation == Op::BitNot)
-        return std::get<IntegerValue>(left).bit_not();
-    const auto& right = values[node.operands[1]];
-    if (node.operation == Op::Equal || node.operation == Op::NotEqual)
-        return (left == right) == (node.operation == Op::Equal);
-    const auto lhs = std::get<IntegerValue>(left);
-    const auto rhs = std::get<IntegerValue>(right);
-    if (node.operation >= Op::Less && node.operation <= Op::GreaterEqual) {
-        const auto order = lhs.compare(rhs);
-        if (!order)
-            return std::unexpected(order.error());
-        switch (node.operation) {
-        case Op::Less:
-            return *order < 0;
-        case Op::LessEqual:
-            return *order <= 0;
-        case Op::Greater:
-            return *order > 0;
-        case Op::GreaterEqual:
-            return *order >= 0;
-        default:
-            break;
-        }
-    }
-    const auto value = lhs.apply(operation(node.operation), rhs);
-    if (!value)
-        return std::unexpected(value.error());
-    return *value;
-}
 } // namespace
 std::expected<VerifiedScalarReplay, ScalarReplayExecutionError>
 execute_scalar_replay(const ScalarReplayRecord& record,
@@ -151,8 +79,9 @@ execute_scalar_replay(const ScalarReplayRecord& record,
         for (std::size_t i = 0; i < count; ++i) {
             const auto index = static_cast<std::uint32_t>(i);
             charge(index);
-            auto value =
-                evaluate(descriptor.nodes[i], descriptor, values.get());
+            auto value = replay_detail::evaluate(
+                descriptor.nodes[i], descriptor.specialization.arguments,
+                values.get());
             if (!value)
                 fail(Code::ArithmeticFailure, index, {}, value.error());
             values[i] = *value;

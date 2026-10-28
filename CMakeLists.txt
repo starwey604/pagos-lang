@@ -148,6 +148,8 @@ add_library(pagos_stage lib/stage/stage_analyzer.cpp
     lib/stage/provenance_analysis.cpp lib/stage/provenance_snapshot.cpp
     lib/stage/cache_identity.cpp lib/stage/replay_descriptor.cpp
     lib/stage/replay_recipe.cpp lib/stage/generator_replay.cpp
+    lib/stage/generator_replay_record.cpp lib/stage/generator_replay_execution.cpp
+    lib/stage/scalar_replay_evaluator.cpp
     lib/stage/function_evidence.cpp lib/stage/function_evidence_view.cpp
     lib/stage/scalar_cache.cpp lib/stage/scalar_replay.cpp
     lib/stage/scalar_replay_execution.cpp

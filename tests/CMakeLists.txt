@@ -34,6 +34,7 @@ add_executable(pagos_cache_tests
     unit/cache_codec_test.cpp unit/cache_key_test.cpp unit/cache_store_test.cpp
     unit/replay_descriptor_test.cpp unit/scalar_replay_test.cpp
     unit/scalar_replay_execution_test.cpp unit/generator_replay_test.cpp
+    unit/generator_replay_record_test.cpp
     unit/stage_cache_test.cpp unit/evidence_view_test.cpp unit/function_evidence_test.cpp
     unit/stage_spill_test.cpp unit/query_checkpoint_test.cpp
     unit/recursive_checkpoint_test.cpp unit/task_store_test.cpp)

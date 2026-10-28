@@ -1,4 +1,5 @@
 #include "scalar_cache.h"
+#include "generator_replay_record.h"
 #include "memory_accounting.h"
 #include "pagos/stage/provenance_snapshot.h"
 #include "residual_template.h"
@@ -110,7 +111,20 @@ void ResourceCapture::construct(std::size_t count, const sema::Type& type,
 
 bool ResourceCapture::complete() const {
     return query && valid && fuel == query->body_fuel &&
-           constructions == (query->construction_after ? 1U : 0U);
+           constructions == (query->construction_after ? 1U : 0U) &&
+           (!query->generator || generator_range.has_value());
+}
+
+void ResourceCapture::bounds(std::uint32_t first, std::uint32_t last,
+                             source::Span span) {
+    if (!query || !query->generator)
+        return;
+    valid &= !generator_range && last > first &&
+             last - first == query->result_type.length &&
+             query->construction_after == fuel &&
+             span.begin == query->fuel_spans.front().begin &&
+             span.end == query->fuel_spans.front().end;
+    generator_range = {first, last};
 }
 
 ScalarCache::ScalarCache(const syntax::Module& module,
@@ -118,7 +132,7 @@ ScalarCache::ScalarCache(const syntax::Module& module,
                          const cache::QueryContext& context,
                          const CacheConfig& config, CacheTelemetry& telemetry,
                          bool defer_publication)
-    : types_(types), context_(context), mode_(config.mode),
+    : module_(module), types_(types), context_(context), mode_(config.mode),
       evidence_(config.evidence), timings_(config.measure_timings),
       telemetry_(telemetry), store_(config.directory),
       defer_publication_(defer_publication) {
@@ -304,6 +318,12 @@ ScalarCache::query(const syntax::Function& function,
             if (replay)
                 result.replay = std::move(*replay);
         }
+        if (!residual && tail.kind == syntax::Expr::Kind::ArrayGenerator) {
+            auto generator =
+                admit_generator_replay(module_, types_, result.key);
+            if (generator)
+                result.generator = std::move(*generator);
+        }
         return result;
     } catch (const std::bad_alloc&) {
         ++telemetry_.errors;
@@ -391,6 +411,19 @@ ScalarCache::load(const ScalarQuery& query,
             }
             ++telemetry_.replay_hits;
         }
+        if (evidence_ == CacheEvidence::GeneratorReplay &&
+            query.result_type.is_array()) {
+            if (!query.generator) {
+                ++telemetry_.replay_rejected;
+                return reject();
+            }
+            auto replay = generator_detail::load(store_, *query.generator);
+            if (!replay || replay->value != *decoded) {
+                ++telemetry_.replay_rejected;
+                return reject();
+            }
+            ++telemetry_.replay_hits;
+        }
         const auto span = identity_->resolve(query.result_anchor);
         if (!span || (query.result_parameter &&
                       *query.result_parameter >= arguments.size()))
@@ -439,6 +472,39 @@ void ScalarCache::publish(const ScalarQuery& query, const hir::ExprPtr& result,
         }
         timer.stop();
         publish_or_defer(query.key, *semantic, artifacts, false);
+        if (query.generator && capture.generator_range) {
+            const auto& generator = query.generator->descriptor();
+            auto descriptor = encode_generator_replay_descriptor(generator);
+            auto binding = generator_replay_descriptor_fingerprint(generator);
+            auto expected = generator_replay_value_fingerprint(
+                {result->type, *result->constant});
+            if (!descriptor || !binding || !expected) {
+                ++telemetry_.errors;
+                return;
+            }
+            const GeneratorReplayObservation observation{
+                .descriptor = *binding,
+                .first = capture.generator_range->first,
+                .last = capture.generator_range->second,
+                .expected_result = *expected};
+            auto observed = encode_generator_replay_observation(observation);
+            if (!observed) {
+                ++telemetry_.errors;
+                return;
+            }
+            const std::array evidence{
+                cache::ArtifactInput{"value", cache::ObjectKind::Value, *value},
+                cache::ArtifactInput{
+                    "generator", cache::ObjectKind::GeneratorReplayDescriptor,
+                    *descriptor},
+                cache::ArtifactInput{
+                    "observation",
+                    cache::ObjectKind::GeneratorReplayObservation, *observed}};
+            publish_or_defer(
+                generator_replay_key(query.key),
+                generator_detail::semantic(*value, *descriptor, *observed),
+                evidence, false);
+        }
         if (query.replay) {
             auto replay = *query.replay;
             auto expected =
@@ -589,7 +655,8 @@ void ScalarCache::publish_or_defer(
     if (!published)
         ++telemetry_.errors;
     else if (*published == cache::PublishResult::Published) {
-        if (key.kind == cache::QueryKind::FreezeScalarReplay)
+        if (key.kind == cache::QueryKind::FreezeScalarReplay ||
+            key.kind == cache::QueryKind::FreezeGeneratorReplay)
             ++telemetry_.replay_writes;
         else {
             ++telemetry_.writes;

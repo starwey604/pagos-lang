@@ -68,7 +68,8 @@ bool valid_kind(ObjectKind kind) {
            kind == ObjectKind::QueryStateSegment ||
            kind == ObjectKind::QueryTaskManifest ||
            kind == ObjectKind::ReplayDescriptor ||
-           kind == ObjectKind::GeneratorReplayDescriptor;
+           kind == ObjectKind::GeneratorReplayDescriptor ||
+           kind == ObjectKind::GeneratorReplayObservation;
 }
 fs::path object_path(const fs::path& root, const Digest& digest) {
     const auto hex = digest.hex();

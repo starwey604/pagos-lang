@@ -1244,6 +1244,8 @@ hir::ExprPtr StageAnalyzer::analyze_array_generator(
         bound_work.push_back(end);
     }
     const auto count = last - first;
+    if (fuel_capture_)
+        fuel_capture_->bounds(first, last, expression.span);
     auto type = type_of(expression);
     if (type.is_array()) {
         type.length = count;

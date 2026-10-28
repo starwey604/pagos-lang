@@ -7,14 +7,14 @@
 namespace pagos::stage {
 
 enum class CacheMode { Off, ReadWrite, ReadOnly };
-enum class CacheEvidence { Value, ScalarReplay };
+enum class CacheEvidence { Value, ScalarReplay, GeneratorReplay };
 
 struct CacheConfig {
     CacheMode mode{CacheMode::Off};
     std::filesystem::path directory;
     bool measure_timings{};
-    // Applies to C2 scalar value reuse; arrays/residual templates retain their
-    // existing capability contracts. CacheMode::Off records nothing.
+    // ScalarReplay applies to scalar reuse, GeneratorReplay to array reuse.
+    // Residual templates retain their contracts. Off records nothing.
     CacheEvidence evidence{CacheEvidence::Value};
 };
 
