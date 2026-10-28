@@ -35,10 +35,20 @@ struct ScalarReplayNode {
     ScalarReplayOp operation;
     sema::Type type;
     std::uint32_t position{}; // Structural SourceAnchor in this definition.
-    std::optional<std::uint32_t> input; // Original Comptime parameter slot.
+    // Original Comptime parameter slot; a generator body additionally admits
+    // its explicitly declared iteration slot.
+    std::optional<std::uint32_t> input;
     std::optional<Constant> constant;
     std::vector<std::uint32_t> operands; // Zero-based, strictly earlier nodes.
     bool operator==(const ScalarReplayNode&) const = default;
+};
+// A source expression, independent of any recorded result or evaluation. Input
+// slots are interpreted by its enclosing descriptor, never by this struct.
+struct ScalarReplayRecipe {
+    SourceAnchor result_site;
+    sema::Type result_type;
+    std::vector<ScalarReplayNode> nodes;
+    bool operator==(const ScalarReplayRecipe&) const = default;
 };
 // Self-contained immutable straight-line recipe, not a saved operation trace.
 // The last node is the result; every node must contribute to it. Stage's

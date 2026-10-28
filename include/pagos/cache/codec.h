@@ -34,7 +34,8 @@ enum class ObjectKind : std::uint8_t {
     QueryCheckpoint = 12,
     QueryStateSegment = 13,
     QueryTaskManifest = 14,
-    ReplayDescriptor = 15
+    ReplayDescriptor = 15,
+    GeneratorReplayDescriptor = 16
 };
 enum class Error {
     UnsupportedType,

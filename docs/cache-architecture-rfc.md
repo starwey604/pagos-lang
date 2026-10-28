@@ -650,6 +650,11 @@ ReplayDescriptor：完整 Comptime 特化键、验证依赖指纹、结果锚点
 [C4e2b](provenance-scalar-cli-c4e2b.md) 已接入显式 explain-replay，按完整
 类型化实参选择实际特化，核验后呈现步骤与当前源位置；JSON UTF-8 字节
 单独限额，缺证据不运行 Stage。旧 Literal 无描述时不推测折叠前历史。
+[C4e3a](provenance-generator-admission-c4e3a.md) 已提供封闭生成器描述
+kind 16/v1：完整 Comptime 捕获、固定 u32 迭代槽及边界/元素三个纯配方。
+元素独立性凭据只能从当前 checked AST 的白名单准入和完整描述核对取得；
+结构合法或 CAS 完整的描述不能自行授予凭据。此轮不执行范围、不验证真实
+数组结果，记录/读取和选定元素的有界执行继续由 C4e3b 完成。
 
 P1 的有限 Comptime 理由需要 Analyzer 在真实决策点提供规则、已知输入、
 被选分支、特化/生成器范围和结果引用。当前 P0 通常将纯折叠表达式记为

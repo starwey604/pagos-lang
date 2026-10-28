@@ -67,7 +67,8 @@ bool valid_kind(ObjectKind kind) {
            kind == ObjectKind::QueryCheckpoint ||
            kind == ObjectKind::QueryStateSegment ||
            kind == ObjectKind::QueryTaskManifest ||
-           kind == ObjectKind::ReplayDescriptor;
+           kind == ObjectKind::ReplayDescriptor ||
+           kind == ObjectKind::GeneratorReplayDescriptor;
 }
 fs::path object_path(const fs::path& root, const Digest& digest) {
     const auto hex = digest.hex();

@@ -1,5 +1,4 @@
-#include "pagos/stage/replay_descriptor.h"
-#include "../cache/wire.h"
+#include "replay_recipe.h"
 
 #include <algorithm>
 #include <stdexcept>
@@ -63,8 +62,8 @@ bool scalar(const sema::Type& type) {
     canonical.integer_type.is_usize = type.integer_type.is_usize;
     return type == canonical;
 }
-void type(const sema::Type& type, unsigned pointer_bits,
-          std::optional<std::uint32_t> node = {}) {
+void scalar_type(const sema::Type& type, unsigned pointer_bits,
+                 std::optional<std::uint32_t> node = {}) {
     if (!scalar(type))
         fail(ReplayErrorCode::UnsupportedType, node);
     if (type.kind == sema::TypeKind::Integer && type.integer_type.is_usize &&
@@ -121,61 +120,18 @@ void shape(const ReplayDescriptor& value, cache::Limits limits) {
         value.result_site.definition_fingerprint != key.definition_fingerprint)
         fail(ReplayErrorCode::InvalidAnchor);
     const auto bits = key.context.target.pointer_bits;
-    type(value.result_type, bits);
+    scalar_type(value.result_type, bits);
     for (const auto& argument : key.arguments)
-        type(argument.type, bits);
+        scalar_type(argument.type, bits);
     (void)checked(cache::encode_query_key(key, limits));
-    if (value.nodes.empty())
-        fail(ReplayErrorCode::InvalidRecipe);
-    for (std::size_t i = 0; i < value.nodes.size(); ++i) {
-        const auto index = static_cast<std::uint32_t>(i);
-        const auto& node = value.nodes[i];
-        type(node.type, bits, index);
-        const auto count = arity(node.operation);
-        if (node.operands.size() != count ||
-            node.input.has_value() != (node.operation == Op::Input) ||
-            node.constant.has_value() != (node.operation == Op::Constant))
-            fail(ReplayErrorCode::InvalidRecipe, index);
-        for (const auto operand : node.operands)
-            if (operand >= i)
-                fail(ReplayErrorCode::InvalidReference, index);
-        if (node.operation == Op::Input) {
-            if (*node.input >= key.arguments.size())
-                fail(ReplayErrorCode::InvalidReference, index);
-            if (node.type != key.arguments[*node.input].type)
-                fail(ReplayErrorCode::InvalidRecipe, index);
-        } else if (node.operation == Op::Constant) {
-            (void)checked(
-                cache::encode_value({node.type, *node.constant}, limits));
-        } else {
-            const auto& left = value.nodes[node.operands[0]].type;
-            const bool boolean = node.operation == Op::Not;
-            const bool equality =
-                node.operation == Op::Equal || node.operation == Op::NotEqual;
-            const bool comparison = node.operation >= Op::Less &&
-                                    node.operation <= Op::GreaterEqual;
-            if ((!boolean && !equality &&
-                 left.kind != sema::TypeKind::Integer) ||
-                (boolean && left.kind != sema::TypeKind::Bool) ||
-                (count == 2 && left != value.nodes[node.operands[1]].type) ||
-                node.type != (equality || comparison
-                                  ? sema::Type(sema::TypeKind::Bool)
-                                  : left))
-                fail(ReplayErrorCode::InvalidRecipe, index);
-        }
-    }
-    if (value.nodes.back().type != value.result_type ||
-        value.nodes.back().position != value.result_site.position)
-        fail(ReplayErrorCode::InvalidRecipe);
-    std::vector<bool> needed(value.nodes.size());
-    needed.back() = true;
-    for (std::size_t i = value.nodes.size(); i-- > 0;) {
-        if (!needed[i])
-            fail(ReplayErrorCode::InvalidRecipe, static_cast<std::uint32_t>(i));
-        for (const auto operand : value.nodes[i].operands)
-            needed[operand] = true;
-    }
+    std::vector<sema::Type> inputs;
+    for (const auto& argument : key.arguments)
+        inputs.push_back(argument.type);
+    replay_detail::check_nodes(value.nodes, value.result_type,
+                               value.result_site.position, inputs, bits,
+                               limits);
 }
+
 template <class F>
 auto guarded(F operation) -> std::expected<decltype(operation()), ReplayError> {
     try {
@@ -191,6 +147,115 @@ auto guarded(F operation) -> std::expected<decltype(operation()), ReplayError> {
     }
 }
 } // namespace
+namespace replay_detail {
+void check_scalar_type(const sema::Type& type, unsigned bits,
+                       std::optional<std::uint32_t> node) {
+    scalar_type(type, bits, node);
+}
+void check_nodes(std::span<const ScalarReplayNode> nodes,
+                 const sema::Type& result_type, std::uint32_t result_position,
+                 std::span<const sema::Type> inputs, unsigned bits,
+                 cache::Limits limits) {
+    if (nodes.size() > limits.elements || nodes.size() > UINT32_MAX)
+        fail(ReplayErrorCode::LimitExceeded);
+    scalar_type(result_type, bits);
+    if (nodes.empty())
+        fail(ReplayErrorCode::InvalidRecipe);
+    for (std::size_t i = 0; i < nodes.size(); ++i) {
+        const auto index = static_cast<std::uint32_t>(i);
+        const auto& node = nodes[i];
+        scalar_type(node.type, bits, index);
+        const auto count = arity(node.operation);
+        if (node.operands.size() != count ||
+            node.input.has_value() != (node.operation == Op::Input) ||
+            node.constant.has_value() != (node.operation == Op::Constant))
+            fail(ReplayErrorCode::InvalidRecipe, index);
+        for (const auto operand : node.operands)
+            if (operand >= i)
+                fail(ReplayErrorCode::InvalidReference, index);
+        if (node.operation == Op::Input) {
+            if (*node.input >= inputs.size())
+                fail(ReplayErrorCode::InvalidReference, index);
+            if (node.type != inputs[*node.input])
+                fail(ReplayErrorCode::InvalidRecipe, index);
+        } else if (node.operation == Op::Constant) {
+            (void)checked(
+                cache::encode_value({node.type, *node.constant}, limits));
+        } else {
+            const auto& left = nodes[node.operands[0]].type;
+            const bool boolean = node.operation == Op::Not;
+            const bool equality =
+                node.operation == Op::Equal || node.operation == Op::NotEqual;
+            const bool comparison = node.operation >= Op::Less &&
+                                    node.operation <= Op::GreaterEqual;
+            if ((!boolean && !equality &&
+                 left.kind != sema::TypeKind::Integer) ||
+                (boolean && left.kind != sema::TypeKind::Bool) ||
+                (count == 2 && left != nodes[node.operands[1]].type) ||
+                node.type != (equality || comparison
+                                  ? sema::Type(sema::TypeKind::Bool)
+                                  : left))
+                fail(ReplayErrorCode::InvalidRecipe, index);
+        }
+    }
+    if (nodes.back().type != result_type ||
+        nodes.back().position != result_position)
+        fail(ReplayErrorCode::InvalidRecipe);
+    std::vector<bool> needed(nodes.size());
+    needed.back() = true;
+    for (std::size_t i = nodes.size(); i-- > 0;) {
+        if (!needed[i])
+            fail(ReplayErrorCode::InvalidRecipe, static_cast<std::uint32_t>(i));
+        for (const auto operand : nodes[i].operands)
+            needed[operand] = true;
+    }
+}
+void write_nodes(Writer& writer, std::span<const ScalarReplayNode> nodes) {
+    writer.count(nodes.size());
+    for (const auto& node : nodes) {
+        writer.u8(static_cast<std::uint8_t>(node.operation));
+        cache::wire::type(writer, node.type);
+        writer.u32(node.position);
+        if (node.input)
+            writer.u32(*node.input);
+        if (node.constant)
+            cache::wire::value(writer, {node.type, *node.constant});
+        for (const auto operand : node.operands)
+            writer.u32(operand);
+    }
+}
+std::vector<ScalarReplayNode> read_nodes(Reader& reader, unsigned bits,
+                                         std::size_t maximum_nodes) {
+    const auto count = reader.count(6);
+    if (!reader.good())
+        finish(reader);
+    if (count > maximum_nodes)
+        fail(ReplayErrorCode::LimitExceeded);
+    std::vector<ScalarReplayNode> nodes;
+    nodes.reserve(count);
+    for (std::uint32_t i = 0; i < count && reader.good(); ++i) {
+        const auto operation = static_cast<Op>(reader.u8());
+        const auto operands = arity(operation);
+        auto node_type = cache::wire::type(reader);
+        if (!reader.good())
+            finish(reader);
+        scalar_type(node_type, bits, i);
+        ScalarReplayNode node{.operation = operation,
+                              .type = node_type,
+                              .position = reader.u32()};
+        if (operation == Op::Input)
+            node.input = reader.u32();
+        if (operation == Op::Constant)
+            node.constant = cache::wire::value(reader, node_type);
+        for (unsigned j = 0; j < operands; ++j)
+            node.operands.push_back(reader.u32());
+        nodes.push_back(std::move(node));
+    }
+    if (!reader.good())
+        finish(reader);
+    return nodes;
+}
+} // namespace replay_detail
 std::expected<cache::Digest, ReplayError>
 replay_value_fingerprint(const cache::TypedValue& value, cache::Limits limits) {
     return guarded([&] {
@@ -214,18 +279,7 @@ encode_replay_descriptor(const ReplayDescriptor& value, cache::Limits limits) {
         writer.raw(value.verified_inputs.bytes);
         cache::wire::type(writer, value.result_type);
         writer.raw(value.expected_result.bytes);
-        writer.count(value.nodes.size());
-        for (const auto& node : value.nodes) {
-            writer.u8(static_cast<std::uint8_t>(node.operation));
-            cache::wire::type(writer, node.type);
-            writer.u32(node.position);
-            if (node.input)
-                writer.u32(*node.input);
-            if (node.constant)
-                cache::wire::value(writer, {node.type, *node.constant});
-            for (const auto operand : node.operands)
-                writer.u32(operand);
-        }
+        replay_detail::write_nodes(writer, value.nodes);
         return checked(writer.finish());
     });
 }
@@ -250,32 +304,11 @@ decode_replay_descriptor(std::span<const std::uint8_t> bytes,
         value.result_type = cache::wire::type(reader);
         if (!reader.good())
             finish(reader);
-        type(value.result_type,
-             value.specialization.context.target.pointer_bits);
+        scalar_type(value.result_type,
+                    value.specialization.context.target.pointer_bits);
         value.expected_result = digest(reader);
-        const auto count = reader.count(6);
-        if (!reader.good())
-            finish(reader);
-        value.nodes.reserve(count);
-        for (std::uint32_t i = 0; i < count && reader.good(); ++i) {
-            const auto operation = static_cast<Op>(reader.u8());
-            const auto operands = arity(operation);
-            auto node_type = cache::wire::type(reader);
-            if (!reader.good())
-                finish(reader);
-            type(node_type, value.specialization.context.target.pointer_bits,
-                 i);
-            ScalarReplayNode node{.operation = operation,
-                                  .type = node_type,
-                                  .position = reader.u32()};
-            if (operation == Op::Input)
-                node.input = reader.u32();
-            if (operation == Op::Constant)
-                node.constant = cache::wire::value(reader, node_type);
-            for (unsigned j = 0; j < operands; ++j)
-                node.operands.push_back(reader.u32());
-            value.nodes.push_back(std::move(node));
-        }
+        value.nodes = replay_detail::read_nodes(
+            reader, value.specialization.context.target.pointer_bits);
         finish(reader);
         shape(value, limits);
         return value;
