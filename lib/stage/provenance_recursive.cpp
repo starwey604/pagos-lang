@@ -79,6 +79,22 @@ void RecursiveSummaryTask::resume() {
         impl_->progress == QueryProgress::Paused)
         impl_->progress = QueryProgress::Running;
 }
+std::uint64_t RecursiveSummaryTask::pending_sequence() const {
+    return impl_->progress == QueryProgress::Completed &&
+                   !impl_->result_acknowledged
+               ? 1
+               : 0;
+}
+std::uint64_t RecursiveSummaryTask::acknowledged_sequence() const {
+    return impl_->result_acknowledged ? 1 : 0;
+}
+bool RecursiveSummaryTask::acknowledge_result(std::uint64_t sequence) {
+    if (sequence != 1 || impl_->progress != QueryProgress::Completed ||
+        !ensure_resident())
+        return false;
+    impl_->result_acknowledged = true;
+    return true;
+}
 QueryProgress RecursiveSummaryTask::progress() const { return impl_->progress; }
 const RecursiveStats& RecursiveSummaryTask::stats() const {
     return impl_->stats;

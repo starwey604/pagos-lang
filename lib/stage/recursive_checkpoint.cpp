@@ -522,7 +522,7 @@ RecursiveSummaryTask::checkpoint(cache::Limits limits) const {
         return std::unexpected(ready.error());
     try {
         const auto& task = *impl_;
-        if (!task.binding || task.failure ||
+        if (!task.binding || task.failure || task.result_acknowledged ||
             task.progress == QueryProgress::Failed)
             return std::unexpected(
                 CheckpointError{CheckpointErrorCode::InvalidState, {}});

@@ -18,7 +18,8 @@ struct Positions {
 template <class Task>
 cache::Bytes control(const Task& task, cache::Limits limits) {
     cache::wire::Writer writer(limits);
-    task.write_identity(writer, segmented_version);
+    task.write_identity(writer, task.result_acknowledged ? receipt_version
+                                                         : segmented_version);
     writer.u8(static_cast<std::uint8_t>(task.progress));
     writer.u8(static_cast<std::uint8_t>(task.phase));
     auto stats = task.stats;
@@ -55,6 +56,8 @@ cache::Bytes control(const Task& task, cache::Limits limits) {
             position(writer, task.equations[transfer.bound].facts,
                      transfer.argument);
     }
+    if (task.result_acknowledged)
+        writer.u64(1);
     auto bytes = writer.finish();
     if (!bytes)
         throw codec_error(bytes.error());
@@ -206,7 +209,8 @@ RecursiveSummaryTask::save_segmented(const cache::TaskStore& store,
             const auto version = version_reader.u32();
             if (!version_reader.good())
                 finish(version_reader);
-            if (version != manifest_version && version != segmented_version)
+            if (version != manifest_version && version != segmented_version &&
+                version != receipt_version)
                 throw CheckpointError{CheckpointErrorCode::IncompatibleVersion,
                                       {}};
             cache::wire::Reader identity(payload, limits);
@@ -214,7 +218,12 @@ RecursiveSummaryTask::save_segmented(const cache::TaskStore& store,
                            task.channel, version);
             const auto progress = static_cast<QueryProgress>(identity.u8());
             require(progress <= QueryProgress::Completed &&
-                    task_status(progress) == (**old).status);
+                    task_status(progress, version == receipt_version) ==
+                        (**old).status);
+            // A saved delivery watermark is monotone, even if a caller holds
+            // an older resident snapshot and supplies the latest generation.
+            if (version == receipt_version && !task.result_acknowledged)
+                throw CheckpointError{CheckpointErrorCode::InvalidState, {}};
         }
         const auto write = [&](cache::ObjectKind kind, cache::Bytes bytes) {
             task.io.bytes_submitted += bytes.size();
@@ -343,7 +352,8 @@ RecursiveSummaryTask::save_segmented(const cache::TaskStore& store,
         }
         auto object = write(cache::ObjectKind::QueryTaskManifest,
                             sealed(manifest.finish(), limits));
-        auto head = transaction->commit(object, task_status(task.progress));
+        auto head = transaction->commit(
+            object, task_status(task.progress, task.result_acknowledged));
         if (!head)
             throw store_error(head.error());
         return *head;
@@ -387,11 +397,11 @@ RecursiveSummaryTask::restore(QueryCheckpointBinding binding,
             result->impl_->io.peak_codec_buffers = bytes->capacity();
             return result;
         }
-        if (version != segmented_version)
+        if (version != segmented_version && version != receipt_version)
             throw CheckpointError{CheckpointErrorCode::IncompatibleVersion, {}};
         cache::wire::Reader reader(payload, limits);
         Impl::identity(reader, binding, store.task(), summary, channel,
-                       segmented_version);
+                       version);
         RecursiveSummaryTask result(std::move(binding), store.task(), summary,
                                     channel);
         auto& task = *result.impl_;
@@ -400,7 +410,13 @@ RecursiveSummaryTask::restore(QueryCheckpointBinding binding,
         task.summaries.clear();
         task.known_summaries.clear();
         auto positions = control(task, reader);
-        require(task_status(task.progress) == head.status);
+        if (version == receipt_version) {
+            require(reader.u64() == 1 &&
+                    task.progress == QueryProgress::Completed);
+            task.result_acknowledged = true;
+        }
+        require(task_status(task.progress, task.result_acknowledged) ==
+                head.status);
         task.io.bytes_read = bytes->size();
         task.io.peak_codec_buffers = bytes->capacity();
         std::array<std::size_t, 9> totals;
@@ -561,6 +577,7 @@ RecursiveSummaryTask::offload(const cache::TaskStore& store,
         empty->task_id = impl_->task_id;
         empty->stats = impl_->stats;
         empty->progress = impl_->progress;
+        empty->result_acknowledged = impl_->result_acknowledged;
         empty->offloaded = Impl::Offloaded{store, {}, limits, impl_->progress};
         auto saved = save_segmented(store, generation, segment_bytes, limits);
         if (!saved)

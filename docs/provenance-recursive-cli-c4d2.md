@@ -46,7 +46,9 @@ pagosc --evidence-read=.pagos/evidence --evidence-mode=recursive-summary \
 ```
 
 name/key 二选一，key 为 64 个十六进制字符。不存在的选择不回退到其他
-特化。摘要模式不接受 evidence-root 或 query-task 选项，也不接受显式
+特化。无持久任务的摘要模式不接受 evidence-root；catalog 拒绝 query-task。
+[C4d3c](provenance-recursive-tasks-c4d3c.md) 为 recursive-summary 增加显式
+query-dir 的单通道持久接口。摘要模式不接受显式
 legacy/compressed/topology 查询模式；只有 explain-provenance 可使用。
 它不是绑定调用方实参后的具体来源查询，两个 caller 的输入不进入该
 Runtime 特化键；需要实例上下文时继续使用原生 sources/witness 查询。

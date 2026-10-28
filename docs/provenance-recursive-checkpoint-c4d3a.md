@@ -3,10 +3,12 @@
 2026-10-27。C4d3a 为 [RecursiveSummaryTask](../include/pagos/stage/provenance_recursive.h)
 增加显式绑定构造、checkpoint 和 restore。保存发现方程、SCC 遍历、组件
 worklist 和活动参数替换状态；恢复不重新运行 Stage，也不从根重新求解。
-本轮是 C4d3 的第一切片，后续分段存储和持久 CLI 尚未完成。
+本页记录 C4d3 的第一切片。
 
 后续 [C4d3b](provenance-recursive-storage-c4d3b.md) 已实现分段 TaskStore、
-暂停卸载和存储重试；本页 v5 格式继续兼容，持久 CLI/结果确认仍待 C4d3c。
+暂停卸载和存储重试；
+[C4d3c](provenance-recursive-tasks-c4d3c.md) 已补齐持久 CLI 与结果确认。
+本页 v5 格式继续兼容，已确认任务须用 v7 分段保存以保留水位。
 
 ## 身份与接口
 
@@ -121,7 +123,7 @@ UnavailableEvidence。失败返回 expected 错误，不修改原任务，不静
 413/413 非 lit CTest；C++ 格式、Python 编译、45 份 Markdown 文档及
 `git diff --check` 通过。
 
-后续 C4d3 分为：
+当时规划的后续 C4d3 切片（现均已实现）：
 
 1. **C4d3b：分段 TaskStore 与暂停卸载。** 流式保存方程/事实/关系和活动
    控制，原子发布 head 后再释放容量；验收配额提高、旧代保留、读写错误、
@@ -130,4 +132,4 @@ UnavailableEvidence。失败返回 expected 错误，不修改原任务，不静
    取消、只读、最终结果确认/重送及维护；明确双通道任务身份，不把执行
    完成当作已交付或已确认，不改变普通解释和 C4d2 新查询入口的语义。
 
-C4d 尚未全部完成；本轮也没有升级 C4d1 的精度保证或 Stage 推断规则。
+本轮没有升级 C4d1 的精度保证或 Stage 推断规则。

@@ -7,6 +7,9 @@
 namespace pagos::stage::provenance::recursive_wire {
 inline constexpr std::uint32_t manifest_version = 5;
 inline constexpr std::uint32_t segmented_version = 6;
+// v7 is v6 with an acknowledged final receipt. Unconfirmed v5/v6 completion
+// implicitly owns sequence 1, so existing snapshots can be delivered unchanged.
+inline constexpr std::uint32_t receipt_version = 7;
 inline constexpr std::string_view checksum_domain = "pagos.recursive-task.v1";
 inline void require(bool value) {
     if (!value)
@@ -47,9 +50,11 @@ inline cache::Bytes sealed(std::expected<cache::Bytes, cache::Error> bytes,
     bytes->insert(bytes->end(), hash.bytes.begin(), hash.bytes.end());
     return std::move(*bytes);
 }
-inline cache::TaskStatus task_status(QueryProgress progress) {
+inline cache::TaskStatus task_status(QueryProgress progress,
+                                     bool acknowledged = false) {
     return progress == QueryProgress::Completed
-               ? cache::TaskStatus::AwaitingDelivery
+               ? (acknowledged ? cache::TaskStatus::Completed
+                               : cache::TaskStatus::AwaitingDelivery)
            : progress == QueryProgress::Cancelled ? cache::TaskStatus::Cancelled
                                                   : cache::TaskStatus::Paused;
 }

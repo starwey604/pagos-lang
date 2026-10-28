@@ -1,5 +1,6 @@
 #include "recursive_summaries.h"
 #include "pagos/stage/provenance_recursive.h"
+#include "query_task_support.h"
 
 #include <algorithm>
 #include <array>
@@ -248,6 +249,175 @@ void result(std::ostream& out, const FunctionEvidenceView& evidence,
         }
     out << "]}";
 }
+// The completed, immutable solver state is the result receipt. Rendering
+// excludes invocation-local fields (generation, read-only and stage_runs), so
+// (task, sequence) replays byte-for-byte under its strict compiler binding.
+void revision_json(std::ostream& out, const FunctionEvidenceRevision& value) {
+    out << "{\"closure\":";
+    quote(out, value.closure.hex());
+    out << ",\"positions\":";
+    quote(out, value.positions.hex());
+    out << ",\"source_revision\":";
+    quote(out, value.source.hex());
+    out << '}';
+}
+int run_recursive_task(const FunctionEvidenceView& evidence,
+                       std::string_view source,
+                       const FunctionSummaryEntry& summary, std::size_t slice,
+                       const RecursiveSummaryOptions& recursive,
+                       const QueryTaskOptions& options, bool stage_ran,
+                       bool statistics) {
+    using namespace query_task_cli;
+    const auto binding = evidence.checkpoint_binding(source);
+    const auto revision = evidence.revision(source);
+    if (!binding || !revision)
+        throw std::runtime_error("recursive task binding unavailable");
+    const auto id = options.id ? *options.id : fresh_id();
+    const auto channel =
+        recursive.channel == "value" ? QueryKind::Value : QueryKind::Effects;
+    cache::TaskStoreOptions bounds;
+    bounds.disk_bytes = options.disk_bytes;
+    bounds.store.codec.elements = options.record_limit;
+    const cache::Limits limits{.elements = options.record_limit};
+    // Validate the full saved binding with a read-only handle before opening
+    // an existing task for writing. A mismatch must never create or mutate it.
+    auto store = checked(cache::TaskStore::open(
+        options.directory, id,
+        options.action == "start" ? cache::TaskAccess::ReadWrite
+                                  : cache::TaskAccess::ReadOnly,
+        bounds));
+    auto head = checked(store.head());
+    if (options.action == "start" && head)
+        throw std::runtime_error("query ID already exists; resume it or choose "
+                                 "a new ID");
+    if (options.action != "start" && !head)
+        throw std::runtime_error("query task has no saved head");
+    auto task = head ? checked(RecursiveSummaryTask::restore(
+                           *binding, store, *head, summary.id, channel, limits))
+                     : RecursiveSummaryTask(*binding, id, summary.id, channel);
+    if (!head) {
+        head = checked(task.save_segmented(
+            store, 0, options.paging.segment_bytes, limits));
+        std::cerr << "recursive-task: id=" << id.hex()
+                  << " saved initial state\n";
+    }
+    if (options.action == "cancel" &&
+        task.progress() == QueryProgress::Completed)
+        throw std::runtime_error("recursive result is complete; acknowledge "
+                                 "it or explicitly discard inactive tasks");
+    const auto previously_acknowledged = task.acknowledged_sequence();
+    if (options.acknowledge && !task.acknowledge_result(*options.acknowledge))
+        throw std::runtime_error(
+            "acknowledgement does not match a completed recursive result");
+    bool changed = previously_acknowledged != task.acknowledged_sequence();
+    if (!options.read_only && task.progress() != QueryProgress::Completed) {
+        if (options.action != "start")
+            store = checked(cache::TaskStore::open(
+                options.directory, id, cache::TaskAccess::ReadWrite, bounds));
+        if (options.action == "cancel") {
+            changed = task.progress() != QueryProgress::Cancelled;
+            task.cancel();
+        } else {
+            // A zero invocation budget preserves the stored state verbatim.
+            const auto start_steps = task.stats().steps;
+            for (std::size_t used = 0;
+                 !options.max_slices || used < *options.max_slices; ++used) {
+                auto amount = slice;
+                if (recursive.max_steps) {
+                    const auto spent = task.stats().steps - start_steps;
+                    if (spent >= *recursive.max_steps)
+                        break;
+                    amount = std::min(amount, *recursive.max_steps - spent);
+                }
+                const auto current = checked(store.head());
+                if (!current || current->generation != head->generation)
+                    throw std::runtime_error(
+                        "query head changed; resume the saved task again");
+                task.resume();
+                (void)task.advance(amount);
+                changed = true;
+                if (task.storage_failure())
+                    throw std::runtime_error(
+                        error_text(*task.storage_failure()));
+                if (task.failure() || task.progress() == QueryProgress::Failed)
+                    throw std::runtime_error(
+                        "recursive summary evidence unavailable");
+                if (task.progress() == QueryProgress::Completed)
+                    break;
+            }
+        }
+    }
+    std::ostringstream delivery;
+    if (task.pending_sequence()) {
+        delivery << "{\"schema\":1,\"type\":\"recursive-result\",\"task\":\""
+                 << id.hex() << "\",\"sequence\":1,\"evidence\":";
+        revision_json(delivery, *revision);
+        delivery << ",\"local_ids\":true,\"summary\":";
+        describe(delivery, evidence, summary);
+        delivery << ",\"result\":";
+        result(delivery, evidence, task);
+        delivery << "}\n";
+    }
+    const auto cumulative_work = task.stats();
+    // Rendering can fail; no output escapes before the atomic head contains
+    // the result. Publication errors (including after rename) require reread.
+    if (changed) {
+        if (options.action != "start")
+            store = checked(cache::TaskStore::open(
+                options.directory, id, cache::TaskAccess::ReadWrite, bounds));
+        head = checked(task.offload(store, head->generation,
+                                    options.paging.segment_bytes, limits));
+    }
+    std::ostringstream status;
+    status
+        << "{\"schema\":1,\"type\":\"status\",\"mode\":\"recursive-summary\","
+           "\"task\":\""
+        << id.hex() << "\",\"generation\":" << head->generation
+        << ",\"state\":";
+    quote(status, status_name(head->status));
+    status << ",\"summary_key\":";
+    quote(status, summary.key.hex());
+    status << ",\"channel\":";
+    quote(status, recursive.channel);
+    status << ",\"storage\":\"memory\",\"read_only\":"
+           << (options.read_only ? "true" : "false") << ",\"offloaded\":"
+           << (task.state_memory().offloaded ? "true" : "false")
+           << ",\"continuation_available\":true,\"restart_required\":false,"
+              "\"acknowledge\":";
+    if (task.pending_sequence())
+        status << task.pending_sequence();
+    else
+        status << "null";
+    status << ",\"acknowledged\":" << task.acknowledged_sequence()
+           << ",\"stage_runs\":" << (stage_ran ? 1 : 0) << ",\"work\":";
+    work(status, cumulative_work);
+    status << "}\n";
+    std::cout << delivery.str() << status.str();
+    std::cout.flush();
+    if (!std::cout)
+        throw std::runtime_error(
+            "recursive output failed; the saved result can be replayed");
+    std::cerr << "recursive-task: id=" << id.hex()
+              << " state=" << status_name(head->status)
+              << " generation=" << head->generation << '\n';
+    if (task.pending_sequence())
+        std::cerr << "recursive-task: confirm result 1 with --query-ack=1 "
+                     "after committing it\n";
+    if (statistics) {
+        const auto reads = evidence.view()->read_stats();
+        std::cerr << "recursive-evidence metadata-objects="
+                  << evidence.metadata_objects_read()
+                  << " metadata-bytes=" << evidence.metadata_bytes_read()
+                  << " cold-objects=" << reads.objects_read
+                  << " cold-bytes=" << reads.payload_bytes_read
+                  << " cached-bytes=" << reads.cached_bytes
+                  << " live-bytes=" << reads.live_bytes << '\n';
+    }
+    return head->status == cache::TaskStatus::Completed ||
+                   head->status == cache::TaskStatus::Cancelled
+               ? 0
+               : 3;
+}
 } // namespace
 bool recursive_evidence_mode(std::string_view mode) {
     return mode == "summaries" || mode == "recursive-summary";
@@ -310,9 +480,14 @@ validate_recursive_summary_options(const RecursiveSummaryOptions& options,
                                    "recursive-summary evidence mode");
         return {};
     }
-    if (!root.empty() || query_options)
+    if (!root.empty() || (query_options && mode == "summaries"))
         return std::unexpected("recursive summary modes do not accept "
                                "evidence-root or query-task options");
+    if (query_options && mode == "recursive-summary" &&
+        (!options.channel_set || options.channel == "both"))
+        return std::unexpected(
+            "persistent recursive tasks require one --evidence-channel=value "
+            "or effects");
     if (!options.name.empty() && options.key)
         return std::unexpected("choose a summary name or key, not both");
     if (mode == "recursive-summary" && options.name.empty() && !options.key)
@@ -327,7 +502,8 @@ int run_recursive_summaries(const FunctionEvidenceView& evidence,
                             std::string_view source, std::string_view mode,
                             std::size_t slice,
                             const RecursiveSummaryOptions& options,
-                            bool stage_ran, bool statistics) {
+                            bool stage_ran, bool statistics,
+                            const QueryTaskOptions& query) {
     try {
         if (!slice || !recursive_evidence_mode(mode))
             throw std::invalid_argument("invalid recursive summary request");
@@ -343,6 +519,9 @@ int run_recursive_summaries(const FunctionEvidenceView& evidence,
         if (mode == "recursive-summary" && matches.size() != 1)
             throw std::runtime_error("summary name is ambiguous; list "
                                      "summaries and select a full key");
+        if (query.enabled())
+            return run_recursive_task(evidence, source, *matches[0], slice,
+                                      options, query, stage_ran, statistics);
         const auto revision = evidence.revision(source);
         if (!revision)
             throw std::runtime_error(

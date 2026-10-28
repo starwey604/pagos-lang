@@ -75,7 +75,8 @@ struct RecursiveStorageStats {
 // primitive steps (one edge/fact/queue operation), not elapsed time or RSS.
 inline constexpr std::uint32_t recursive_engine_version = 1;
 // C4d3b supports explicit segmented TaskStore saves and paused unloading.
-// Active state/restore are resident; result receipts remain C4d3c work.
+// Active state/restore are resident. Completed state is the immutable result
+// receipt (sequence 1); stdout delivery alone never acknowledges it.
 class RecursiveSummaryTask {
   public:
     RecursiveSummaryTask(std::shared_ptr<const EvidenceView> evidence,
@@ -114,6 +115,11 @@ class RecursiveSummaryTask {
                                         std::stop_token cancellation = {});
     void cancel();
     void resume();
+    [[nodiscard]] std::uint64_t pending_sequence() const;
+    [[nodiscard]] std::uint64_t acknowledged_sequence() const;
+    // Only sequence 1 of a completed task is valid; repeated acknowledgement
+    // is idempotent. Persist with save_segmented/offload before reporting it.
+    [[nodiscard]] bool acknowledge_result(std::uint64_t sequence);
     [[nodiscard]] QueryProgress progress() const;
     [[nodiscard]] const RecursiveStats& stats() const;
     [[nodiscard]] const std::optional<EvidenceError>& failure() const;

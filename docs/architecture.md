@@ -517,7 +517,9 @@ solver checkpoints, validated SCC/worklist restoration and value-based iterator
 positions. [C4d3b](provenance-recursive-storage-c4d3b.md) adds streamed segmented
 TaskStore publication, actual paused release and retryable unloaded reads.
 Restore remains resident; completed heads await delivery. Durable CLI receipts
-remain C4d3c work; native query rules stay intact.
+are implemented by [C4d3c](provenance-recursive-tasks-c4d3c.md): final
+sequence 1 replays from immutable completed state, and only explicit durable
+confirmation enables terminal cleanup. Native query rules stay intact.
 Existing graph reference/span lifetimes and the default one-shot query interface
 remain intact until their replacements are explicitly validated; snapshot
 serialization alone does not reduce build peaks.

@@ -804,4 +804,135 @@ TEST_F(RecursiveCheckpointTest,
               << " validation-payload=" << read.validation_payload_bytes
               << '\n';
 }
+
+TEST_F(RecursiveCheckpointTest,
+       FinalReceiptPersistsMonotonicallyAndEnablesCleanup) {
+    auto view = open();
+    const auto id = summary(view);
+    const auto parent = directory / "receipts";
+    {
+        auto store = cache::TaskStore::open(parent, task_id,
+                                            cache::TaskAccess::ReadWrite);
+        ASSERT_TRUE(store);
+        RecursiveSummaryTask task(binding(view), task_id, id);
+        EXPECT_EQ(task.pending_sequence(), 0U);
+        EXPECT_FALSE(task.acknowledge_result(1));
+        finish_task(task);
+        const auto expected = task.result();
+        const auto work = task.stats();
+        EXPECT_EQ(task.pending_sequence(), 1U);
+        EXPECT_FALSE(task.acknowledge_result(0));
+        EXPECT_FALSE(task.acknowledge_result(2));
+        auto pending = task.offload(*store, 0, 128);
+        ASSERT_TRUE(pending);
+        EXPECT_EQ(pending->status, cache::TaskStatus::AwaitingDelivery);
+        EXPECT_EQ(task.pending_sequence(), 1U); // Does not load the task.
+        EXPECT_TRUE(task.state_memory().offloaded);
+        auto stale = RecursiveSummaryTask::restore(
+            binding(view), *store, *pending, id, QueryKind::Value);
+        ASSERT_TRUE(stale);
+        EXPECT_TRUE(task.acknowledge_result(1)); // Loads before updating.
+        EXPECT_EQ(task.pending_sequence(), 0U);
+        EXPECT_EQ(task.acknowledged_sequence(), 1U);
+        EXPECT_TRUE(task.acknowledge_result(1)); // Retry is idempotent.
+        EXPECT_FALSE(task.checkpoint()); // v5 cannot erase the watermark.
+        auto acknowledged = task.offload(*store, pending->generation, 128);
+        ASSERT_TRUE(acknowledged);
+        EXPECT_EQ(acknowledged->status, cache::TaskStatus::Completed);
+        EXPECT_EQ(task.acknowledged_sequence(), 1U);
+        EXPECT_TRUE(task.state_memory().offloaded);
+        auto restored = RecursiveSummaryTask::restore(
+            binding(view), *store, *acknowledged, id, QueryKind::Value);
+        ASSERT_TRUE(restored);
+        EXPECT_EQ(restored->pending_sequence(), 0U);
+        EXPECT_EQ(restored->acknowledged_sequence(), 1U);
+        EXPECT_EQ(restored->result(), expected);
+        same_work(restored->stats(), work);
+        EXPECT_EQ(restored->stats().slices, work.slices);
+        EXPECT_EQ(restored->advance(1000), QueryProgress::Completed);
+        EXPECT_EQ(restored->stats().slices, work.slices);
+        restored->cancel();
+        restored->resume();
+        EXPECT_EQ(restored->pending_sequence(), 0U);
+        const auto rollback =
+            stale->save_segmented(*store, acknowledged->generation, 128);
+        ASSERT_FALSE(rollback);
+        EXPECT_EQ(rollback.error().code, CheckpointErrorCode::InvalidState);
+        EXPECT_EQ(**store->head(), *acknowledged);
+        // Immutable older heads can still replay their unconfirmed result.
+        auto replay = RecursiveSummaryTask::restore(
+            binding(view), *store, *pending, id, QueryKind::Value);
+        ASSERT_TRUE(replay);
+        EXPECT_EQ(replay->pending_sequence(), 1U);
+        EXPECT_EQ(replay->result(), expected);
+    }
+    EXPECT_EQ(cache::reclaim_tasks(parent)->reclaimed, 1U);
+}
+TEST_F(RecursiveCheckpointTest,
+       ReceiptPublicationFailuresAndMalformedWatermarks) {
+    auto view = open();
+    const auto id = summary(view);
+    const auto parent = directory / "receipt-faults";
+    auto store =
+        cache::TaskStore::open(parent, task_id, cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    RecursiveSummaryTask task(binding(view), task_id, id);
+    finish_task(task);
+    auto pending = task.save_segmented(*store, 0, 128);
+    ASSERT_TRUE(pending);
+    ASSERT_TRUE(task.acknowledge_result(1));
+    cache::TaskStoreOptions quota;
+    quota.disk_bytes = 256;
+    auto small = cache::TaskStore::open(parent, task_id,
+                                        cache::TaskAccess::ReadWrite, quota);
+    ASSERT_TRUE(small);
+    EXPECT_FALSE(task.offload(*small, pending->generation, 128));
+    EXPECT_FALSE(task.state_memory().offloaded);
+    EXPECT_EQ(**store->head(), *pending);
+    auto replay = RecursiveSummaryTask::restore(binding(view), *store, *pending,
+                                                id, QueryKind::Value);
+    ASSERT_TRUE(replay);
+    EXPECT_EQ(replay->pending_sequence(), 1U);
+    cache::TaskStoreOptions after_commit;
+    after_commit.store.fault = [](cache::IoOperation operation,
+                                  const fs::path& path) {
+        return operation == cache::IoOperation::ManifestPublished &&
+                       path.filename() == "head"
+                   ? std::make_error_code(std::errc::io_error)
+                   : std::error_code{};
+    };
+    auto ambiguous = cache::TaskStore::open(
+        parent, task_id, cache::TaskAccess::ReadWrite, after_commit);
+    ASSERT_TRUE(ambiguous);
+    EXPECT_FALSE(task.offload(*ambiguous, pending->generation, 128));
+    EXPECT_FALSE(task.state_memory().offloaded);
+    auto head = **store->head();
+    EXPECT_EQ(head.status, cache::TaskStatus::Completed);
+    auto recovered = RecursiveSummaryTask::restore(binding(view), *store, head,
+                                                   id, QueryKind::Value);
+    ASSERT_TRUE(recovered);
+    EXPECT_EQ(recovered->acknowledged_sequence(), 1U);
+    auto bytes = store->read(head.manifest);
+    ASSERT_TRUE(bytes);
+    ASSERT_EQ((*bytes)[9], 7U);
+    // Done-phase control has no active transfer; watermark follows 267 bytes.
+    for (const auto value : {0U, 2U}) {
+        auto corrupt = *bytes;
+        corrupt[267] = static_cast<std::uint8_t>(value);
+        resign(corrupt);
+        auto writer = store->begin(head.generation);
+        ASSERT_TRUE(writer);
+        auto object = writer->write(cache::ObjectKind::QueryTaskManifest,
+                                    std::move(corrupt));
+        ASSERT_TRUE(object);
+        auto invalid = head;
+        invalid.manifest = *object;
+        EXPECT_FALSE(RecursiveSummaryTask::restore(
+            binding(view), *store, invalid, id, QueryKind::Value));
+    }
+    auto mismatched = head;
+    mismatched.status = cache::TaskStatus::AwaitingDelivery;
+    EXPECT_FALSE(RecursiveSummaryTask::restore(
+        binding(view), *store, mismatched, id, QueryKind::Value));
+}
 } // namespace

@@ -172,7 +172,10 @@ dual-channel symbolic JSON with precision, cycle evidence and source bindings.
 checkpoints across process boundaries.
 [C4d3b](provenance-recursive-storage-c4d3b.md) adds segmented TaskStore saves,
 paused release, storage retry and separate codec/validation accounting.
-Durable CLI delivery remains C4d3c work.
+[C4d3c](provenance-recursive-tasks-c4d3c.md) completes the experimental
+persistent summary CLI with single-channel continuation, immutable final receipt
+replay, explicit confirmation and terminal cleanup. Pure detail replay remains
+C4e work; the default native recursion cut is unchanged.
 C4b-C4e cover construction spill, persistent query checkpoints,
 finite-domain recursive explanations and pure detail replay. These extensions
 are explanation capabilities, not new Stage inference rules. Query work limits,

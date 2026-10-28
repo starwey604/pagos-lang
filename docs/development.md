@@ -688,11 +688,18 @@ and TaskStore `restore`. State streams into nine tables; only successful head
 publication releases task containers. `storage_failure()` distinguishes retryable
 unloaded IO from inference failure; `state_memory()` and `storage_stats()` keep
 payload/codec/directory/validation accounting separate. Completed heads remain
-AwaitingDelivery until C4d3c integrates consumer receipts. v5 remains supported.
+AwaitingDelivery until explicit confirmation. v5 remains supported.
+
+[C4d3c](provenance-recursive-tasks-c4d3c.md) connects recursive-summary to
+query-dir/action/id, one explicit evidence-channel and bounded invocation work.
+Final result sequence 1 replays without writes or new work until query-ack=1.
+Acknowledgement uses v7 manifests and permits default maintenance; read-only
+inspection and pending result replay never confirm delivery. Execution/restore
+remain resident, and C4d2 without query-dir remains a fresh-query interface.
 
 ```sh
 ctest --test-dir build/debug -R 'RecursiveSummary|StageProvenanceQuery|FunctionEvidenceTest.Recursive|pagos-recursive-cli-process' \
   --output-on-failure
-ctest --test-dir build/debug -R 'RecursiveCheckpointTest|pagos-recursive-checkpoint-process' \
+ctest --test-dir build/debug -R 'RecursiveCheckpointTest|pagos-recursive-(checkpoint|task-cli)-process' \
   --output-on-failure
 ```

@@ -1,11 +1,11 @@
 #include "query_tasks.h"
 #include "pagos/stage/provenance_topology.h"
+#include "query_task_support.h"
 
 #include <algorithm>
 #include <charconv>
 #include <iostream>
 #include <limits>
-#include <random>
 #include <sstream>
 #include <stdexcept>
 #include <type_traits>
@@ -14,6 +14,7 @@ namespace pagos::driver {
 namespace {
 using namespace stage;
 using namespace stage::provenance;
+using namespace query_task_cli;
 template <class T> std::expected<T, std::string> number(std::string_view text) {
     T result{};
     const auto parsed =
@@ -40,13 +41,6 @@ std::expected<cache::Digest, std::string> task_id(std::string_view text) {
     }
     return id;
 }
-cache::Digest fresh_id() {
-    std::random_device random;
-    cache::Digest entropy;
-    for (auto& byte : entropy.bytes)
-        byte = static_cast<std::uint8_t>(random());
-    return cache::fingerprint("pagos.cli-query-task.v1", entropy.bytes);
-}
 void quote(std::ostream& output, std::string_view text) {
     constexpr std::string_view hex = "0123456789abcdef";
     output << '"';
@@ -60,56 +54,6 @@ void quote(std::ostream& output, std::string_view text) {
             output << value;
     }
     output << '"';
-}
-std::string error_text(const cache::StoreError& error) {
-    switch (error.code) {
-    case cache::StoreErrorCode::NotFound:
-        return "query task not found";
-    case cache::StoreErrorCode::MissingObject:
-        return "query state object missing";
-    case cache::StoreErrorCode::CorruptManifest:
-    case cache::StoreErrorCode::CorruptObject:
-        return "query state object corrupt";
-    case cache::StoreErrorCode::LimitExceeded:
-        return "query storage limit exceeded";
-    case cache::StoreErrorCode::ReadOnly:
-        return "query storage is read-only";
-    case cache::StoreErrorCode::StaleGeneration:
-        return "query head changed; resume the saved task again";
-    case cache::StoreErrorCode::LockBusy:
-        return "query task writer is busy";
-    case cache::StoreErrorCode::IncompatibleVersion:
-        return "query storage version is incompatible";
-    default:
-        return "query storage failure" +
-               (error.io ? ": " + error.io.message() : "");
-    }
-}
-std::string error_text(const CheckpointError& error) {
-    if (error.storage)
-        return error_text(*error.storage);
-    switch (error.code) {
-    case CheckpointErrorCode::BindingMismatch:
-        return "query binding mismatch (source, evidence, root, channel or "
-               "mode)";
-    case CheckpointErrorCode::IncompatibleVersion:
-        return "incompatible query checkpoint or storage mode";
-    case CheckpointErrorCode::Corrupt:
-        return "corrupt query checkpoint";
-    case CheckpointErrorCode::LimitExceeded:
-        return "query state or buffer limit exceeded";
-    case CheckpointErrorCode::UnavailableEvidence:
-        return "query evidence unavailable";
-    case CheckpointErrorCode::OutOfMemory:
-        return "query allocation failed";
-    default:
-        return "invalid query checkpoint state";
-    }
-}
-template <class T, class E> T checked(std::expected<T, E> value) {
-    if (!value)
-        throw std::runtime_error(error_text(value.error()));
-    return std::move(*value);
 }
 std::string_view progress_name(QueryProgress progress) {
     switch (progress) {
@@ -125,19 +69,6 @@ std::string_view progress_name(QueryProgress progress) {
         return "failed";
     }
     throw std::runtime_error("invalid query progress");
-}
-std::string_view status_name(cache::TaskStatus status) {
-    switch (status) {
-    case cache::TaskStatus::Paused:
-        return "paused";
-    case cache::TaskStatus::AwaitingDelivery:
-        return "awaiting-delivery";
-    case cache::TaskStatus::Cancelled:
-        return "cancelled";
-    case cache::TaskStatus::Completed:
-        return "completed";
-    }
-    throw std::runtime_error("invalid query status");
 }
 void location(std::ostream& output, const EvidenceView& view, NodeId id) {
     const auto lease = view.pin(id);
@@ -522,7 +453,7 @@ validate_query_task_options(const QueryTaskOptions& options, bool evidence_read,
     if (!evidence_read && !evidence_write)
         return std::unexpected(
             "query tasks require function evidence read or write");
-    if (root.empty())
+    if (root.empty() && mode != "recursive-summary")
         return std::unexpected("query tasks require one --evidence-root=NAME");
     if (mode == "decisions")
         return std::unexpected("decision listings do not use query tasks");
@@ -540,13 +471,21 @@ validate_query_task_options(const QueryTaskOptions& options, bool evidence_read,
         (options.storage == "paged" || options.channel_set))
         return std::unexpected(
             "topology uses resident preparation and both channels");
+    if (mode == "recursive-summary" &&
+        (options.storage != "memory" || options.channel_set ||
+         options.paging_set))
+        return std::unexpected(
+            "recursive tasks use resident execution; select one "
+            "--evidence-channel and omit query channel/buffer options");
     if (options.paging_set && options.storage != "paged")
         return std::unexpected(
             "query buffer options require --query-storage=paged");
-    if (options.paging.segment_bytes < 72 ||
+    if (options.paging.segment_bytes <
+            (mode == "recursive-summary" ? 76 : 72) ||
         options.paging.segment_bytes > cache::Limits{}.bytes)
         return std::unexpected(
-            "query segment size must be between 72 and the codec byte limit");
+            "query segment size is below its record width or above the codec "
+            "byte limit");
     return {};
 }
 int run_query_task(const FunctionEvidenceView& evidence,

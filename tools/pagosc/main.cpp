@@ -452,6 +452,10 @@ std::expected<Options, std::string> parse_options(int argument_count,
             evidence_root, evidence_mode);
         if (!valid)
             return std::unexpected(valid.error());
+        if (evidence_mode == "recursive-summary" && query.read_only &&
+            recursive.steps_set)
+            return std::unexpected(
+                "read-only recursive tasks do not accept solver budgets");
         if (provenance.mode !=
             pagos::stage::ProvenanceQueryOptions::Mode::Resumable)
             return std::unexpected(
@@ -640,7 +644,7 @@ int main(int argument_count, char** arguments) {
                 return pagos::driver::run_recursive_summaries(
                     *view, source->text(), options->evidence_mode,
                     options->provenance.slice, options->recursive, false,
-                    options->provenance.telemetry);
+                    options->provenance.telemetry, options->query);
             if (options->query.enabled())
                 return pagos::driver::run_query_task(
                     *view, source->text(), options->evidence_root,
@@ -782,7 +786,7 @@ int main(int argument_count, char** arguments) {
             return pagos::driver::run_recursive_summaries(
                 *view, source->text(), options->evidence_mode,
                 options->provenance.slice, options->recursive, true,
-                options->provenance.telemetry);
+                options->provenance.telemetry, options->query);
         if (options->query.enabled())
             return pagos::driver::run_query_task(
                 *view, source->text(), options->evidence_root,

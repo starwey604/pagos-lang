@@ -71,6 +71,7 @@ struct RecursiveSummaryTask::Impl {
     QueryProgress progress{QueryProgress::Running};
     Phase phase{Phase::Discover};
     RecursiveStats stats;
+    bool result_acknowledged{};
     std::optional<EvidenceError> failure;
     struct Offloaded {
         cache::TaskStore store;

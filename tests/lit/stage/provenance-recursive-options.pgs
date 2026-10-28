@@ -5,7 +5,7 @@
 // RUN: not %pagosc --evidence-channel=other explain-provenance %s 2>&1 | FileCheck %s --check-prefix=CHANNEL
 // RUN: not %pagosc --recursive-max-steps=-1 explain-provenance %s 2>&1 | FileCheck %s --check-prefix=STEPS
 // RUN: not %pagosc --evidence-write=%t.evidence --evidence-mode=recursive-summary --evidence-summary=pick --evidence-root=aa explain-provenance %s 2>&1 | FileCheck %s --check-prefix=ROOT
-// RUN: not %pagosc --evidence-write=%t.evidence --evidence-mode=recursive-summary --evidence-summary=pick --query-dir=%t.tasks explain-provenance %s 2>&1 | FileCheck %s --check-prefix=ROOT
+// RUN: not %pagosc --evidence-write=%t.evidence --evidence-mode=recursive-summary --evidence-summary=pick --query-dir=%t.tasks explain-provenance %s 2>&1 | FileCheck %s --check-prefix=SINGLE
 // RUN: not %pagosc --evidence-write=%t.evidence --evidence-mode=summaries --recursive-max-steps=0 explain-provenance %s 2>&1 | FileCheck %s --check-prefix=CATALOG
 // RUN: not %pagosc --evidence-write=%t.evidence --evidence-mode=summaries --provenance-query=legacy explain-provenance %s 2>&1 | FileCheck %s --check-prefix=LEGACY
 // RUN: not %pagosc --evidence-write=%t.evidence --evidence-mode=summaries check %s 2>&1 | FileCheck %s --check-prefix=COMMAND
@@ -18,6 +18,7 @@
 // CHANNEL: error: invalid recursive summary channel
 // STEPS: error: invalid recursive step limit
 // ROOT: error: recursive summary modes do not accept evidence-root or query-task options
+// SINGLE: error: persistent recursive tasks require one --evidence-channel=value or effects
 // CATALOG: error: summary catalog does not accept solver budgets or channels
 // LEGACY: error: recursive summaries require resumable query mode
 // COMMAND: error: function evidence requires explain-provenance

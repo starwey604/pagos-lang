@@ -610,8 +610,10 @@ Source/context 清单，不改变 Stage 或 RecursiveCompletion。
 [C4d3a](provenance-recursive-checkpoint-c4d3a.md) 加入绑定修订的递归驻留
 快照和严格恢复，保留 SCC/worklist 及活动替换位置。
 [C4d3b](provenance-recursive-storage-c4d3b.md) 加入九表分段 TaskStore、
-暂停卸载和存储重试；恢复仍完整驻留。持久 CLI/消费确认留给 C4d3c，
-完成 head 暂保持 AwaitingDelivery，原生查询截断仍保留。
+暂停卸载和存储重试；恢复仍完整驻留。
+[C4d3c](provenance-recursive-tasks-c4d3c.md) 接入单特化/单通道持久 CLI、
+只读重放、取消与最终结果序号 1 的显式确认；确认水位原子保存后才允许
+默认回收。原生查询截断仍保留，有限摘要实验不改变 Stage。
 
 持久化保留 `SummaryRef`/调用回边、参数作用域和 SCC 组件，不枚举动态
 递归实例，也不把递归环当格式损坏。拓扑可完整保存，而来源求解仍可能

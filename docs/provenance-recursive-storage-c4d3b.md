@@ -3,7 +3,8 @@
 2026-10-27。C4d3b 将 [C4d3a](provenance-recursive-checkpoint-c4d3a.md) 的
 递归求解状态接入 TaskStore，增加 v6 流式分段、原子 head、暂停容量释放、
 严格恢复及存储失败重试。v5 驻留快照继续兼容，求解规则和精度不变。
-持久 CLI、结果交付确认及重送留给 C4d3c。
+持久 CLI、结果交付确认及重送后续已由
+[C4d3c](provenance-recursive-tasks-c4d3c.md) 实现；本页记录分段存储基线。
 
 ## API 与发布
 
@@ -138,5 +139,5 @@ Clang Debug 的一次确定性容量检查：真实源码为接收 Runtime x 的
 419/419 非 lit CTest；C++ 格式、Python 编译、46 份 Markdown 文档及
 `git diff --check` 通过。
 
-下一轮 C4d3c 接入持久递归 CLI、单通道任务身份、最终结果确认/重送、
-只读和取消。C4d 的该部分尚未全部完成，精度与 Stage 规则保持原有边界。
+后续 [C4d3c](provenance-recursive-tasks-c4d3c.md) 已补齐持久 CLI、
+单通道任务身份、结果确认/重送、只读和取消；精度与 Stage 规则保持原有边界。
