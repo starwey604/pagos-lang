@@ -363,6 +363,7 @@ TEST_F(StageSpillTest,
         auto failed = analyze(prefix + large_function(32), c, cache());
         EXPECT_FALSE(failed.module->provenance->available());
         EXPECT_EQ(failed.cache.writes, 0U);
+        EXPECT_EQ(failed.cache.replay_writes, 0U);
         EXPECT_GT(failed.cache.blocked_writes, 0U);
         EXPECT_FALSE(fs::exists(cache().directory));
         EXPECT_GT(failed.cache.pending_payload_bytes_peak, 0U);
@@ -373,6 +374,7 @@ TEST_F(StageSpillTest,
                           config(), cache());
     EXPECT_FALSE(failed.diagnostics.empty());
     EXPECT_EQ(failed.cache.writes, 0U);
+    EXPECT_EQ(failed.cache.replay_writes, 0U);
     EXPECT_GT(failed.cache.blocked_writes, 0U);
     EXPECT_FALSE(fs::exists(cache().directory));
 }

@@ -62,7 +62,8 @@ enum class QueryKind : std::uint8_t {
     SpecializeResidual = 2,
     FreezeEvidence = 3,
     FreezeEvidencePositions = 4,
-    FreezeFunctionEvidence = 5
+    FreezeFunctionEvidence = 5,
+    FreezeScalarReplay = 6
 };
 struct QueryKey {
     QueryKind kind{QueryKind::EvaluatePureSpecialization};

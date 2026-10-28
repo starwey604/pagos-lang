@@ -4,6 +4,7 @@
 #include "pagos/hir/hir.h"
 #include "pagos/stage/cache_config.h"
 #include "pagos/stage/cache_identity.h"
+#include "pagos/stage/replay_descriptor.h"
 
 #include <chrono>
 
@@ -25,6 +26,7 @@ struct ScalarQuery {
     std::optional<std::size_t> construction_after;
     cache::Bytes recipe;
     bool residual{};
+    std::optional<ReplayDescriptor> replay;
     [[nodiscard]] source::Span fuel_span(std::size_t index) const;
 };
 
@@ -106,6 +108,7 @@ class ScalarCache {
     const sema::TypeTable& types_;
     cache::QueryContext context_;
     CacheMode mode_;
+    CacheEvidence evidence_;
     bool timings_;
     CacheTelemetry& telemetry_;
     cache::FileStore store_;

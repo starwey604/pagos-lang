@@ -2,6 +2,7 @@
 #include "memory_accounting.h"
 #include "pagos/stage/provenance_snapshot.h"
 #include "residual_template.h"
+#include "scalar_replay.h"
 
 #include "../cache/wire.h"
 
@@ -118,8 +119,9 @@ ScalarCache::ScalarCache(const syntax::Module& module,
                          const CacheConfig& config, CacheTelemetry& telemetry,
                          bool defer_publication)
     : types_(types), context_(context), mode_(config.mode),
-      timings_(config.measure_timings), telemetry_(telemetry),
-      store_(config.directory), defer_publication_(defer_publication) {
+      evidence_(config.evidence), timings_(config.measure_timings),
+      telemetry_(telemetry), store_(config.directory),
+      defer_publication_(defer_publication) {
     CacheTimer timer(telemetry_.dependency_ns, timings_);
     auto identity = build_cache_identity(module, types, context);
     if (identity)
@@ -296,6 +298,12 @@ ScalarCache::query(const syntax::Function& function,
         if (!encoded)
             return std::nullopt;
         result.recipe = std::move(*encoded);
+        if (!residual && scalar(result.result_type)) {
+            auto replay =
+                replay_detail::recipe(function, types_, *identity_, result.key);
+            if (replay)
+                result.replay = std::move(*replay);
+        }
         return result;
     } catch (const std::bad_alloc&) {
         ++telemetry_.errors;
@@ -369,6 +377,20 @@ ScalarCache::load(const ScalarQuery& query,
         const auto semantic = semantic_result(*value, *resources);
         if (!semantic || *semantic != candidate->semantic_result)
             return reject();
+        if (evidence_ == CacheEvidence::ScalarReplay &&
+            scalar(query.result_type)) {
+            if (!query.replay) {
+                ++telemetry_.replay_rejected;
+                return reject();
+            }
+            auto replay =
+                replay_detail::load(store_, *identity_, *query.replay);
+            if (!replay || replay->value != *decoded) {
+                ++telemetry_.replay_rejected;
+                return reject();
+            }
+            ++telemetry_.replay_hits;
+        }
         const auto span = identity_->resolve(query.result_anchor);
         if (!span || (query.result_parameter &&
                       *query.result_parameter >= arguments.size()))
@@ -417,6 +439,29 @@ void ScalarCache::publish(const ScalarQuery& query, const hir::ExprPtr& result,
         }
         timer.stop();
         publish_or_defer(query.key, *semantic, artifacts, false);
+        if (query.replay) {
+            auto replay = *query.replay;
+            auto expected =
+                replay_value_fingerprint({result->type, *result->constant});
+            if (!expected) {
+                ++telemetry_.errors;
+                return;
+            }
+            replay.expected_result = *expected;
+            auto descriptor = encode_replay_descriptor(replay);
+            if (!descriptor) {
+                ++telemetry_.errors;
+                return;
+            }
+            const std::array evidence{
+                cache::ArtifactInput{"value", cache::ObjectKind::Value, *value},
+                cache::ArtifactInput{"replay",
+                                     cache::ObjectKind::ReplayDescriptor,
+                                     *descriptor}};
+            publish_or_defer(scalar_replay_key(query.key),
+                             replay_detail::semantic(*value, *descriptor),
+                             evidence, false);
+        }
     } catch (const std::bad_alloc&) {
         ++telemetry_.errors;
     }
@@ -544,8 +589,12 @@ void ScalarCache::publish_or_defer(
     if (!published)
         ++telemetry_.errors;
     else if (*published == cache::PublishResult::Published) {
-        ++telemetry_.writes;
-        telemetry_.residual_writes += residual ? 1U : 0U;
+        if (key.kind == cache::QueryKind::FreezeScalarReplay)
+            ++telemetry_.replay_writes;
+        else {
+            ++telemetry_.writes;
+            telemetry_.residual_writes += residual ? 1U : 0U;
+        }
     }
 }
 std::size_t ScalarCache::memory_bytes() const {

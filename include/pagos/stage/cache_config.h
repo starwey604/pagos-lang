@@ -7,11 +7,15 @@
 namespace pagos::stage {
 
 enum class CacheMode { Off, ReadWrite, ReadOnly };
+enum class CacheEvidence { Value, ScalarReplay };
 
 struct CacheConfig {
     CacheMode mode{CacheMode::Off};
     std::filesystem::path directory;
     bool measure_timings{};
+    // Applies to C2 scalar value reuse; arrays/residual templates retain their
+    // existing capability contracts. CacheMode::Off records nothing.
+    CacheEvidence evidence{CacheEvidence::Value};
 };
 
 // Physical work and storage outcomes, separate from semantic AnalysisStats.
@@ -29,6 +33,7 @@ struct CacheTelemetry {
     std::size_t residual_hits{};
     std::size_t residual_writes{};
     std::size_t blocked_writes{};
+    std::size_t replay_writes{}, replay_hits{}, replay_rejected{};
     std::size_t pending_payload_bytes_peak{};
     // Inclusive physical phase times; never part of cache keys or budgets.
     std::uint64_t dependency_ns{};

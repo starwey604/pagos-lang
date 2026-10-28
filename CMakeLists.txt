@@ -148,7 +148,8 @@ add_library(pagos_stage lib/stage/stage_analyzer.cpp
     lib/stage/provenance_analysis.cpp lib/stage/provenance_snapshot.cpp
     lib/stage/cache_identity.cpp lib/stage/replay_descriptor.cpp
     lib/stage/function_evidence.cpp lib/stage/function_evidence_view.cpp
-    lib/stage/scalar_cache.cpp lib/stage/residual_template.cpp)
+    lib/stage/scalar_cache.cpp lib/stage/scalar_replay.cpp
+    lib/stage/residual_template.cpp)
 add_library(Pagos::stage ALIAS pagos_stage)
 target_include_directories(pagos_stage PUBLIC include)
 target_link_libraries(pagos_stage

@@ -276,14 +276,21 @@ TEST_F(StageCache, ReadOnlyMissAndStorageFailureAreNonSemantic) {
 
 TEST_F(StageCache, CorruptOrMissingRequiredObjectsFallBack) {
     run(square, stage::CacheMode::ReadWrite);
-    for (const auto& entry :
-         fs::recursive_directory_iterator(root / "objects")) {
-        if (entry.is_regular_file()) {
-            std::ofstream(entry.path(), std::ios::binary | std::ios::trunc)
-                << "corrupt";
-            break;
-        }
-    }
+    cache_test::Input input(square);
+    const auto identity = input.identity();
+    ASSERT_TRUE(identity);
+    const auto key = stage::make_query_key(identity->definitions.front(),
+                                           cache_test::context(),
+                                           cache_test::key().arguments);
+    ASSERT_TRUE(key);
+    const auto candidate =
+        cache::FileStore(root).lookup(*key, identity->module_fingerprint);
+    ASSERT_TRUE(candidate);
+    ASSERT_FALSE(candidate->artifacts.empty());
+    const auto hash = candidate->artifacts.front().object.digest.hex();
+    std::ofstream(root / "objects" / hash.substr(0, 2) / hash,
+                  std::ios::binary | std::ios::trunc)
+        << "corrupt";
     const auto hot = run(square, stage::CacheMode::ReadOnly);
     equivalent(run(square, stage::CacheMode::Off), hot);
     EXPECT_EQ(hot.telemetry.hits, 0U);

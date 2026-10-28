@@ -32,7 +32,7 @@ gtest_discover_tests(pagos_provenance_tests DISCOVERY_MODE PRE_TEST)
 
 add_executable(pagos_cache_tests
     unit/cache_codec_test.cpp unit/cache_key_test.cpp unit/cache_store_test.cpp
-    unit/replay_descriptor_test.cpp
+    unit/replay_descriptor_test.cpp unit/scalar_replay_test.cpp
     unit/stage_cache_test.cpp unit/evidence_view_test.cpp unit/function_evidence_test.cpp
     unit/stage_spill_test.cpp unit/query_checkpoint_test.cpp
     unit/recursive_checkpoint_test.cpp unit/task_store_test.cpp)
@@ -48,6 +48,9 @@ add_executable(pagos_cache_store_probe cache_store_probe.cpp)
 target_link_libraries(pagos_cache_store_probe
     PRIVATE Pagos::cache pagos_project_options)
 
+add_executable(pagos_scalar_replay_probe scalar_replay_probe.cpp)
+target_link_libraries(pagos_scalar_replay_probe PRIVATE Pagos::stage pagos_project_options)
+
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME pagos-cache-identity-process
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/cache_identity_process.py
@@ -56,6 +59,11 @@ add_test(NAME pagos-cache-store-process
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/cache_store_process.py
             $<TARGET_FILE:pagos_cache_store_probe>)
 set_tests_properties(pagos-cache-store-process PROPERTIES TIMEOUT 60)
+add_test(NAME pagos-scalar-replay-process
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scalar_replay_process.py
+            $<TARGET_FILE:pagos_scalar_replay_probe> $<TARGET_FILE:pagosc>)
+set_tests_properties(pagos-scalar-replay-process PROPERTIES TIMEOUT 120)
+
 add_executable(pagos_stage_spill_probe stage_spill_probe.cpp)
 target_link_libraries(pagos_stage_spill_probe PRIVATE Pagos::stage pagos_project_options)
 add_test(NAME pagos-stage-spill-process

@@ -709,9 +709,23 @@ ctest --test-dir build/debug -R 'RecursiveCheckpointTest|pagos-recursive-(checkp
 [C4e1a](provenance-replay-descriptor-c4e1a.md) provides the versioned
 ReplayDescriptor codec, typed straight-line recipe admission and current
 key/input/result/anchor validation. FileStore can explicitly store kind 15;
-Stage and CLI do not generate or execute these objects yet. Missing descriptors
+The descriptor API does not generate or execute recipes; Stage recording is
+described below. Missing descriptors
 return MissingDescriptor rather than synthesizing a recipe from a folded value.
 
 ```sh
 build/debug/tests/pagos_cache_tests --gtest_filter='ReplayDescriptor.*'
+```
+
+[C4e1b](provenance-scalar-replay-c4e1b.md) now records admitted real scalar
+bodies during Stage cache writes. Use `--cache-evidence=scalar-replay` with
+read-write/read-only Stage caching to require source-bound replay evidence for
+C2 scalar hits. Missing evidence causes ordinary evaluation; default value reuse
+and array/residual contracts remain unchanged. `load_scalar_replay` reads the
+separate versioned evidence index without Stage or recipe execution. Mathematical
+result checks and detail output remain C4e2 work.
+
+```sh
+ctest --test-dir build/debug -R 'ScalarReplay|pagos-scalar-replay-process' \
+  --output-on-failure
 ```

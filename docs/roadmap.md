@@ -177,8 +177,10 @@ persistent summary CLI with single-channel continuation, immutable final receipt
 replay, explicit confirmation and terminal cleanup. Pure detail replay remains
 C4e work; the default native recursion cut is unchanged.
 [C4e1a](provenance-replay-descriptor-c4e1a.md) defines scalar recipe descriptors,
-canonical CAS objects and current-binding validation. Actual Stage recording and
-bounded evaluation remain C4e1b/C4e2 work.
+canonical CAS objects and current-binding validation.
+[C4e1b](provenance-scalar-replay-c4e1b.md) adds real Stage recording, separate
+versioned capability publication and non-executing source-bound reads. Bounded
+evaluation remains C4e2 work; the new scalar evidence does not upgrade C3 graphs.
 C4b-C4e cover construction spill, persistent query checkpoints,
 finite-domain recursive explanations and pure detail replay. These extensions
 are explanation capabilities, not new Stage inference rules. Query work limits,

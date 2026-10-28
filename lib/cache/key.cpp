@@ -104,7 +104,8 @@ std::expected<Bytes, Error> encode_query_key(const QueryKey& key,
         key.kind != QueryKind::SpecializeResidual &&
         key.kind != QueryKind::FreezeEvidence &&
         key.kind != QueryKind::FreezeEvidencePositions &&
-        key.kind != QueryKind::FreezeFunctionEvidence)
+        key.kind != QueryKind::FreezeFunctionEvidence &&
+        key.kind != QueryKind::FreezeScalarReplay)
         return std::unexpected(Error::InvalidValue);
     if ((key.kind == QueryKind::FreezeEvidence ||
          key.kind == QueryKind::FreezeEvidencePositions) &&
@@ -128,7 +129,8 @@ std::expected<Bytes, Error> encode_query_key(const QueryKey& key,
             scalar.integer_type.width != key.context.target.pointer_bits)
             return std::unexpected(Error::InvalidValue);
         if (!valid_argument(argument) ||
-            (key.kind == QueryKind::EvaluatePureSpecialization &&
+            ((key.kind == QueryKind::EvaluatePureSpecialization ||
+              key.kind == QueryKind::FreezeScalarReplay) &&
              argument.stage != ArgumentStage::Comptime))
             return std::unexpected(Error::InvalidValue);
         wire::type(writer, argument.type);
@@ -149,7 +151,8 @@ decode_query_key(std::span<const std::uint8_t> bytes, Limits limits) {
         key.kind != QueryKind::SpecializeResidual &&
         key.kind != QueryKind::FreezeEvidence &&
         key.kind != QueryKind::FreezeEvidencePositions &&
-        key.kind != QueryKind::FreezeFunctionEvidence)
+        key.kind != QueryKind::FreezeFunctionEvidence &&
+        key.kind != QueryKind::FreezeScalarReplay)
         reader.fail(Error::InvalidFormat);
     key.context = context(reader);
     key.definition.module = key.context.module;
@@ -183,7 +186,8 @@ decode_query_key(std::span<const std::uint8_t> bytes, Limits limits) {
             scalar.integer_type.width != key.context.target.pointer_bits)
             reader.fail(Error::InvalidFormat);
         if (!valid_argument(argument) ||
-            (key.kind == QueryKind::EvaluatePureSpecialization &&
+            ((key.kind == QueryKind::EvaluatePureSpecialization ||
+              key.kind == QueryKind::FreezeScalarReplay) &&
              stage != ArgumentStage::Comptime))
             reader.fail(Error::InvalidFormat);
         key.arguments.push_back(std::move(argument));

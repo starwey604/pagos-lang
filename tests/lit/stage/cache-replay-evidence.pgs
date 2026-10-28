@@ -1,0 +1,15 @@
+// RUN: rm -rf %t.cache
+// RUN: not %pagosc --cache-evidence=scalar-replay check %s 2>&1 | FileCheck %s --check-prefix=ACCESS
+// RUN: not %pagosc --cache-evidence=other check %s 2>&1 | FileCheck %s --check-prefix=OPTION
+// RUN: %pagosc --stage-cache=read-write --cache-dir=%t.cache --cache-evidence=scalar-replay --cache-stats emit-hir %s 2>&1 | FileCheck %s --check-prefix=COLD
+// RUN: %pagosc --stage-cache=read-only --cache-dir=%t.cache --cache-evidence=scalar-replay --cache-stats emit-hir %s 2>&1 | FileCheck %s --check-prefix=HOT
+// ACCESS: error: scalar-replay evidence requires Stage cache access
+// OPTION: error: invalid cache evidence requirement
+// COLD: stage-cache: lookups=1, hits=0, misses=1, writes=1
+// COLD-SAME: replay-writes=1, replay-hits=0, replay-rejected=0
+// COLD: binding result: u32 [Comptime] = 49
+// HOT: stage-cache: lookups=1, hits=1, misses=0, writes=0
+// HOT-SAME: replay-writes=0, replay-hits=1, replay-rejected=0
+// HOT: binding result: u32 [Comptime] = 49
+fn square(x: u32) -> u32 { x * x }
+let result = square(7);

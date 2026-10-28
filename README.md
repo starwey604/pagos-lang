@@ -143,6 +143,8 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
   disk-backed formula preparation, saved cursors and acknowledged page replay
 - [Topology state storage C4c3b](docs/provenance-topology-storage-c4c3b.md): segmented
   snapshots, paused-state release and independent query measurements
+- [Recorded scalar replay C4e1b](docs/provenance-scalar-replay-c4e1b.md):
+  real Stage recipes, versioned evidence capabilities and source-bound reads
 - [Scalar replay descriptors C4e1a](docs/provenance-replay-descriptor-c4e1a.md):
   versioned pure recipes, strict binding checks and explicit CAS storage
 - [Persistent recursive CLI C4d3c](docs/provenance-recursive-tasks-c4d3c.md):

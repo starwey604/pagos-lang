@@ -41,8 +41,9 @@ struct ScalarReplayNode {
     bool operator==(const ScalarReplayNode&) const = default;
 };
 // Self-contained immutable straight-line recipe, not a saved operation trace.
-// The last node is the result; every node must contribute to it. Stage's future
-// adapter must establish that this recipe describes the recorded computation.
+// The last node is the result; every node must contribute to it. Stage's
+// recording adapter must establish that this recipe describes the recorded
+// computation.
 struct ReplayDescriptor {
     std::uint32_t version{replay_descriptor_version};
     std::uint32_t semantics{scalar_recipe_semantics_version};

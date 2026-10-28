@@ -522,9 +522,12 @@ sequence 1 replays from immutable completed state, and only explicit durable
 confirmation enables terminal cleanup. Native query rules stay intact.
 [C4e1a](provenance-replay-descriptor-c4e1a.md) adds canonical scalar replay
 recipe objects and structural/type/current-binding checks. They have no AST
-lifetime dependency and admit no calls, branches or memory effects. Stage recipe
-recording and actual budgeted evaluation remain C4e1b/C4e2 work; static admission
-does not certify source correspondence or result equality.
+lifetime dependency and admit no calls, branches or memory effects.
+[C4e1b](provenance-scalar-replay-c4e1b.md) records successful real scalar
+bodies and publishes a distinct versioned value/recipe capability. Independent
+reads compare the full current source recipe, and a missing required capability
+causes normal recomputation. C3 graphs remain P0; actual budgeted evaluation and
+mathematical result validation remain C4e2 work.
 Existing graph reference/span lifetimes and the default one-shot query interface
 remain intact until their replacements are explicitly validated; snapshot
 serialization alone does not reduce build peaks.

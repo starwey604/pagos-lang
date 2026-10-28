@@ -5,6 +5,9 @@
 当前语义绑定验证和显式文件系统 CAS 存储；尚未让 Stage 生成描述，也没有
 执行配方或新增 CLI。C4e1b 接入实际记录，C4e2 实现有界重放。
 
+后续 [C4e1b](provenance-scalar-replay-c4e1b.md) 已接入真实 Stage 记录、
+版本化的独立能力项和非执行式源码对应性验证；本页记录描述层的边界。
+
 ## 描述和准入边界
 
 描述保存完整 EvaluatePureSpecialization QueryKey，包括定义及其语义指纹、

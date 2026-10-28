@@ -70,6 +70,7 @@ void print_usage() {
         "[--target=TRIPLE] [--cpu=CPU] [--features=FEATURES] "
         "[--stage-cache=off|read-write|read-only] "
         "[--cache-dir=PATH] [--cache-stats] "
+        "[--cache-evidence=value|scalar-replay] "
         "[--provenance-query=legacy|resumable|compressed|topology] "
         "[--provenance-slice=N] [--provenance-query-stats] "
         "[--snapshot-write=DIR|--snapshot-read=DIR] "
@@ -299,6 +300,14 @@ std::expected<Options, std::string> parse_options(int argument_count,
             if (value.empty())
                 return std::unexpected("--cache-dir requires a non-empty path");
             cache.directory = value;
+        } else if (argument.starts_with("--cache-evidence=")) {
+            const auto value = argument.substr(17);
+            if (value == "value")
+                cache.evidence = pagos::stage::CacheEvidence::Value;
+            else if (value == "scalar-replay")
+                cache.evidence = pagos::stage::CacheEvidence::ScalarReplay;
+            else
+                return std::unexpected("invalid cache evidence requirement");
         } else if (argument == "--cache-stats") {
             cache_stats = true;
         } else if (argument == "-o") {
@@ -412,6 +421,10 @@ std::expected<Options, std::string> parse_options(int argument_count,
         (snapshot_read || evidence_read))
         return std::unexpected("spill requires Stage analysis and excludes "
                                "evidence/snapshot read");
+    if (cache.evidence == pagos::stage::CacheEvidence::ScalarReplay &&
+        cache.mode == pagos::stage::CacheMode::Off)
+        return std::unexpected(
+            "scalar-replay evidence requires Stage cache access");
     const bool function_evidence = evidence_write || evidence_read;
     if (function_evidence && (*command != Command::ExplainProvenance ||
                               snapshot_read || snapshot_write))
@@ -743,6 +756,7 @@ int main(int argument_count, char** arguments) {
             "blocked-writes={}, pending-payload-peak={}, "
             "residual-lookups={}, residual-hits={}, residual-writes={}, "
             "body-evaluations={}, bodies-skipped={}, "
+            "replay-writes={}, replay-hits={}, replay-rejected={}, "
             "dependency-ns={}, query-ns={}, read-ns={}, decode-ns={}, "
             "encode-ns={}, publish-ns={}, resource-ns={}, "
             "restore-ns={}, evaluate-ns={}",
@@ -750,7 +764,8 @@ int main(int argument_count, char** arguments) {
             stats.rejected, stats.budget_fallbacks, stats.blocked_writes,
             stats.pending_payload_bytes_peak, stats.residual_lookups,
             stats.residual_hits, stats.residual_writes, stats.body_evaluations,
-            stats.bodies_skipped, stats.dependency_ns, stats.query_ns,
+            stats.bodies_skipped, stats.replay_writes, stats.replay_hits,
+            stats.replay_rejected, stats.dependency_ns, stats.query_ns,
             stats.read_ns, stats.decode_ns, stats.encode_ns, stats.publish_ns,
             stats.resource_ns, stats.restore_ns, stats.evaluate_ns);
     }
