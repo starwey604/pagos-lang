@@ -73,7 +73,7 @@ void print_usage() {
         "[--target=TRIPLE] [--cpu=CPU] [--features=FEATURES] "
         "[--stage-cache=off|read-write|read-only] "
         "[--cache-dir=PATH] [--cache-stats] "
-        "[--cache-evidence=value|scalar-replay] "
+        "[--cache-evidence=value|scalar-replay|generator-replay] "
         "[--provenance-query=legacy|resumable|compressed|topology] "
         "[--provenance-slice=N] [--provenance-query-stats] "
         "[--snapshot-write=DIR|--snapshot-read=DIR] "
@@ -96,7 +96,7 @@ void print_usage() {
         "[--spill-disk-bytes=N] [--spill-on-error=memory|unavailable] "
         "[--spill-stats] "
         "[--replay-read=DIR] [--replay-function=NAME] [--replay-arg=VALUE] "
-        "[--replay-fuel=N] [--replay-value-bytes=N] "
+        "[--replay-element=N] [--replay-fuel=N] [--replay-value-bytes=N] "
         "[--replay-output-records=N] "
         "[--replay-detail-bytes=N] [--replay-render-bytes=N] "
         "[--replay-first=N] [--replay-count=N|all] [--replay-stats] "
@@ -322,6 +322,8 @@ std::expected<Options, std::string> parse_options(int argument_count,
                 cache.evidence = pagos::stage::CacheEvidence::Value;
             else if (value == "scalar-replay")
                 cache.evidence = pagos::stage::CacheEvidence::ScalarReplay;
+            else if (value == "generator-replay")
+                cache.evidence = pagos::stage::CacheEvidence::GeneratorReplay;
             else
                 return std::unexpected("invalid cache evidence requirement");
         } else if (argument == "--cache-stats") {
@@ -455,10 +457,12 @@ std::expected<Options, std::string> parse_options(int argument_count,
         (snapshot_read || evidence_read))
         return std::unexpected("spill requires Stage analysis and excludes "
                                "evidence/snapshot read");
-    if (cache.evidence == pagos::stage::CacheEvidence::ScalarReplay &&
+    if (cache.evidence != pagos::stage::CacheEvidence::Value &&
         cache.mode == pagos::stage::CacheMode::Off)
         return std::unexpected(
-            "scalar-replay evidence requires Stage cache access");
+            cache.evidence == pagos::stage::CacheEvidence::ScalarReplay
+                ? "scalar-replay evidence requires Stage cache access"
+                : "generator-replay evidence requires Stage cache access");
     const bool function_evidence = evidence_write || evidence_read;
     if (function_evidence && (*command != Command::ExplainProvenance ||
                               snapshot_read || snapshot_write))

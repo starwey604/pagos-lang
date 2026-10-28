@@ -1,0 +1,23 @@
+// RUN: rm -rf %t.cache
+// RUN: not %pagosc --cache-evidence=generator-replay check %s 2>&1 | FileCheck %s --check-prefix=ACCESS
+// RUN: not %pagosc --replay-element=0 check %s 2>&1 | FileCheck %s --check-prefix=COMMAND
+// RUN: not %pagosc --replay-read=%t.cache --replay-function=table --replay-arg=7 --replay-element=4294967296 explain-replay %s 2>&1 | FileCheck %s --check-prefix=INDEX
+// RUN: %pagosc --stage-cache=read-write --cache-dir=%t.cache --cache-evidence=generator-replay emit-hir %s > %t.hir
+// RUN: not %pagosc --replay-read=%t.cache --replay-function=table --replay-arg=7 explain-replay %s 2>&1 | FileCheck %s --check-prefix=SELECT
+// RUN: %pagosc --max-fuel=0 --replay-read=%t.cache --replay-function=table --replay-arg=7 --replay-element=1 explain-replay %s | FileCheck %s --check-prefix=DETAIL
+// RUN: not %pagosc --replay-read=%t.cache --replay-function=table --replay-arg=7 --replay-element=4 explain-replay %s | FileCheck %s --check-prefix=RANGE
+// ACCESS: error: generator-replay evidence requires Stage cache access
+// COMMAND: error: replay options require explain-replay
+// INDEX: error: replay element index exceeds u32
+// SELECT: error: array replay requires --replay-element
+// DETAIL: {"schema":1,"type":"generator-replay","status":"verified","stage_runs":0
+// DETAIL-SAME: "verification_scope":"selected-element"
+// DETAIL-SAME: "element_index":1,"iteration_value":3
+// DETAIL-SAME: "result":{"type":"u32","value":"22"}
+// DETAIL-SAME: "input_kind":"iterator"
+// RANGE: "status":"unavailable"
+// RANGE-SAME: "reason":"invalid-selection"
+// RANGE-NOT: "result":
+// RANGE-NOT: "details":
+fn table(x: u32) -> [u32; 4] { [for i in 2..6 { i * x + 1 }] }
+let answer = table(7);

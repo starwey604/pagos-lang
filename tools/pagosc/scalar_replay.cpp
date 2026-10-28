@@ -1,4 +1,5 @@
 #include "scalar_replay.h"
+#include "pagos/stage/generator_replay_execution.h"
 
 #include <array>
 #include <atomic>
@@ -225,20 +226,23 @@ std::string_view reason(const ScalarReplayError& error) {
     }
     return reason(error.code);
 }
-void envelope(std::ostream& out, std::string_view status) {
-    out << "{\"schema\":1,\"type\":\"scalar-replay\",\"status\":";
+void envelope(std::ostream& out, std::string_view status,
+              std::string_view type = "scalar-replay") {
+    out << "{\"schema\":1,\"type\":";
+    quote(out, type);
+    out << ",\"status\":";
     quote(out, status);
     out << ",\"stage_runs\":0,\"continuation_available\":false";
 }
 int emit(Buffer& buffer, const Cancellation& cancellation, int code) {
     if (cancellation.requested() && code != 130) {
-        std::cerr << "scalar replay cancelled before output\n";
+        std::cerr << "replay cancelled before output\n";
         return 130;
     }
     std::cout << buffer.bytes;
     std::cout.flush();
     if (!std::cout)
-        throw std::runtime_error("scalar replay output failed");
+        throw std::runtime_error("replay output failed");
     return code;
 }
 int unavailable(std::string_view cause, const ScalarReplayOptions& options,
@@ -268,6 +272,214 @@ int unavailable(std::string_view cause, const ScalarReplayOptions& options,
         out << "null";
     out << "}\n";
     return emit(buffer, cancellation, cause == "cancelled" ? 130 : 3);
+}
+void work(std::ostream& out, const GeneratorReplayExecutionStats& stats) {
+    out << "{\"bound_nodes\":" << stats.bound_nodes_evaluated
+        << ",\"element_nodes\":" << stats.element_nodes_evaluated
+        << ",\"fuel\":" << stats.fuel_consumed
+        << ",\"detail_records\":" << stats.detail_records
+        << ",\"value_bytes\":" << stats.value_bytes
+        << ",\"output_bytes\":" << stats.output_bytes << '}';
+}
+std::string_view reason(GeneratorReplayExecutionErrorCode code) {
+    using enum GeneratorReplayExecutionErrorCode;
+    switch (code) {
+    case InvalidRecord:
+        return "invalid-record";
+    case InvalidSelection:
+        return "invalid-selection";
+    case FuelExhausted:
+        return "fuel-exhausted";
+    case ValueMemoryLimit:
+        return "value-memory-limit";
+    case OutputLimit:
+        return "output-limit";
+    case Cancelled:
+        return "cancelled";
+    case ArithmeticFailure:
+        return "arithmetic-failure";
+    case BoundsMismatch:
+        return "bounds-mismatch";
+    case ResultMismatch:
+        return "result-mismatch";
+    case OutOfMemory:
+        return "out-of-memory";
+    }
+    return "invalid-execution-state";
+}
+std::string_view phase_name(GeneratorReplayPhase phase) {
+    switch (phase) {
+    case GeneratorReplayPhase::Admission:
+        return "admission";
+    case GeneratorReplayPhase::Begin:
+        return "begin";
+    case GeneratorReplayPhase::End:
+        return "end";
+    case GeneratorReplayPhase::Element:
+        return "element";
+    }
+    return "invalid-phase";
+}
+int generator_unavailable(
+    std::string_view cause, const ScalarReplayOptions& options,
+    const Cancellation& cancellation, GeneratorReplayExecutionStats stats = {},
+    GeneratorReplayPhase phase = GeneratorReplayPhase::Admission,
+    std::optional<std::uint32_t> node = {},
+    std::optional<IntegerError> integer = {}) {
+    if (cancellation.requested())
+        cause = "cancelled";
+    Buffer buffer(options.render_bytes);
+    std::ostream out(&buffer);
+    out.exceptions(std::ios::badbit | std::ios::failbit);
+    envelope(out, "unavailable", "generator-replay");
+    out << ",\"reason\":";
+    quote(out, cause);
+    out << ",\"restart_required\":true,\"element_index\":" << *options.element
+        << ",\"phase\":";
+    quote(out, phase_name(phase));
+    out << ",\"work\":";
+    work(out, stats);
+    out << ",\"node\":";
+    if (node)
+        out << *node;
+    else
+        out << "null";
+    out << ",\"integer_error\":";
+    if (integer)
+        quote(out, reason(*integer));
+    else
+        out << "null";
+    out << "}\n";
+    return emit(buffer, cancellation, cause == "cancelled" ? 130 : 3);
+}
+int run_generator(const syntax::Module& module, const sema::TypeTable& types,
+                  const CacheIdentity& identity, const cache::QueryKey& key,
+                  const source::SourceFile& source,
+                  const ScalarReplayOptions& options,
+                  const Cancellation& cancellation) {
+    const auto record = load_generator_replay(
+        cache::FileStore(options.directory), module, types, key);
+    if (!record)
+        return generator_unavailable(reason(record.error()), options,
+                                     cancellation);
+    const auto result =
+        execute_generator_replay(*record, *options.element, options.limits,
+                                 options.range, cancellation.token());
+    if (!result)
+        return generator_unavailable(reason(result.error().code), options,
+                                     cancellation, result.error().stats,
+                                     result.error().phase, result.error().node,
+                                     result.error().integer);
+    if (cancellation.requested())
+        return generator_unavailable("cancelled", options, cancellation,
+                                     result->stats,
+                                     GeneratorReplayPhase::Element);
+    const auto fingerprint = cache::query_fingerprint(key);
+    if (!fingerprint)
+        throw std::runtime_error(
+            "replay specialization fingerprint unavailable");
+    const auto& descriptor = record->admission.descriptor();
+    Buffer buffer(options.render_bytes);
+    std::ostream out(&buffer);
+    out.exceptions(std::ios::badbit | std::ios::failbit);
+    envelope(out, "verified", "generator-replay");
+    out << ",\"restart_required\":false,\"verification_scope\":\"selected-"
+           "element\""
+        << ",\"execution_version\":" << generator_replay_execution_version
+        << ",\"evidence_version\":" << generator_replay_evidence_version
+        << ",\"descriptor_version\":" << descriptor.version
+        << ",\"generator_semantics\":" << descriptor.semantics
+        << ",\"recipe_semantics\":" << descriptor.scalar_semantics
+        << ",\"specialization\":{\"name\":";
+    quote(out, options.function);
+    out << ",\"key\":";
+    quote(out, fingerprint->hex());
+    out << ",\"arguments\":[";
+    for (std::size_t i = 0; i < key.arguments.size(); ++i) {
+        if (i)
+            out << ',';
+        value(out, key.arguments[i].type, *key.arguments[i].value);
+    }
+    out << "]},\"descriptor\":";
+    quote(out, result->descriptor.hex());
+    out << ",\"recorded_result\":";
+    quote(out, result->recorded_result.hex());
+    out << ",\"source\":{\"path\":";
+    quote(out, source.path());
+    out << ",\"revision\":";
+    quote(out, cache::fingerprint(
+                   "pagos.generator-replay.source.v1",
+                   {reinterpret_cast<const std::uint8_t*>(source.text().data()),
+                    source.text().size()})
+                   .hex());
+    out << "},\"element_index\":" << result->element_index
+        << ",\"iteration_value\":" << result->iteration_value
+        << ",\"iterator_slot\":" << descriptor.iterator_slot
+        << ",\"bounds\":{\"first\":" << record->observation.first
+        << ",\"last\":" << record->observation.last
+        << ",\"length\":" << descriptor.result_type.length << "},\"result\":";
+    value(out, result->value.type, result->value.value);
+    out << ",\"site\":";
+    site(out, identity, descriptor.generator_site, source);
+    out << ",\"iterator_site\":";
+    site(out, identity, descriptor.iterator_site, source);
+    out << ",\"element_site\":";
+    site(out, identity, descriptor.element.result_site, source);
+    out << ",\"selection\":{\"first\":" << options.range.first
+        << ",\"count\":" << result->details.size()
+        << ",\"total\":" << descriptor.element.nodes.size() << ",\"complete\":"
+        << (options.range.first == 0 &&
+                    result->details.size() == descriptor.element.nodes.size()
+                ? "true"
+                : "false")
+        << "},\"work\":";
+    work(out, result->stats);
+    out << ",\"details\":[";
+    bool first = true;
+    for (const auto& step : result->details) {
+        if (cancellation.requested())
+            return generator_unavailable("cancelled", options, cancellation,
+                                         result->stats,
+                                         GeneratorReplayPhase::Element);
+        if (!first)
+            out << ',';
+        first = false;
+        const auto& node = descriptor.element.nodes[step.node];
+        out << "{\"node\":" << step.node << ",\"operation\":";
+        quote(out, operation(node.operation));
+        out << ",\"value\":";
+        value(out, node.type, from_scalar(step.value));
+        auto anchor = descriptor.element.result_site;
+        anchor.position = node.position;
+        out << ",\"site\":";
+        site(out, identity, anchor, source);
+        out << ",\"operands\":[";
+        for (std::size_t i = 0; i < node.operands.size(); ++i) {
+            if (i)
+                out << ',';
+            out << node.operands[i];
+        }
+        out << "],\"input_slot\":";
+        if (node.input)
+            out << *node.input;
+        else
+            out << "null";
+        out << ",\"input_kind\":";
+        if (node.input)
+            quote(out, *node.input == descriptor.iterator_slot ? "iterator"
+                                                               : "capture");
+        else
+            out << "null";
+        out << '}';
+    }
+    out << "]}\n";
+    if (options.statistics)
+        std::cerr << "generator-replay: bound-nodes="
+                  << result->stats.bound_nodes_evaluated
+                  << " element-nodes=" << result->stats.element_nodes_evaluated
+                  << " fuel=" << result->stats.fuel_consumed
+                  << " rendered-bytes=" << buffer.bytes.size() << '\n';
+    return emit(buffer, cancellation, 0);
 }
 } // namespace
 std::expected<void, std::string>
@@ -301,7 +513,11 @@ parse_scalar_replay_option(std::string_view argument,
             return std::unexpected("invalid replay numeric value");
         if (name == "--replay-fuel")
             options.limits.fuel = number;
-        else if (name == "--replay-value-bytes")
+        else if (name == "--replay-element") {
+            if (number > UINT32_MAX)
+                return std::unexpected("replay element index exceeds u32");
+            options.element = static_cast<std::uint32_t>(number);
+        } else if (name == "--replay-value-bytes")
             options.limits.value_bytes = number;
         else if (name == "--replay-output-records")
             options.limits.output_records = number;
@@ -326,17 +542,31 @@ int run_scalar_replay(const syntax::Module& module,
     try {
         Cancellation cancellation;
         if (options.statistics)
-            std::cerr << "scalar-replay: stage-runs=0 ready\n";
+            std::cerr << (options.element ? "generator-replay"
+                                          : "scalar-replay")
+                      << ": stage-runs=0 ready\n";
+        const auto report = [&](std::string_view cause) {
+            return options.element
+                       ? generator_unavailable(cause, options, cancellation)
+                       : unavailable(cause, options, cancellation);
+        };
         auto identity = build_cache_identity(module, types, context);
         if (!identity)
-            return unavailable("source-identity-unavailable", options,
-                               cancellation);
+            return report("source-identity-unavailable");
         if (cancellation.requested())
-            return unavailable("cancelled", options, cancellation);
+            return report("cancelled");
         const auto* definition =
             identity->find(cache::DefinitionKind::Function, options.function);
         if (!definition)
-            return unavailable("function-not-found", options, cancellation);
+            return report("function-not-found");
+        if (definition->result.is_array() != options.element.has_value()) {
+            std::cerr << "error: "
+                      << (definition->result.is_array()
+                              ? "array replay requires --replay-element"
+                              : "--replay-element requires an array function")
+                      << '\n';
+            return 2;
+        }
         if (definition->parameters.size() != options.arguments.size()) {
             std::cerr << "error: replay requires exactly "
                       << definition->parameters.size() << " scalar arguments\n";
@@ -348,7 +578,7 @@ int run_scalar_replay(const syntax::Module& module,
             const auto& text = options.arguments[i];
             if (type.kind != sema::TypeKind::Integer &&
                 type.kind != sema::TypeKind::Bool)
-                return unavailable("unsupported-source", options, cancellation);
+                return report("unsupported-source");
             Constant constant;
             if (type.kind == sema::TypeKind::Bool) {
                 if (text != "true" && text != "false") {
@@ -373,7 +603,10 @@ int run_scalar_replay(const syntax::Module& module,
         const auto key =
             make_query_key(*definition, context, std::move(arguments));
         if (!key)
-            return unavailable("unsupported-source", options, cancellation);
+            return report("unsupported-source");
+        if (options.element)
+            return run_generator(module, types, *identity, *key, source,
+                                 options, cancellation);
         const auto record = load_scalar_replay(
             cache::FileStore(options.directory), module, types, *key);
         if (!record)
@@ -473,7 +706,8 @@ int run_scalar_replay(const syntax::Module& module,
                       << " rendered-bytes=" << buffer.bytes.size() << '\n';
         return emit(buffer, cancellation, 0);
     } catch (const RenderLimit&) {
-        std::cerr << "error: scalar replay render byte limit exceeded\n";
+        std::cerr << "error: " << (options.element ? "generator" : "scalar")
+                  << " replay render byte limit exceeded\n";
         return interrupted.test(std::memory_order_relaxed) ? 130 : 3;
     } catch (const std::exception& error) {
         std::cerr << "error: " << error.what() << '\n';

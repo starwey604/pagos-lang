@@ -56,6 +56,9 @@ target_link_libraries(pagos_scalar_replay_probe PRIVATE Pagos::stage pagos_proje
 add_executable(pagos_scalar_replay_cli_fixture scalar_replay_cli_fixture.cpp)
 target_link_libraries(pagos_scalar_replay_cli_fixture PRIVATE Pagos::stage pagos_project_options)
 
+add_executable(pagos_generator_replay_cli_fixture generator_replay_cli_fixture.cpp)
+target_link_libraries(pagos_generator_replay_cli_fixture PRIVATE Pagos::stage pagos_project_options)
+
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME pagos-cache-identity-process
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/cache_identity_process.py
@@ -72,6 +75,11 @@ add_test(NAME pagos-scalar-replay-cli-process
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scalar_replay_cli_process.py
             $<TARGET_FILE:pagosc> $<TARGET_FILE:pagos_scalar_replay_cli_fixture>)
 set_tests_properties(pagos-scalar-replay-cli-process PROPERTIES TIMEOUT 180)
+
+add_test(NAME pagos-generator-replay-cli-process
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/generator_replay_cli_process.py
+            $<TARGET_FILE:pagosc> $<TARGET_FILE:pagos_generator_replay_cli_fixture>)
+set_tests_properties(pagos-generator-replay-cli-process PROPERTIES TIMEOUT 180)
 
 
 add_executable(pagos_stage_spill_probe stage_spill_probe.cpp)
@@ -122,6 +130,11 @@ find_program(PAGOS_FILECHECK NAMES FileCheck
     HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
 find_program(PAGOS_TEST_CLANG NAMES clang
     HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
+
+add_test(NAME pagos-generator-replay-effect-process
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/generator_replay_effect_process.py
+            $<TARGET_FILE:pagosc> ${PAGOS_TEST_CLANG})
+set_tests_properties(pagos-generator-replay-effect-process PROPERTIES TIMEOUT 120)
 
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/lit)
 configure_file(
