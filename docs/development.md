@@ -703,3 +703,15 @@ ctest --test-dir build/debug -R 'RecursiveSummary|StageProvenanceQuery|FunctionE
 ctest --test-dir build/debug -R 'RecursiveCheckpointTest|pagos-recursive-(checkpoint|task-cli)-process' \
   --output-on-failure
 ```
+
+## Scalar replay descriptors
+
+[C4e1a](provenance-replay-descriptor-c4e1a.md) provides the versioned
+ReplayDescriptor codec, typed straight-line recipe admission and current
+key/input/result/anchor validation. FileStore can explicitly store kind 15;
+Stage and CLI do not generate or execute these objects yet. Missing descriptors
+return MissingDescriptor rather than synthesizing a recipe from a folded value.
+
+```sh
+build/debug/tests/pagos_cache_tests --gtest_filter='ReplayDescriptor.*'
+```

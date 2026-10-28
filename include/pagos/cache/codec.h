@@ -33,7 +33,8 @@ enum class ObjectKind : std::uint8_t {
     EvidenceDetail = 11,
     QueryCheckpoint = 12,
     QueryStateSegment = 13,
-    QueryTaskManifest = 14
+    QueryTaskManifest = 14,
+    ReplayDescriptor = 15
 };
 enum class Error {
     UnsupportedType,

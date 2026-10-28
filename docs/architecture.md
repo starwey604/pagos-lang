@@ -520,6 +520,11 @@ Restore remains resident; completed heads await delivery. Durable CLI receipts
 are implemented by [C4d3c](provenance-recursive-tasks-c4d3c.md): final
 sequence 1 replays from immutable completed state, and only explicit durable
 confirmation enables terminal cleanup. Native query rules stay intact.
+[C4e1a](provenance-replay-descriptor-c4e1a.md) adds canonical scalar replay
+recipe objects and structural/type/current-binding checks. They have no AST
+lifetime dependency and admit no calls, branches or memory effects. Stage recipe
+recording and actual budgeted evaluation remain C4e1b/C4e2 work; static admission
+does not certify source correspondence or result equality.
 Existing graph reference/span lifetimes and the default one-shot query interface
 remain intact until their replacements are explicitly validated; snapshot
 serialization alone does not reduce build peaks.
