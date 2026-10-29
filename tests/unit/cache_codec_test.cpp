@@ -1,3 +1,4 @@
+#include "../../lib/cache/wire.h"
 #include "cache_test_input.h"
 
 #include <limits>
@@ -5,6 +6,30 @@
 namespace {
 using namespace pagos;
 using namespace pagos::cache;
+
+TEST(CacheCodec, EnumDecodingRejectsTruncatedAndUnknownTagsBeforeConversion) {
+    for (unsigned tag = 0; tag <= 255; ++tag) {
+        const Bytes bytes{static_cast<std::uint8_t>(tag)};
+        wire::Reader reader(bytes, {});
+        const auto kind = wire::object_kind(reader);
+        if (tag >= 1 && tag <= 17) {
+            EXPECT_EQ(std::to_underlying(kind), tag);
+            EXPECT_TRUE(reader.finish());
+        } else {
+            EXPECT_EQ(kind,
+                      ObjectKind::Value); // Valid fallback, failed reader.
+            EXPECT_FALSE(reader.finish());
+        }
+    }
+    wire::Reader empty({}, {});
+    EXPECT_EQ(wire::enum_range(empty, ArgumentStage::Comptime,
+                               ArgumentStage::Runtime),
+              ArgumentStage::Comptime);
+    EXPECT_FALSE(empty.finish());
+    StableDefinitionId definition;
+    EXPECT_EQ(definition.kind, DefinitionKind::Function);
+    EXPECT_FALSE(valid_definition_id(definition)); // Missing module/name.
+}
 
 TEST(CacheCodec, WireBytesAreExplicitAndLittleEndian) {
     const auto bytes = encode_value(

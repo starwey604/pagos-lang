@@ -125,6 +125,7 @@ void shape(const ReplayDescriptor& value, cache::Limits limits) {
         scalar_type(argument.type, bits);
     (void)checked(cache::encode_query_key(key, limits));
     std::vector<sema::Type> inputs;
+    inputs.reserve(key.arguments.size());
     for (const auto& argument : key.arguments)
         inputs.push_back(argument.type);
     replay_detail::check_nodes(value.nodes, value.result_type,
@@ -234,7 +235,8 @@ std::vector<ScalarReplayNode> read_nodes(Reader& reader, unsigned bits,
     std::vector<ScalarReplayNode> nodes;
     nodes.reserve(count);
     for (std::uint32_t i = 0; i < count && reader.good(); ++i) {
-        const auto operation = static_cast<Op>(reader.u8());
+        const auto operation =
+            cache::wire::enum_range(reader, Op::Input, Op::GreaterEqual);
         const auto operands = arity(operation);
         auto node_type = cache::wire::type(reader);
         if (!reader.good())

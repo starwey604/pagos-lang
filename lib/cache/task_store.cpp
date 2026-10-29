@@ -226,7 +226,7 @@ std::optional<TaskHead> read_head(const fs::path& root, Digest task,
     TaskHead head;
     head.generation = reader.u64();
     head.status = static_cast<TaskStatus>(reader.u8());
-    head.manifest = {static_cast<ObjectKind>(reader.u8()), digest(reader),
+    head.manifest = {cache::wire::object_kind(reader), digest(reader),
                      reader.u64()};
     require(reader.finish().has_value() && head.generation &&
             head.status <= TaskStatus::Completed &&
@@ -452,7 +452,7 @@ reclaim_tasks(const fs::path& parent, TaskCleanupPolicy policy) {
                     return c <= '9' ? c - '0' : c - 'a' + 10;
                 };
                 task.bytes[i] = static_cast<std::uint8_t>(
-                    digit(hex[2 * i]) * 16 + digit(hex[2 * i + 1]));
+                    digit(hex[2UZ * i]) * 16 + digit(hex[2UZ * i + 1]));
             }
             const auto marker_path = entry.path() / "session.lock";
             const auto marker_status = fs::symlink_status(marker_path, ec);

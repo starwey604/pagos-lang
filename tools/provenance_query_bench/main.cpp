@@ -25,6 +25,7 @@ void run(std::string_view mode, std::string_view workload, unsigned size) {
             root = builder.add(Rule::Use, 2, std::array{Edge{root}});
     } else if (workload == "fan-in") {
         std::vector<Edge> edges;
+        edges.reserve(size);
         for (unsigned i = 0; i < size; ++i)
             edges.push_back({builder.add(Rule::Origin, i + 1)});
         root = builder.add(Rule::Strict, 2, edges);

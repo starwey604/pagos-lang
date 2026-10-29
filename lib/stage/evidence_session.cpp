@@ -40,7 +40,7 @@ EvidenceSession::~EvidenceSession() {
     if (!directory.empty()) {
         active.erase(directory.generic_string());
         std::error_code ignored;
-        fs::remove_all(directory, ignored);
+        (void)fs::remove_all(directory, ignored);
     }
     if (descriptor_ != -1) {
         (void)sysfs::unlockFile(descriptor_);
@@ -55,7 +55,7 @@ EvidenceSession::create(const fs::path& parent_path) {
     const auto parent = fs::absolute(parent_path, ec).lexically_normal();
     if (ec)
         return std::unexpected(io_error(ec));
-    fs::create_directories(parent, ec);
+    (void)fs::create_directories(parent, ec);
     if (ec)
         return std::unexpected(io_error(ec));
     const auto canonical = fs::canonical(parent, ec);

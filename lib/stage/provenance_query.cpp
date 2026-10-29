@@ -179,7 +179,7 @@ struct QueryTask::Impl {
     QueryPage pause_storage(CheckpointError error) {
         if (!storage_resume)
             storage_resume = progress;
-        paging_failure = std::move(error);
+        paging_failure = error;
         progress = QueryProgress::Paused;
         QueryPage page;
         page.task = task_id;
@@ -761,7 +761,8 @@ void QueryTask::resume() {
         impl_->progress == QueryProgress::Cancelled)
         impl_->progress = QueryProgress::Running;
 }
-QueryPage QueryTask::advance(QuerySlice slice, std::stop_token cancellation) {
+QueryPage QueryTask::advance(QuerySlice slice,
+                             const std::stop_token& cancellation) {
     if (!ensure_resident()) {
         QueryPage page;
         page.task = impl_->task_id;
@@ -1278,7 +1279,7 @@ std::expected<QueryTask, CheckpointError> QueryTask::restore_paged(
                 detail::QuerySegment segment;
                 segment.first = reader.u32();
                 segment.count = reader.u32();
-                segment.object = {static_cast<cache::ObjectKind>(reader.u8()),
+                segment.object = {cache::wire::object_kind(reader),
                                   read_digest(reader), reader.u64()};
                 if (table >= 4) {
                     segment.minimum = reader.u64();
@@ -1429,6 +1430,9 @@ QueryTask::save(const cache::TaskStore& store,
                         segment.u32(task.reversed_witness[i].node.value);
                         segment.u32(task.reversed_witness[i].context);
                         break;
+                    default:
+                        throw CheckpointError{CheckpointErrorCode::InvalidState,
+                                              {}};
                     }
                 }
                 auto bytes = segment.finish();
@@ -1514,9 +1518,8 @@ QueryTask::restore(QueryCheckpointBinding binding,
             std::uint32_t next{};
             for (std::uint32_t i = 0; i < count; ++i) {
                 const auto first = reader.u32(), records = reader.u32();
-                cache::ObjectRef ref{
-                    static_cast<cache::ObjectKind>(reader.u8()),
-                    read_digest(reader), reader.u64()};
+                cache::ObjectRef ref{cache::wire::object_kind(reader),
+                                     read_digest(reader), reader.u64()};
                 require_checkpoint(
                     reader.good() && records && first == next &&
                     records <= total - next &&
@@ -1574,6 +1577,8 @@ QueryTask::restore(QueryCheckpointBinding binding,
                 case 3:
                     task.reversed_witness.push_back({{node}, context});
                     break;
+                default:
+                    throw CheckpointError{CheckpointErrorCode::Corrupt, {}};
                 }
             }
             if (auto status = segment.finish(); !status)

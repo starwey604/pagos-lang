@@ -477,7 +477,7 @@ void TopologyTask::resume() {
         impl_->progress = QueryProgress::Running;
 }
 TopologyPage TopologyTask::advance(QuerySlice slice,
-                                   std::stop_token cancellation) {
+                                   const std::stop_token& cancellation) {
     if (auto ready = ensure_resident(); !ready) {
         TopologyPage page;
         page.task = impl_->task_id;
@@ -1257,7 +1257,7 @@ TopologyTask::restore_segmented(QueryCheckpointBinding binding,
                 TopologySegment segment;
                 segment.first = reader.u32();
                 segment.count = reader.u32();
-                segment.object = {static_cast<cache::ObjectKind>(reader.u8()),
+                segment.object = {cache::wire::object_kind(reader),
                                   digest(reader), reader.u64()};
                 if (!reader.good())
                     finish(reader);

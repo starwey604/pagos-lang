@@ -33,7 +33,7 @@ std::expected<cache::Digest, std::string> task_id(std::string_view text) {
         unsigned value{};
         const auto part = text.substr(i * 2, 2);
         const auto parsed =
-            std::from_chars(part.data(), part.data() + 2, value, 16);
+            std::from_chars(part.data(), part.data() + part.size(), value, 16);
         if (parsed.ec != std::errc{} || parsed.ptr != part.data() + 2)
             return std::unexpected(
                 "query ID must contain 64 hexadecimal digits");

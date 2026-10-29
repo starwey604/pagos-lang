@@ -11,3 +11,6 @@ WarningsAsErrors: ''
 HeaderFilterRegex: '.*/(include|lib|tools|tests)/'
 CheckOptions:
   bugprone-easily-swappable-parameters.MinimumLength: '4'
+  # Destructors use explicit (void) for best-effort cleanup errors. Bare
+  # discarded error/expected results remain diagnostics.
+  bugprone-unused-return-value.AllowCastToVoid: 'true'

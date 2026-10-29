@@ -157,7 +157,7 @@ std::size_t EvidenceBlock::bytes() const {
         // Inline string bytes already live inside the site vector's objects.
         const auto data = reinterpret_cast<std::uintptr_t>(site.label.data());
         const auto object = reinterpret_cast<std::uintptr_t>(&site.label);
-        if (data < object || data >= object + sizeof(site.label))
+        if (data < object || data >= object + sizeof(std::string))
             size += site.label.capacity() + 1;
     }
     return size;
@@ -197,7 +197,7 @@ EvidenceView::disk(cache::FileStore store, std::vector<EvidenceBlockRef> blocks,
         impl->cache_bytes = cache_bytes;
         impl->limits = limits;
         std::uint64_t end = 1;
-        for (auto& block : blocks) {
+        for (const auto& block : blocks) {
             if (block.first.value != end || !block.nodes ||
                 (block.object.kind != cache::ObjectKind::EvidenceBlock &&
                  block.object.kind != cache::ObjectKind::EvidenceDetail))
@@ -210,9 +210,12 @@ EvidenceView::disk(cache::FileStore store, std::vector<EvidenceBlockRef> blocks,
             if (end > UINT32_MAX)
                 return std::unexpected(
                     failure(EvidenceErrorCode::LimitExceeded));
-            impl->blocks.push_back({std::move(block), {}, {}, 0});
+            impl->blocks.push_back({block, {}, {}, 0});
         }
         impl->nodes = static_cast<std::size_t>(end - 1);
+        // Ownership was transferred by the caller. References now live in the
+        // cache entries; release the redundant directory before later work.
+        std::vector<EvidenceBlockRef>{}.swap(blocks);
         for (std::size_t index = 0; index < summaries.size(); ++index) {
             const auto& summary = summaries[index];
             if (summary.id.value != index + 1 || !summary.value.value ||

@@ -19,7 +19,7 @@ enum class DefinitionKind : std::uint8_t {
 };
 struct StableDefinitionId {
     ModuleIdentity module;
-    DefinitionKind kind;
+    DefinitionKind kind{DefinitionKind::Function};
     std::string name;
     bool operator==(const StableDefinitionId&) const = default;
 };

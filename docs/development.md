@@ -514,6 +514,33 @@ docker run --rm --network none --user "$(id -u):$(id -g)" \
 Local script/container success is not a claim that GitHub Actions has run.
 Workflow execution on GitHub requires pushing the commits separately.
 
+Quality checks use that image's Clang/LLVM 22.1.8. Byte capacities use C++
+`UZ` literals so multiplication occurs in `std::size_t`; wire enum tags are
+range-checked before conversion. The unused-return-value check permits an
+explicit `(void)` for intentional best-effort cleanup in destructors. Bare
+discarded error codes and `expected` results remain diagnostics.
+
+The cross-process checkpoint tests run source and witness matrices separately,
+each with its original 180-second deadline. Both retain the 128-call graph,
+14 pause/acknowledgement cases and corruption/revision rejection checks. The
+terminal case explicitly verifies a completed checkpoint; it uses larger
+slices to reach completion while partial cases still use primitive slices.
+This avoids spending the sanitizer job's deadline on unnecessary single-step
+work without dropping the completed-state or pending-page checks.
+Corruption fixtures select segments referenced by the active head's manifest.
+Immutable CAS directories can retain unreferenced generations; corrupting an
+arbitrary file does not test the saved result currently being restored.
+
+```sh
+ctest --test-dir build/asan --output-on-failure \
+  -R '^pagos-query-checkpoint(-witness)?-process$'
+```
+
+The 2026-10-29 CI repair was verified in this pinned image: debug, GCC, ASan
+and release each passed all 487 tests, including lit. The clean debug CI entry
+also passed benchmark checks, formatting, all 58 production translation units
+under clang-tidy, documentation checks and RV32/QEMU execution.
+
 Inspect the [minimal record example](records.md) with:
 
 ```sh

@@ -86,6 +86,9 @@ void print_result(const QueryTask& task) {
               << stats.scanned_edges << ',' << stats.visited_edges << ','
               << stats.bindings << ',' << stats.witness_steps << ','
               << stats.queue_peak << "],\"issues\":" << task.coverage().issues
+              << ",\"completed\":"
+              << (task.progress() == QueryProgress::Completed ? "true"
+                                                              : "false")
               << ",\"stage_runs\":0}" << '\n';
 }
 int recursive_probe(std::string_view action, const fs::path& directory,
@@ -597,10 +600,16 @@ int main(int argc, char** argv) {
         if (action == "save") {
             if (argc != 7)
                 return 2;
-            const auto steps = std::stoull(argv[5]);
+            const bool complete = std::string_view(argv[5]) == "complete";
+            const auto steps = complete ? UINT64_MAX : std::stoull(argv[5]);
             const bool ack = std::string_view(argv[6]) == "ack";
             for (std::uint64_t i = 0; i < steps; ++i) {
-                const auto page = task.advance({1, 1, 1, 1});
+                // Partial checkpoints still exercise primitive boundaries.
+                // The terminal case must verify a completed checkpoint, not
+                // spend thousands of tiny slices reaching it under ASan.
+                const auto page =
+                    task.advance(complete ? QuerySlice{11, 13, 17, 5}
+                                          : QuerySlice{1, 1, 1, 1});
                 check_buffers();
                 print_page(page, first);
                 if (page.sequence) {

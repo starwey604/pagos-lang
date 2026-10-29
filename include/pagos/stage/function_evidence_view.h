@@ -18,7 +18,8 @@ class FunctionEvidenceView {
   public:
     [[nodiscard]] static std::expected<FunctionEvidenceView,
                                        provenance::EvidenceError>
-    open(FunctionEvidence evidence, std::size_t cache_bytes = 4 * 1024 * 1024);
+    open(FunctionEvidence evidence,
+         std::size_t cache_bytes = 4UZ * 1024 * 1024);
     [[nodiscard]] std::shared_ptr<const provenance::EvidenceView> view() const {
         return view_;
     }

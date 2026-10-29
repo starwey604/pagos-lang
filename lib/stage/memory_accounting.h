@@ -8,8 +8,9 @@ namespace pagos::stage::memory {
 inline std::size_t heap(const std::string& text) {
     const auto data = reinterpret_cast<std::uintptr_t>(text.data());
     const auto object = reinterpret_cast<std::uintptr_t>(&text);
-    return data < object || data >= object + sizeof(text) ? text.capacity() + 1
-                                                          : 0;
+    return data < object || data >= object + sizeof(std::string)
+               ? text.capacity() + 1
+               : 0;
 }
 template <class T> std::size_t vector(const std::vector<T>& values) {
     return values.capacity() * sizeof(T);

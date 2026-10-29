@@ -404,6 +404,7 @@ ProvenanceSnapshot::restore(const CacheIdentity& identity,
             return spans[id];
         };
         std::vector<ProvenanceSite> sites;
+        sites.reserve(site_refs.size());
         for (const auto& [position, label] : site_refs)
             sites.push_back({span(position), text(label)});
         if (sites.empty())

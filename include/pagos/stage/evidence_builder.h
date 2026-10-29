@@ -10,10 +10,12 @@ struct EvidenceBuildConfig {
     EvidenceBuildMode mode{EvidenceBuildMode::Memory};
     // Explicit spill namespace parent, independent of semantic cache settings.
     std::filesystem::path directory;
-    std::size_t block_bytes{64 * 1024}; // Logical node/edge bytes per segment.
-    std::size_t resident_bytes{64 * 1024 * 1024}; // Active + resident + cache.
-    std::size_t cache_bytes{1024 * 1024};
-    std::size_t disk_bytes{256 * 1024 * 1024}; // CAS payloads + envelopes.
+    std::size_t block_bytes{64UZ *
+                            1024}; // Logical node/edge bytes per segment.
+    std::size_t resident_bytes{64UZ * 1024 *
+                               1024}; // Active + resident + cache.
+    std::size_t cache_bytes{1024UZ * 1024};
+    std::size_t disk_bytes{256UZ * 1024 * 1024}; // CAS payloads + envelopes.
     SpillFailurePolicy failure_policy{SpillFailurePolicy::KeepMemory};
     cache::StoreOptions store;
     bool measure_memory{}; // Opt-in end-of-recording census, never a budget.

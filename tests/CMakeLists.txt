@@ -92,9 +92,14 @@ add_executable(pagos_query_checkpoint_probe query_checkpoint_probe.cpp)
 target_link_libraries(pagos_query_checkpoint_probe PRIVATE Pagos::stage pagos_project_options)
 add_test(NAME pagos-query-checkpoint-process
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/query_checkpoint_process.py
-            $<TARGET_FILE:pagos_query_checkpoint_probe>)
-# This matrix starts more than sixty compiler processes, including under ASan.
-set_tests_properties(pagos-query-checkpoint-process PROPERTIES TIMEOUT 180)
+            $<TARGET_FILE:pagos_query_checkpoint_probe> --mode sources)
+add_test(NAME pagos-query-checkpoint-witness-process
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/query_checkpoint_process.py
+            $<TARGET_FILE:pagos_query_checkpoint_probe> --mode witness)
+# Each matrix retains all 14 cases and the original deadline. ASan on a hosted
+# runner must not share one timeout across the two independent matrices.
+set_tests_properties(pagos-query-checkpoint-process
+    pagos-query-checkpoint-witness-process PROPERTIES TIMEOUT 180)
 add_test(NAME pagos-recursive-checkpoint-process
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/recursive_checkpoint_process.py
             $<TARGET_FILE:pagos_query_checkpoint_probe>)

@@ -18,8 +18,9 @@ RecursiveSummaryTask::RecursiveSummaryTask(RecursiveSummaryTask&&) noexcept =
     default;
 RecursiveSummaryTask&
 RecursiveSummaryTask::operator=(RecursiveSummaryTask&&) noexcept = default;
-QueryProgress RecursiveSummaryTask::advance(std::size_t steps,
-                                            std::stop_token cancellation) {
+QueryProgress
+RecursiveSummaryTask::advance(std::size_t steps,
+                              const std::stop_token& cancellation) {
     if (impl_->offloaded && cancellation.stop_requested())
         cancel();
     if (!ensure_resident())

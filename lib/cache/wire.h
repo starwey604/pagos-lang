@@ -143,6 +143,24 @@ class Reader {
     std::optional<Error> error_;
 };
 
+// Only contiguous, explicitly bounded wire enums use this helper. Failed or
+// out-of-range input sets a sticky error before any enum conversion; the
+// fallback is a valid enumerator, never an unchecked value from disk.
+template <class Enum> Enum enum_range(Reader& reader, Enum first, Enum last) {
+    const auto value = reader.u8();
+    if (!reader.good())
+        return first;
+    if (value < std::to_underlying(first) || value > std::to_underlying(last)) {
+        reader.fail(Error::InvalidFormat);
+        return first;
+    }
+    return static_cast<Enum>(value);
+}
+inline ObjectKind object_kind(Reader& reader) {
+    return enum_range(reader, ObjectKind::Value,
+                      ObjectKind::GeneratorReplayObservation);
+}
+
 void header(Writer& writer, ObjectKind kind);
 void header(Reader& reader, ObjectKind kind);
 void type(Writer& writer, const sema::Type& type);

@@ -18,7 +18,7 @@ struct TaskHead {
     bool operator==(const TaskHead&) const = default;
 };
 struct TaskStoreOptions {
-    std::size_t disk_bytes{256 * 1024 * 1024};
+    std::size_t disk_bytes{256UZ * 1024 * 1024};
     StoreOptions store;
 };
 struct TaskCleanupStats {

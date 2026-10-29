@@ -80,8 +80,8 @@ using FaultInjector = std::function<std::error_code(
     IoOperation, const std::filesystem::path& destination)>;
 struct StoreOptions {
     Limits codec;
-    std::size_t object_bytes{16 * 1024 * 1024};
-    std::size_t manifest_bytes{1024 * 1024};
+    std::size_t object_bytes{16UZ * 1024 * 1024};
+    std::size_t manifest_bytes{1024UZ * 1024};
     std::size_t artifacts{32};
     std::chrono::milliseconds lock_timeout{100};
     FaultInjector fault;

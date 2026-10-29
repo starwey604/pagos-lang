@@ -64,7 +64,7 @@ void reference(Writer& writer, const cache::ObjectRef& ref) {
     writer.u64(ref.size);
 }
 cache::ObjectRef reference(Reader& reader, ObjectKind kind) {
-    cache::ObjectRef ref{static_cast<ObjectKind>(reader.u8()), digest(reader),
+    cache::ObjectRef ref{cache::wire::object_kind(reader), digest(reader),
                          reader.u64()};
     if (ref.kind != kind || ref.size < 9)
         reader.fail(Error::InvalidFormat);
@@ -386,7 +386,7 @@ EvidenceGroup decode_summary(std::span<const std::uint8_t> bytes,
                                 reader.u32(), digest(reader)};
         require(imported.key.hex() > previous_import);
         previous_import = imported.key.hex();
-        group.imports.push_back(std::move(imported));
+        group.imports.push_back(imported);
     }
     const auto count = checked_count(reader, 4);
     require(count > 0 && count < import_bit);
@@ -415,7 +415,7 @@ EvidenceGroup decode_summary(std::span<const std::uint8_t> bytes,
             require(value.node.value > 0 && value.node.value <= member.nodes);
             if (member.key.definition.kind == cache::DefinitionKind::Function)
                 require(value.scope == i + 1);
-            member.decisions.push_back(std::move(value));
+            member.decisions.push_back(value);
         }
         const auto roots = checked_count(reader, 4 + 4 + 1 + 1 + 4 + 1);
         require(roots == 0 ||
@@ -695,6 +695,7 @@ FunctionEvidence::load(cache::FileStore store, CacheIdentity identity,
         }
         finish(reader);
         std::vector<cache::ObjectRef> pending;
+        pending.reserve(result.catalog_.size());
         for (const auto& entry : result.catalog_)
             pending.push_back(entry.summary);
         std::map<std::string, cache::ObjectRef> seen;

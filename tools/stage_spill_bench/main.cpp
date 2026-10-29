@@ -59,9 +59,9 @@ int main(int count, char** args) {
     if (mode == "spill") {
         config.mode = EvidenceBuildMode::Spill;
         config.directory = args[4];
-        config.block_bytes = 32 * 1024;
-        config.resident_bytes = 256 * 1024;
-        config.cache_bytes = 64 * 1024;
+        config.block_bytes = 32UZ * 1024;
+        config.resident_bytes = 256UZ * 1024;
+        config.cache_bytes = 64UZ * 1024;
         config.failure_policy = SpillFailurePolicy::Unavailable;
     }
     config.measure_memory = phase == "census";

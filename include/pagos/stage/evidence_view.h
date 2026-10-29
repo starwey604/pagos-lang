@@ -85,7 +85,8 @@ class EvidenceView {
                                        EvidenceError>
     disk(cache::FileStore store, std::vector<EvidenceBlockRef> blocks,
          std::vector<SummaryDescription> summaries,
-         std::size_t cache_bytes = 4 * 1024 * 1024, cache::Limits limits = {});
+         std::size_t cache_bytes = 4UZ * 1024 * 1024,
+         cache::Limits limits = {});
     using Loader =
         std::function<std::expected<std::shared_ptr<const EvidenceBlock>,
                                     EvidenceError>(std::size_t)>;
@@ -95,7 +96,7 @@ class EvidenceView {
                                        EvidenceError>
     segmented(std::vector<EvidenceBlockRef> blocks,
               std::vector<SummaryDescription> summaries, Loader loader,
-              std::size_t cache_bytes = 4 * 1024 * 1024,
+              std::size_t cache_bytes = 4UZ * 1024 * 1024,
               cache::Limits limits = {});
     [[nodiscard]] std::expected<NodeLease, EvidenceError> pin(NodeId id) const;
     [[nodiscard]] std::size_t node_count() const;

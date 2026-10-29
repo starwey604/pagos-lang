@@ -30,7 +30,7 @@ class Cancellation {
         if (previous_ == SIG_ERR)
             throw std::runtime_error("cannot install replay interrupt handler");
         try {
-            watcher_ = std::jthread([this](std::stop_token stop) {
+            watcher_ = std::jthread([this](const std::stop_token& stop) {
                 while (!stop.stop_requested()) {
                     if (interrupted.test(std::memory_order_relaxed)) {
                         source_.request_stop();

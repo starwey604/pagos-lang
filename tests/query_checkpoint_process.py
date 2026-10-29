@@ -1,15 +1,20 @@
 """Real process boundaries for opt-in provenance query checkpoints."""
 
+import argparse
 import collections
 import json
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("probe")
+parser.add_argument("--mode", choices=("all", "sources", "witness"), default="all")
+options = parser.parse_args()
 
 
 def run(*args, ok=True):
-    process = subprocess.run([sys.argv[1], *map(str, args)], capture_output=True, text=True, timeout=20)
+    process = subprocess.run([options.probe, *map(str, args)], capture_output=True, text=True, timeout=20)
     if not ok:
         assert process.returncode != 0, process.stdout
         return process
@@ -31,10 +36,11 @@ with tempfile.TemporaryDirectory(prefix="pagos-checkpoint-process-") as temporar
         "let a = external_input(); let b = external_input(); let aa = [" + calls + "];"
     )
     assert run("prepare", directory, source)["stage_runs"] == 1
-    for mode in ("sources", "witness"):
+    modes = ("sources", "witness") if options.mode == "all" else (options.mode,)
+    for mode in modes:
         oracle = run("oracle", directory, source, mode)
         assert oracle["stage_runs"] == 0
-        for steps in (0, 1, 2, 7, 30, 200, 10000):
+        for steps in (0, 1, 2, 7, 30, 200, "complete"):
             for acknowledgement in ("ack", "unacked"):
                 saved = run("save", directory, source, mode, steps, acknowledgement)
                 resumed = run("resume", directory, source, mode, saved["digest"], saved["size"])
@@ -42,6 +48,11 @@ with tempfile.TemporaryDirectory(prefix="pagos-checkpoint-process-") as temporar
                 assert resumed["result"] == oracle["result"], (mode, steps)
                 assert resumed["work"] == oracle["work"], (mode, steps)
                 assert resumed["issues"] == oracle["issues"]
+                if steps == "complete" and acknowledgement == "ack":
+                    assert saved["completed"]
+                    assert saved["result"] == oracle["result"]
+                    assert saved["work"] == oracle["work"]
+                    assert not resumed["pages"], "completed checkpoint did new delivery work"
                 # Persisted consumer receipt table: redelivery uses the same
                 # sequence and byte-for-byte records, not a new logical page.
                 received = {}

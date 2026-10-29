@@ -108,7 +108,7 @@ int main(int argc, char** argv) {
                 FunctionEvidence::load(evidence_store, *identity, context);
             require(closure.has_value());
             auto view = FunctionEvidenceView::open(std::move(*closure),
-                                                   4 * 1024 * 1024);
+                                                   4UZ * 1024 * 1024);
             require(view.has_value());
             return std::move(*view);
         };
@@ -123,7 +123,7 @@ int main(int argc, char** argv) {
                 operation == cache::IoOperation::WriteTemporary ? 1U : 0U;
             return std::error_code{};
         };
-        options.disk_bytes = 1024 * 1024 * 1024;
+        options.disk_bytes = 1024UZ * 1024 * 1024;
         auto store = cache::TaskStore::open(
             argv[4], id, cache::TaskAccess::ReadWrite, options);
         require(store.has_value());

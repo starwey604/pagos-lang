@@ -636,7 +636,7 @@ void ScalarCache::publish_or_defer(
         std::size_t bytes = 0;
         for (const auto& artifact : artifacts)
             bytes += artifact.bytes.size();
-        constexpr auto maximum = std::size_t{16 * 1024 * 1024};
+        constexpr auto maximum = std::size_t{16UZ * 1024 * 1024};
         if (bytes > maximum || pending_bytes_ > maximum - bytes ||
             pending_.size() >= 4096) {
             ++telemetry_.blocked_writes;

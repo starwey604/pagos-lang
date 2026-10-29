@@ -430,7 +430,7 @@ RecursiveSummaryTask::restore(QueryCheckpointBinding binding,
             std::size_t next = 0;
             for (std::uint32_t i = 0; i < segments; ++i) {
                 Segment segment{reader.u32(), reader.u32(), {}};
-                segment.object = {static_cast<cache::ObjectKind>(reader.u8()),
+                segment.object = {cache::wire::object_kind(reader),
                                   digest(reader), reader.u64()};
                 if (!reader.good())
                     finish(reader);

@@ -9,10 +9,10 @@ inline constexpr std::uint32_t scalar_replay_execution_version = 1;
 struct ScalarReplayExecutionLimits {
     std::size_t fuel{
         100'000}; // One per attempted node, plus final verification.
-    std::size_t value_bytes{8 * 1024 * 1024}; // N * sizeof(ScalarConstant).
+    std::size_t value_bytes{8UZ * 1024 * 1024}; // N * sizeof(ScalarConstant).
     std::size_t output_records{4096};
     // Fixed result object plus retained detail capacity; not rendered bytes.
-    std::size_t output_bytes{1024 * 1024};
+    std::size_t output_bytes{1024UZ * 1024};
     cache::Limits codec; // Descriptor admission scratch is separately bounded.
 };
 struct ScalarReplayDetailRange {

@@ -111,6 +111,13 @@ FormulaIndex、初始 invocation path、legacy 丢弃上限及失败任务不能
 类型检查当前位置绑定，不走 StageAnalyzer；另外检查空白修订、损坏/缺失
 checkpoint 对象均拒绝。测试探针是实验入口，尚未新增 `pagosc` 续接参数。
 
+2026-10-29 的 CI 修复将 sources/witness 拆为独立 CTest 用例，各保留原
+180 秒上限和 14 组场景；手工直接调用脚本仍默认运行两种模式。7 个位置
+包含明确的 complete 场景：已确认时保存前必须真正完成、结果/累计工作与
+oracle 一致，恢复后不得再次交付页面。部分进度仍逐 primitive 推进；完成态
+采用更大的 slice 到达，不再为到达终点执行上万个小 slice。没有缩小图或
+去掉未确认页/跨进程/损坏拒绝检查。
+
 下一轮 C4c2 应先引入分段状态对象、原子任务 manifest/配额/离线清理，
 再测量 queue、visited、contexts、前驱的内存/磁盘占用、写入放大和恢复
 延迟；符号拓扑任务和主解释 CLI 的迁移继续单列验收。

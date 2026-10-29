@@ -46,8 +46,9 @@ QueryProgress EvidenceTopologyTask::progress() const { return impl_->progress; }
 const TopologyStats& EvidenceTopologyTask::stats() const {
     return impl_->stats;
 }
-TopologyPage EvidenceTopologyTask::advance(QuerySlice slice,
-                                           std::stop_token cancellation) {
+TopologyPage
+EvidenceTopologyTask::advance(QuerySlice slice,
+                              const std::stop_token& cancellation) {
     auto& task = *impl_;
     if (task.progress == QueryProgress::Paused)
         resume();

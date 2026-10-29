@@ -72,7 +72,7 @@ int main(int count, char** args) {
         return 1;
     auto opened = Clock::now();
     auto prepared = stage::FunctionEvidenceView::open(
-        std::move(*loaded), mode == "eager" ? 0 : 4 * 1024 * 1024);
+        std::move(*loaded), mode == "eager" ? 0 : 4UZ * 1024 * 1024);
     loaded = std::unexpected(
         cache::StoreError{cache::StoreErrorCode::NotFound, {}, {}});
     if (!prepared)

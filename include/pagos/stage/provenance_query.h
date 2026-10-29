@@ -60,11 +60,11 @@ struct QueryStateMemory {
     bool paged{};
 };
 struct QueryPagingConfig {
-    std::size_t segment_bytes{16 * 1024};
+    std::size_t segment_bytes{16UZ * 1024};
     // Owned append buffers + decoded read cache, excluding directory, CAS
     // codec scratch, graph leases and explicit detached compatibility results.
-    std::size_t resident_bytes{256 * 1024};
-    std::size_t cache_bytes{64 * 1024};
+    std::size_t resident_bytes{256UZ * 1024};
+    std::size_t cache_bytes{64UZ * 1024};
 };
 struct QueryPagingStats {
     std::size_t reads{}, hits{}, writes{}, bytes_read{}, bytes_written{};
@@ -173,7 +173,7 @@ class QueryTask {
     QueryTask& operator=(const QueryTask&) = delete;
 
     [[nodiscard]] QueryPage advance(QuerySlice slice = {},
-                                    std::stop_token cancellation = {});
+                                    const std::stop_token& cancellation = {});
     // Idempotently confirm through this page. Confirm only after committing
     // consumer records/receipts. The watermark persists in the next checkpoint.
     [[nodiscard]] bool acknowledge(std::uint64_t sequence);
@@ -187,13 +187,13 @@ class QueryTask {
     // objects from earlier generations remain until explicit task maintenance.
     [[nodiscard]] std::expected<cache::TaskHead, CheckpointError>
     save(const cache::TaskStore& store, std::uint64_t expected_generation,
-         std::size_t segment_bytes = 64 * 1024,
+         std::size_t segment_bytes = 64UZ * 1024,
          cache::Limits limits = {}) const;
     // Same publication, then actually release vector/hash capacity and active
     // evidence lease. Next advance (or result/invocations) restores the tables.
     [[nodiscard]] std::expected<cache::TaskHead, CheckpointError>
     offload(const cache::TaskStore& store, std::uint64_t expected_generation,
-            std::size_t segment_bytes = 64 * 1024, cache::Limits limits = {});
+            std::size_t segment_bytes = 64UZ * 1024, cache::Limits limits = {});
     [[nodiscard]] QueryStateMemory state_memory() const;
     [[nodiscard]] static std::expected<QueryTask, CheckpointError>
     restore(QueryCheckpointBinding binding, const cache::TaskStore& store,

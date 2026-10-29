@@ -15,7 +15,7 @@ struct QueryTaskOptions {
     std::optional<std::size_t> max_slices{1};
     stage::provenance::QueryKind channel{stage::provenance::QueryKind::Value};
     stage::provenance::QueryPagingConfig paging;
-    std::size_t disk_bytes{256 * 1024 * 1024};
+    std::size_t disk_bytes{256UZ * 1024 * 1024};
     std::size_t record_limit{cache::Limits{}.elements};
     bool specified{}, read_only{}, slices_set{}, channel_set{}, paging_set{};
     [[nodiscard]] bool enabled() const { return !directory.empty(); }

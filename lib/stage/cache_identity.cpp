@@ -385,7 +385,8 @@ decode_source_anchor(std::span<const std::uint8_t> bytes,
     SourceAnchor anchor;
     anchor.definition.module.workspace = reader.string();
     anchor.definition.module.relative_path = reader.string();
-    anchor.definition.kind = static_cast<cache::DefinitionKind>(reader.u8());
+    anchor.definition.kind = cache::wire::enum_range(
+        reader, cache::DefinitionKind::Function, cache::DefinitionKind::Module);
     anchor.definition.name = reader.string();
     const auto hash = reader.raw(32);
     if (reader.good())

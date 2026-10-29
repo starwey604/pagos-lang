@@ -291,7 +291,7 @@ std::expected<Bytes, StoreError> read_cas_object(const fs::path& root,
     wire::Reader reader(*bytes,
                         {.bytes = options.object_bytes + object_header_size});
     magic(reader, "PGO1");
-    const auto kind = static_cast<ObjectKind>(reader.u8());
+    const auto kind = cache::wire::object_kind(reader);
     const auto size = reader.u64();
     const auto hash = digest(reader);
     if (!valid_kind(kind) || kind != reference.kind || size != reference.size ||
@@ -381,7 +381,7 @@ std::expected<Manifest, StoreError> read_manifest(const fs::path& path,
     for (std::uint32_t index = 0; index < count && reader.good(); ++index) {
         StoredArtifact artifact;
         artifact.name = reader.string();
-        artifact.object.kind = static_cast<ObjectKind>(reader.u8());
+        artifact.object.kind = cache::wire::object_kind(reader);
         artifact.required = reader.boolean();
         artifact.object.size = reader.u64();
         artifact.object.digest = digest(reader);

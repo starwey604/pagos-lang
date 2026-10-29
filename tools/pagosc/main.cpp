@@ -53,7 +53,7 @@ struct Options {
     std::optional<std::string> snapshot_write, snapshot_read;
     std::optional<std::string> evidence_write, evidence_read;
     std::string evidence_root, evidence_mode{"sources"};
-    std::size_t evidence_cache_bytes{4 * 1024 * 1024};
+    std::size_t evidence_cache_bytes{4UZ * 1024 * 1024};
     pagos::stage::provenance::EvidenceBuildConfig spill;
     bool spill_stats{};
     pagos::driver::QueryTaskOptions query;
@@ -165,7 +165,7 @@ std::expected<Options, std::string> parse_options(int argument_count,
     std::optional<std::string> snapshot_write, snapshot_read;
     std::optional<std::string> evidence_write, evidence_read;
     std::string evidence_root, evidence_mode{"sources"};
-    std::size_t evidence_cache_bytes{4 * 1024 * 1024};
+    std::size_t evidence_cache_bytes{4UZ * 1024 * 1024};
     pagos::stage::provenance::EvidenceBuildConfig spill;
     bool spill_stats = false, spill_options = false;
     bool provenance_options = false;
@@ -426,7 +426,7 @@ std::expected<Options, std::string> parse_options(int argument_count,
             provenance_options || snapshot_write || snapshot_read ||
             evidence_write || evidence_read || !evidence_root.empty() ||
             evidence_mode != "sources" ||
-            evidence_cache_bytes != 4 * 1024 * 1024 || query.specified ||
+            evidence_cache_bytes != 4UZ * 1024 * 1024 || query.specified ||
             recursive.specified || spill_options ||
             spill.mode != pagos::stage::provenance::EvidenceBuildMode::Memory)
             return std::unexpected("explain-replay excludes Stage cache, "
@@ -477,7 +477,7 @@ std::expected<Options, std::string> parse_options(int argument_count,
             "evidence read does not accept Stage cache options");
     if (!function_evidence &&
         (!evidence_root.empty() || evidence_mode != "sources" ||
-         evidence_cache_bytes != 4 * 1024 * 1024))
+         evidence_cache_bytes != 4UZ * 1024 * 1024))
         return std::unexpected(
             "evidence query options require evidence read or write");
     if (function_evidence &&

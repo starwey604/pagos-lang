@@ -9,7 +9,7 @@ struct ScalarReplayOptions {
     std::vector<std::string> arguments;
     stage::ScalarReplayExecutionLimits limits;
     stage::ScalarReplayDetailRange range;
-    std::size_t render_bytes{1024 * 1024};
+    std::size_t render_bytes{1024UZ * 1024};
     std::optional<std::uint32_t> element; // Explicit zero-based array index.
     bool specified{}, statistics{};
 };

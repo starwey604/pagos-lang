@@ -25,6 +25,22 @@ def files(root):
             for path in root.rglob("*") if path.is_file()}
 
 
+def active_segments(directory):
+    # TaskHead v1: PGC1/kind 14, version, task ID, generation, status,
+    # manifest kind, manifest digest, size and checksum. Select objects from
+    # the head's manifest, never from arbitrary/orphaned CAS generations.
+    head = (directory / "head").read_bytes()
+    assert len(head) == 127 and head[:4] == b"PGC1" and head[8] == 14
+    assert int.from_bytes(head[9:13], "little") == 1 and head[54] == 14
+    digest = head[55:87].hex()
+    envelope = (directory / "objects" / digest[:2] / digest).read_bytes()
+    assert envelope[:4] == b"PGO1" and envelope[8] == 14
+    manifest = envelope[49:]
+    return [path for path in (directory / "objects").rglob("*")
+            if path.is_file() and path.read_bytes()[8] == 13
+            and bytes.fromhex(path.name) in manifest]
+
+
 def decode(process):
     rows = [json.loads(line) for line in process.stdout.splitlines()]
     assert rows and rows[-1]["type"] == "status", process
@@ -210,15 +226,30 @@ with tempfile.TemporaryDirectory(prefix="pagos-recursive-task-cli-") as temporar
     assert failed.returncode == 1 and "saved result can be replayed" in failed.stderr
     replay, status = decode(query(task=full_id, action="resume", read_only=True))
     assert replay and status["state"] == "awaiting-delivery"
+    directory = tasks / f"pagos-query-{full_id}"
+    segments = active_segments(directory)
+    assert segments
+    broken = segments[0]
+    # Unreferenced crash debris is not part of a saved result. This positive
+    # case also prevents the corruption fixture from silently picking it.
+    orphan_id = hashlib.sha256(b"unreferenced corrupt segment fixture").hexdigest()
+    orphan = directory / "objects" / orphan_id[:2] / orphan_id
+    orphan.parent.mkdir(exist_ok=True)
+    orphan.write_bytes(broken.read_bytes()[:-1])
+    assert orphan not in active_segments(directory)
     snapshot = files(tasks)
-    broken = next(path for path in (tasks / f"pagos-query-{full_id}" / "objects").rglob("*")
-                  if path.is_file() and path.read_bytes()[8] == 13)
+    assert decode(query(task=full_id, action="resume", read_only=True))[0] == replay
+    assert files(tasks) == snapshot
     saved = broken.read_bytes()
     broken.write_bytes(saved[:-1])
+    corrupt_snapshot = files(tasks)
     query(task=full_id, action="resume", read_only=True, codes=(1,))
+    assert files(tasks) == corrupt_snapshot
     broken.write_bytes(saved)
+    restored_snapshot = files(tasks)
     replay2, status2 = decode(query(task=full_id, action="resume", read_only=True))
     assert replay == replay2 and status["work"] == status2["work"]
+    assert files(tasks) == restored_snapshot
     assert cleanup(True)["reclaimed"] == 1
 
     # Pause cancellation is terminal for default maintenance.

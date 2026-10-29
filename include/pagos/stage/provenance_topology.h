@@ -80,8 +80,8 @@ class EvidenceTopologyTask {
     ~EvidenceTopologyTask();
     EvidenceTopologyTask(EvidenceTopologyTask&&) noexcept;
     EvidenceTopologyTask& operator=(EvidenceTopologyTask&&) noexcept;
-    [[nodiscard]] TopologyPage advance(QuerySlice slice = {},
-                                       std::stop_token cancellation = {});
+    [[nodiscard]] TopologyPage
+    advance(QuerySlice slice = {}, const std::stop_token& cancellation = {});
     void cancel();
     void resume();
     [[nodiscard]] QueryProgress progress() const;
@@ -135,12 +135,12 @@ class TopologyTask {
     [[nodiscard]] std::expected<cache::TaskHead, CheckpointError>
     save_segmented(const cache::TaskStore& store,
                    std::uint64_t expected_generation,
-                   std::size_t segment_bytes = 64 * 1024,
+                   std::size_t segment_bytes = 64UZ * 1024,
                    cache::Limits limits = {}) const;
     // Publish first, then release owned task/index tables and the active lease.
     [[nodiscard]] std::expected<cache::TaskHead, CheckpointError>
     offload(const cache::TaskStore& store, std::uint64_t expected_generation,
-            std::size_t segment_bytes = 64 * 1024, cache::Limits limits = {});
+            std::size_t segment_bytes = 64UZ * 1024, cache::Limits limits = {});
     [[nodiscard]] TopologyStateMemory state_memory() const;
     // Counters for the last segmented save/restore, not persistent logical
     // work.
@@ -151,8 +151,8 @@ class TopologyTask {
     TopologyTask& operator=(TopologyTask&&) noexcept;
     TopologyTask(const TopologyTask&) = delete;
     TopologyTask& operator=(const TopologyTask&) = delete;
-    [[nodiscard]] TopologyPage advance(QuerySlice slice = {},
-                                       std::stop_token cancellation = {});
+    [[nodiscard]] TopologyPage
+    advance(QuerySlice slice = {}, const std::stop_token& cancellation = {});
     void cancel();
     void resume();
     [[nodiscard]] QueryProgress progress() const;

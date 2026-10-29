@@ -51,7 +51,7 @@ enum class Error {
 };
 
 struct Limits {
-    std::size_t bytes{16 * 1024 * 1024};
+    std::size_t bytes{16UZ * 1024 * 1024};
     std::size_t elements{1'000'000};
     std::size_t string_bytes{65'536};
     std::size_t depth{256};

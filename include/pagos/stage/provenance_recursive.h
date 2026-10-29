@@ -94,7 +94,7 @@ class RecursiveSummaryTask {
     [[nodiscard]] std::expected<cache::TaskHead, CheckpointError>
     save_segmented(const cache::TaskStore& store,
                    std::uint64_t expected_generation,
-                   std::size_t segment_bytes = 16 * 1024,
+                   std::size_t segment_bytes = 16UZ * 1024,
                    cache::Limits limits = {}) const;
     [[nodiscard]] static std::expected<RecursiveSummaryTask, CheckpointError>
     restore(QueryCheckpointBinding binding, const cache::TaskStore& store,
@@ -102,7 +102,7 @@ class RecursiveSummaryTask {
             cache::Limits limits = {});
     [[nodiscard]] std::expected<cache::TaskHead, CheckpointError>
     offload(const cache::TaskStore& store, std::uint64_t expected_generation,
-            std::size_t segment_bytes = 16 * 1024, cache::Limits limits = {});
+            std::size_t segment_bytes = 16UZ * 1024, cache::Limits limits = {});
     [[nodiscard]] RecursiveStateMemory state_memory() const;
     [[nodiscard]] const RecursiveStorageStats& storage_stats() const;
     [[nodiscard]] const std::optional<CheckpointError>& storage_failure() const;
@@ -111,8 +111,8 @@ class RecursiveSummaryTask {
     RecursiveSummaryTask& operator=(RecursiveSummaryTask&&) noexcept;
     RecursiveSummaryTask(const RecursiveSummaryTask&) = delete;
     RecursiveSummaryTask& operator=(const RecursiveSummaryTask&) = delete;
-    [[nodiscard]] QueryProgress advance(std::size_t steps = 4096,
-                                        std::stop_token cancellation = {});
+    [[nodiscard]] QueryProgress
+    advance(std::size_t steps = 4096, const std::stop_token& cancellation = {});
     void cancel();
     void resume();
     [[nodiscard]] std::uint64_t pending_sequence() const;

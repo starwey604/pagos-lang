@@ -148,7 +148,8 @@ decode_query_key(std::span<const std::uint8_t> bytes, Limits limits) {
     wire::Reader reader(bytes, limits);
     wire::header(reader, ObjectKind::QueryKey);
     QueryKey key;
-    key.kind = static_cast<QueryKind>(reader.u8());
+    key.kind = wire::enum_range(reader, QueryKind::EvaluatePureSpecialization,
+                                QueryKind::FreezeGeneratorReplay);
     if (key.kind != QueryKind::EvaluatePureSpecialization &&
         key.kind != QueryKind::SpecializeResidual &&
         key.kind != QueryKind::FreezeEvidence &&
@@ -159,7 +160,8 @@ decode_query_key(std::span<const std::uint8_t> bytes, Limits limits) {
         reader.fail(Error::InvalidFormat);
     key.context = context(reader);
     key.definition.module = key.context.module;
-    key.definition.kind = static_cast<DefinitionKind>(reader.u8());
+    key.definition.kind = wire::enum_range(reader, DefinitionKind::Function,
+                                           DefinitionKind::Module);
     key.definition.name = reader.string();
     if (!valid_definition_id(key.definition) ||
         (key.definition.kind != DefinitionKind::Function &&
@@ -174,7 +176,8 @@ decode_query_key(std::span<const std::uint8_t> bytes, Limits limits) {
     key.arguments.reserve(count);
     for (std::uint32_t index = 0; index < count && reader.good(); ++index) {
         auto type = wire::type(reader);
-        const auto stage = static_cast<ArgumentStage>(reader.u8());
+        const auto stage = wire::enum_range(reader, ArgumentStage::Comptime,
+                                            ArgumentStage::Runtime);
         const auto constraint = static_cast<RuntimeConstraint>(reader.u8());
         std::optional<Constant> value;
         if (stage == ArgumentStage::Comptime)
