@@ -1,3 +1,4 @@
+#include "host_signals.h"
 #include <stddef.h>
 #include <stdint.h>
 #ifndef PAGOS_FREESTANDING
@@ -78,6 +79,7 @@ int abi_check(void) {
 }
 #ifndef PAGOS_FREESTANDING
 int main(int argc, char** argv) {
+    pagos_test_disable_core_dumps();
     if (argc > 1) {
         switch (argv[1][0]) {
         case 'r':

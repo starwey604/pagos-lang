@@ -1,3 +1,4 @@
+#include "host_signals.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +21,7 @@ uint32_t pagos_external_input(void) {
 extern uint32_t pagos_main(void);
 
 int main(int argc, char** argv) {
+    pagos_test_disable_core_dumps();
     input_count = argc;
     inputs = argv;
     uint32_t result = pagos_main();

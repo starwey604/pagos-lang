@@ -1,3 +1,4 @@
+#include "host_signals.h"
 #include <stdint.h>
 
 extern const uint32_t* rom_address(void);
@@ -10,6 +11,7 @@ extern uint8_t* page_address(void);
 extern uint32_t step(void);
 
 int main(void) {
+    pagos_test_disable_core_dumps();
     if ((uintptr_t)rom_address() % 32 || (uintptr_t)twin_address() % 64 ||
         (uintptr_t)seed_address() % 64 || (uintptr_t)count_address() % 128 ||
         (uintptr_t)zero_address() % 16 || (uintptr_t)natural_address() % 8 ||

@@ -1,3 +1,4 @@
+#include "host_signals.h"
 #include <stdint.h>
 extern uint32_t* counter_address(void);
 extern uint32_t* configured_address(void);
@@ -14,6 +15,7 @@ uint32_t change(uint32_t* p) {
     return 0;
 }
 int main(void) {
+    pagos_test_disable_core_dumps();
     if (check_state() != 1 || *configured_address() != 41)
         return 1;
     if (*identity_address() != 17 || *twin_address() != 17 ||

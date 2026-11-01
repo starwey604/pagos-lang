@@ -1,3 +1,4 @@
+#include "host_signals.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -54,5 +55,8 @@ int abi_check(void) {
 }
 
 #ifndef PAGOS_FREESTANDING
-int main(void) { return abi_check(); }
+int main(void) {
+    pagos_test_disable_core_dumps();
+    return abi_check();
+}
 #endif

@@ -1,3 +1,4 @@
+#include "host_signals.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -25,6 +26,7 @@ uint32_t value(uint32_t* p) {
 }
 
 int main(int argc, char** argv) {
+    pagos_test_disable_core_dumps();
     if (argc > 1) {
         if (strcmp(argv[1], "null-store") == 0)
             return (int)store(0);

@@ -1,3 +1,4 @@
+#include "host_signals.h"
 #include <stdint.h>
 
 extern uint32_t api_sum(uint32_t);
@@ -38,6 +39,7 @@ int abi_check(void) {
 
 #ifndef PAGOS_FREESTANDING
 int main(int argc, char** argv) {
+    pagos_test_disable_core_dumps();
     (void)argv;
     if (argc > 1)
         return (int)api_trap(0);

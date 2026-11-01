@@ -1,3 +1,4 @@
+#include "host_signals.h"
 #include <stdint.h>
 extern uint8_t* buffer_address(uint32_t);
 extern const uint32_t* square_address(uint32_t);
@@ -64,6 +65,7 @@ int abi_check(void) {
 
 #ifndef PAGOS_FREESTANDING
 int main(int argc, char** argv) {
+    pagos_test_disable_core_dumps();
     if (argc > 1) {
         switch (argv[1][0]) {
         case 'r':

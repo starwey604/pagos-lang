@@ -1,3 +1,4 @@
+#include "host_signals.h"
 #include <stdint.h>
 
 extern uint32_t api_alias(uint32_t*, const uint32_t*);
@@ -67,6 +68,7 @@ int abi_check(void) {
 
 #ifndef PAGOS_FREESTANDING
 int main(int argc, char** argv) {
+    pagos_test_disable_core_dumps();
     if (argc > 1) {
         if (argv[1][0] == 's')
             return (int)api_null_store(0);
