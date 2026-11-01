@@ -31,10 +31,12 @@ def main():
     parser.add_argument("--repeats", type=int, default=7)
     parser.add_argument("--warmups", type=int, default=2)
     parser.add_argument("--sizes", type=int, nargs="+", default=[128, 512, 1024])
+    parser.add_argument("--binary", type=pathlib.Path,
+                        default=ROOT / "build/release/pagos_function_evidence_bench")
     args = parser.parse_args()
     if args.repeats < 3 or args.warmups < 1 or any(size < 1 or size > 4096 for size in args.sizes):
         parser.error("requires >=3 repeats, >=1 warmup, sizes 1..4096")
-    binary = ROOT / "build/release/pagos_function_evidence_bench"
+    binary = args.binary.resolve()
     cache = (binary.parent / "CMakeCache.txt").read_text()
     if "CMAKE_BUILD_TYPE:STRING=Release" not in cache:
         parser.error("use Release")

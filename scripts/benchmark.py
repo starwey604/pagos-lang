@@ -43,7 +43,7 @@ def disk_usage(directory):
                              p.suffix == ".manifest" for p in files)}
 
 
-def run_sample(command, directory, cache=None):
+def run_sample(command, directory, cache=None, *, capture=False):
     """wait4 reports this child's RSS, not accumulated earlier children."""
     # Regular temporary files avoid a full output pipe while wait4 owns reaping.
     # No resource.getrusage(RUSAGE_CHILDREN): its maximum spans prior samples.
@@ -76,10 +76,15 @@ def run_sample(command, directory, cache=None):
     storage = disk_usage(cache) if cache else None
     if telemetry.get("hits") and storage and not storage["manifests"]:
         raise RuntimeError("cache hits without measured manifests")
-    return {"seconds": elapsed, "peak_rss_kib": int(usage.ru_maxrss),
+    result = {"seconds": elapsed, "peak_rss_kib": int(usage.ru_maxrss),
+            "user_seconds": usage.ru_utime, "system_seconds": usage.ru_stime,
+            "input_blocks": usage.ru_inblock, "output_blocks": usage.ru_oublock,
             "output_bytes": len(stdout), "output_sha256": digest(stdout),
             "cache_telemetry": telemetry,
             "cache_disk": storage}
+    if capture:
+        result["stdout"] = stdout.decode()
+    return result
 
 
 def summarize(samples):
@@ -100,6 +105,7 @@ def main():
     parser.add_argument("--cache-modes", choices=("off", "cold", "hot", "all"), default="off")
     parser.add_argument("--case", action="append", help="source path; repeat to select cases")
     parser.add_argument("--command", action="append", choices=COMMANDS)
+    parser.add_argument("--target", help="explicit LLVM triple (default: host)")
     parser.add_argument("--repeats", type=int, default=7)
     parser.add_argument("--warmups", type=int, default=2)
     parser.add_argument("--output", type=Path, required=True)
@@ -111,6 +117,7 @@ def main():
     if args.reference_compiler and args.cache_modes != "off":
         parser.error("reference comparison requires --cache-modes=off")
     compiler = args.compiler.resolve()
+    target = [f"--target={args.target}"] if args.target else []
     reference = args.reference_compiler.resolve() if args.reference_compiler else None
     cmake_cache = (compiler.parent / "CMakeCache.txt").read_text()
     if "CMAKE_BUILD_TYPE:STRING=Release" not in cmake_cache:
@@ -131,7 +138,7 @@ def main():
               "versions": {tool: output([tool, "--version"]).splitlines()[0]
                            for tool in ("clang", "llvm-config", "cmake", "python3")},
               "warmups": args.warmups, "repeats": args.repeats, "limits": LIMITS,
-              "cache_modes": policies,
+              "cache_modes": policies, "target": args.target or "host",
               "measurement": {
                   "wall": "seconds include direct process launch, output capture and wait4 polling (1 ms interval)",
                   "rss": "per-process peak in KiB; no memory-reduction claim",
@@ -153,7 +160,7 @@ def main():
             for policy, cache_mode in (("off", "off"), ("cold", "read-write"),
                                        ("hot", "read-only")):
                 verified = subprocess.run(
-                    [str(compiler), *LIMITS, f"--stage-cache={cache_mode}",
+                    [str(compiler), *target, *LIMITS, f"--stage-cache={cache_mode}",
                      f"--cache-dir={stage_cache}", "--cache-stats", "explain-stage", str(source)],
                     cwd=ROOT, capture_output=True, text=True, check=True, timeout=30)
                 if explanation is not None and verified.stdout != explanation:
@@ -170,7 +177,7 @@ def main():
                     cache = directory / f"cache-{case_index}-{mode}-{policy}"
                     flags = [f"--stage-cache={'read-only' if policy == 'hot' else 'read-write' if policy == 'cold' else 'off'}",
                              f"--cache-dir={cache}", "--cache-stats"]
-                    commands[policy] = [str(compiler), *LIMITS, *flags, mode, str(source)]
+                    commands[policy] = [str(compiler), *target, *LIMITS, *flags, mode, str(source)]
                     entry = {"case": case, "mode": mode, "cache_mode": policy,
                              "source_bytes": source.stat().st_size,
                              "source_sha256": digest(source.read_bytes()),
@@ -178,7 +185,7 @@ def main():
                              "warmup_samples": [], "samples": []}
                     entries[policy] = (entry, cache)
                     if policy == "hot":
-                        seed = [str(compiler), *LIMITS, "--stage-cache=read-write",
+                        seed = [str(compiler), *target, *LIMITS, "--stage-cache=read-write",
                                 f"--cache-dir={cache}", "--cache-stats", mode, str(source)]
                         entry["seed_sample"] = run_sample(seed, directory, cache)
                 for index in range(args.warmups + args.repeats):
@@ -194,7 +201,7 @@ def main():
                         destination = entry["warmup_samples"] if index < args.warmups else entry["samples"]
                         if reference:
                             # Older binaries need not implement cache controls.
-                            reference_command = [str(reference), *LIMITS, mode, str(source)]
+                            reference_command = [str(reference), *target, *LIMITS, mode, str(source)]
                             pair = [(commands[policy], destination, cache),
                                     (reference_command, entry.setdefault("reference_warmups" if index < args.warmups else "reference_samples", []), None)]
                             if index % 2:

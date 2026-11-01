@@ -36,7 +36,9 @@ def sample(command, directory):
         if process.returncode:
             raise RuntimeError(err.read().decode())
         record = json.loads(out.read())
-        record.update(wall_seconds=elapsed, peak_rss_kib=usage.ru_maxrss)
+        record.update(wall_seconds=elapsed, peak_rss_kib=usage.ru_maxrss,
+                      user_seconds=usage.ru_utime, system_seconds=usage.ru_stime,
+                      input_blocks=usage.ru_inblock, output_blocks=usage.ru_oublock)
         return record
 
 

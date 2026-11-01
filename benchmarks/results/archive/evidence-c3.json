@@ -1,0 +1,1469 @@
+{
+  "schema": 1,
+  "commit": "62a69157786e7ea7269602cfd81db73b33cd425a",
+  "dirty": true,
+  "machine": "Linux-7.2.9-2-cachyos-x86_64-with-glibc2.44",
+  "cpu": "AMD Ryzen AI 9 HX 470 w/ Radeon 890M",
+  "versions": {
+    "clang": "clang version 23.1.1",
+    "llvm-config": "23.1.1",
+    "python3": "Python 3.14.7"
+  },
+  "binaries": {
+    "build/release/pagosc": "df9db284e59665676c76ea7075d5ff87ccd22c577e6e315de1f1aa72a6562abe",
+    "build/release/pagos_snapshot_bench": "c9dd44a284223d446cb6a651dcc8e259e8b71adc09049a60057271b24f965031"
+  },
+  "source_sha256": {
+    "include/pagos/stage/provenance_snapshot.h": "b123ce6416988ade674e5e6f7667f90b2329958f60e40d03afbf39ffe7a6357a",
+    "lib/stage/provenance_snapshot.cpp": "c407cbb11e1c9884c1875a84e8bfbeb04799347a48f9e4b84e8afd2d13486ba3",
+    "lib/stage/residual_template.cpp": "1c89a24f377b3f71577cdc1a41698b59d787fc8e114093a051c3186ccf1d19ca",
+    "lib/stage/scalar_cache.cpp": "e6c7364f4baf2653bb84846260c36cb1cfa31ddac9d5b8a1c77df892fe6b4333",
+    "lib/stage/stage_analyzer.cpp": "81b1f52b3c4302f657b056ab02c9a23e29ee4648dc723fb614263890fe594880",
+    "lib/cache/key.cpp": "ab81c567d4db1f49119c75f8226b0f72d19d050991f66a1d3f4c11130324036c",
+    "lib/cache/store.cpp": "7202babaf5fce8d40caa9450922f699f72b180e3fd110395421ca40a64a26612",
+    "tools/pagosc/main.cpp": "b1ebfac7e53e0291d2d7b6882ce2d6bc9e71de6ac701ccdba1485c2632931a41",
+    "tools/snapshot_bench/main.cpp": "d61c74e117666cda9d5b7d234beb7fd2ec641ba93fe3fd1b090adf996d941274",
+    "scripts/benchmark_evidence.py": "04934a4ef57bd4e835a72afca089069ec7b82e229d40c0b4ceab6ab1f7a5e8ee",
+    "scripts/benchmark.py": "af3697a204c0b545a5e72865186cd9b79cf73bee613428af26096b1f338bf2d3",
+    "scripts/benchmark_provenance_queries.py": "c7f119fefb18fa6c2f7c2c8f67adc0e47b65334cef8a5d2966bf5001f7b9981e"
+  },
+  "cmake_cache_sha256": "6e197050327ae3addda01925698927dbd865d4d4714dea89b4c89ba9cd612434",
+  "warmups": 2,
+  "repeats": 7,
+  "measurement": "Release independent children, per-child wait4 peak RSS includes startup/all phases. In-memory probe separates checked identity, Stage/recording, encoding, whole checksum/open, full restoration and one query. CLI snapshot read includes filesystem read/checksum/decoding plus current parsing/typecheck/identity; Stage is skipped with max-fuel=0. Residual off/cold/hot includes all compiler startup and check work; hot uses a seeded read-only cache, warm output hashes must equal off. No CPU/page-cache controls, no claim of lazy IO or reduced compiler peak RSS.",
+  "snapshot_phases": [
+    {
+      "size": 128,
+      "samples": [
+        {
+          "size": 128,
+          "checked_identity_ns": 388222,
+          "stage_ns": 505038,
+          "encode_ns": 378476,
+          "checksum_open_ns": 67288,
+          "restore_ns": 117567,
+          "query_ns": 31155,
+          "graph_bytes": 38063,
+          "positions_bytes": 4290,
+          "nodes": 393,
+          "edges": 521,
+          "states": 391,
+          "wall_seconds": 0.010829723003553227,
+          "peak_rss_kib": 28412
+        },
+        {
+          "size": 128,
+          "checked_identity_ns": 314874,
+          "stage_ns": 470577,
+          "encode_ns": 389956,
+          "checksum_open_ns": 66477,
+          "restore_ns": 123016,
+          "query_ns": 26246,
+          "graph_bytes": 38063,
+          "positions_bytes": 4290,
+          "nodes": 393,
+          "edges": 521,
+          "states": 391,
+          "wall_seconds": 0.010776980001537595,
+          "peak_rss_kib": 28348
+        },
+        {
+          "size": 128,
+          "checked_identity_ns": 320073,
+          "stage_ns": 440455,
+          "encode_ns": 374127,
+          "checksum_open_ns": 67499,
+          "restore_ns": 127204,
+          "query_ns": 28350,
+          "graph_bytes": 38063,
+          "positions_bytes": 4290,
+          "nodes": 393,
+          "edges": 521,
+          "states": 391,
+          "wall_seconds": 0.00866672900156118,
+          "peak_rss_kib": 28280
+        },
+        {
+          "size": 128,
+          "checked_identity_ns": 309715,
+          "stage_ns": 471058,
+          "encode_ns": 371183,
+          "checksum_open_ns": 66807,
+          "restore_ns": 126222,
+          "query_ns": 27959,
+          "graph_bytes": 38063,
+          "positions_bytes": 4290,
+          "nodes": 393,
+          "edges": 521,
+          "states": 391,
+          "wall_seconds": 0.008675564000441227,
+          "peak_rss_kib": 28464
+        },
+        {
+          "size": 128,
+          "checked_identity_ns": 314103,
+          "stage_ns": 432110,
+          "encode_ns": 384676,
+          "checksum_open_ns": 68601,
+          "restore_ns": 121223,
+          "query_ns": 31485,
+          "graph_bytes": 38063,
+          "positions_bytes": 4290,
+          "nodes": 393,
+          "edges": 521,
+          "states": 391,
+          "wall_seconds": 0.008720092999283224,
+          "peak_rss_kib": 28496
+        },
+        {
+          "size": 128,
+          "checked_identity_ns": 328558,
+          "stage_ns": 486124,
+          "encode_ns": 380580,
+          "checksum_open_ns": 67649,
+          "restore_ns": 121954,
+          "query_ns": 27929,
+          "graph_bytes": 38063,
+          "positions_bytes": 4290,
+          "nodes": 393,
+          "edges": 521,
+          "states": 391,
+          "wall_seconds": 0.01100971999403555,
+          "peak_rss_kib": 28040
+        },
+        {
+          "size": 128,
+          "checked_identity_ns": 520716,
+          "stage_ns": 617345,
+          "encode_ns": 709648,
+          "checksum_open_ns": 149323,
+          "restore_ns": 237948,
+          "query_ns": 47353,
+          "graph_bytes": 38063,
+          "positions_bytes": 4290,
+          "nodes": 393,
+          "edges": 521,
+          "states": 391,
+          "wall_seconds": 0.010902791000262368,
+          "peak_rss_kib": 28588
+        }
+      ],
+      "distributions": {
+        "checked_identity_ns": {
+          "median": 320073,
+          "min": 309715,
+          "max": 520716,
+          "iqr": 74119.0
+        },
+        "stage_ns": {
+          "median": 471058,
+          "min": 432110,
+          "max": 617345,
+          "iqr": 64583.0
+        },
+        "encode_ns": {
+          "median": 380580,
+          "min": 371183,
+          "max": 709648,
+          "iqr": 15829.0
+        },
+        "checksum_open_ns": {
+          "median": 67499,
+          "min": 66477,
+          "max": 149323,
+          "iqr": 1794.0
+        },
+        "restore_ns": {
+          "median": 123016,
+          "min": 117567,
+          "max": 237948,
+          "iqr": 5981.0
+        },
+        "query_ns": {
+          "median": 28350,
+          "min": 26246,
+          "max": 47353,
+          "iqr": 3556.0
+        },
+        "peak_rss_kib": {
+          "median": 28412,
+          "min": 28040,
+          "max": 28588,
+          "iqr": 216.0
+        }
+      }
+    },
+    {
+      "size": 512,
+      "samples": [
+        {
+          "size": 512,
+          "checked_identity_ns": 1686816,
+          "stage_ns": 4914081,
+          "encode_ns": 1597368,
+          "checksum_open_ns": 250942,
+          "restore_ns": 924165,
+          "query_ns": 100186,
+          "graph_bytes": 148271,
+          "positions_bytes": 16578,
+          "nodes": 1545,
+          "edges": 2057,
+          "states": 1543,
+          "wall_seconds": 0.019522978000168223,
+          "peak_rss_kib": 39012
+        },
+        {
+          "size": 512,
+          "checked_identity_ns": 969675,
+          "stage_ns": 4841203,
+          "encode_ns": 1870749,
+          "checksum_open_ns": 265978,
+          "restore_ns": 779390,
+          "query_ns": 86252,
+          "graph_bytes": 148271,
+          "positions_bytes": 16578,
+          "nodes": 1545,
+          "edges": 2057,
+          "states": 1543,
+          "wall_seconds": 0.018408609001198784,
+          "peak_rss_kib": 39172
+        },
+        {
+          "size": 512,
+          "checked_identity_ns": 973963,
+          "stage_ns": 4338669,
+          "encode_ns": 1834966,
+          "checksum_open_ns": 257052,
+          "restore_ns": 643722,
+          "query_ns": 84890,
+          "graph_bytes": 148271,
+          "positions_bytes": 16578,
+          "nodes": 1545,
+          "edges": 2057,
+          "states": 1543,
+          "wall_seconds": 0.017503146998933516,
+          "peak_rss_kib": 39072
+        },
+        {
+          "size": 512,
+          "checked_identity_ns": 1035400,
+          "stage_ns": 5164050,
+          "encode_ns": 1576823,
+          "checksum_open_ns": 249849,
+          "restore_ns": 693520,
+          "query_ns": 85300,
+          "graph_bytes": 148271,
+          "positions_bytes": 16578,
+          "nodes": 1545,
+          "edges": 2057,
+          "states": 1543,
+          "wall_seconds": 0.018523832004575524,
+          "peak_rss_kib": 39080
+        },
+        {
+          "size": 512,
+          "checked_identity_ns": 1790528,
+          "stage_ns": 6187219,
+          "encode_ns": 2152796,
+          "checksum_open_ns": 251202,
+          "restore_ns": 651165,
+          "query_ns": 100306,
+          "graph_bytes": 148271,
+          "positions_bytes": 16578,
+          "nodes": 1545,
+          "edges": 2057,
+          "states": 1543,
+          "wall_seconds": 0.021445589998620562,
+          "peak_rss_kib": 38956
+        },
+        {
+          "size": 512,
+          "checked_identity_ns": 1098893,
+          "stage_ns": 4780495,
+          "encode_ns": 1627262,
+          "checksum_open_ns": 247996,
+          "restore_ns": 673724,
+          "query_ns": 84619,
+          "graph_bytes": 148271,
+          "positions_bytes": 16578,
+          "nodes": 1545,
+          "edges": 2057,
+          "states": 1543,
+          "wall_seconds": 0.0192789590000757,
+          "peak_rss_kib": 38980
+        },
+        {
+          "size": 512,
+          "checked_identity_ns": 950561,
+          "stage_ns": 4888626,
+          "encode_ns": 1610692,
+          "checksum_open_ns": 259487,
+          "restore_ns": 678843,
+          "query_ns": 85861,
+          "graph_bytes": 148271,
+          "positions_bytes": 16578,
+          "nodes": 1545,
+          "edges": 2057,
+          "states": 1543,
+          "wall_seconds": 0.01818731000093976,
+          "peak_rss_kib": 38836
+        }
+      ],
+      "distributions": {
+        "checked_identity_ns": {
+          "median": 1035400,
+          "min": 950561,
+          "max": 1790528,
+          "iqr": 717141.0
+        },
+        "stage_ns": {
+          "median": 4888626,
+          "min": 4338669,
+          "max": 6187219,
+          "iqr": 383555.0
+        },
+        "encode_ns": {
+          "median": 1627262,
+          "min": 1576823,
+          "max": 2152796,
+          "iqr": 273381.0
+        },
+        "checksum_open_ns": {
+          "median": 251202,
+          "min": 247996,
+          "max": 265978,
+          "iqr": 9638.0
+        },
+        "restore_ns": {
+          "median": 678843,
+          "min": 643722,
+          "max": 924165,
+          "iqr": 128225.0
+        },
+        "query_ns": {
+          "median": 85861,
+          "min": 84619,
+          "max": 100306,
+          "iqr": 15296.0
+        },
+        "peak_rss_kib": {
+          "median": 39012,
+          "min": 38836,
+          "max": 39172,
+          "iqr": 124.0
+        }
+      }
+    },
+    {
+      "size": 1024,
+      "samples": [
+        {
+          "size": 1024,
+          "checked_identity_ns": 1971316,
+          "stage_ns": 17319084,
+          "encode_ns": 3294813,
+          "checksum_open_ns": 565605,
+          "restore_ns": 1471808,
+          "query_ns": 191376,
+          "graph_bytes": 295239,
+          "positions_bytes": 32962,
+          "nodes": 3081,
+          "edges": 4105,
+          "states": 3079,
+          "wall_seconds": 0.0394119699994917,
+          "peak_rss_kib": 79876
+        },
+        {
+          "size": 1024,
+          "checked_identity_ns": 1932127,
+          "stage_ns": 16317442,
+          "encode_ns": 3579364,
+          "checksum_open_ns": 541723,
+          "restore_ns": 1507591,
+          "query_ns": 174466,
+          "graph_bytes": 295239,
+          "positions_bytes": 32962,
+          "nodes": 3081,
+          "edges": 4105,
+          "states": 3079,
+          "wall_seconds": 0.0372954979975475,
+          "peak_rss_kib": 79872
+        },
+        {
+          "size": 1024,
+          "checked_identity_ns": 3359668,
+          "stage_ns": 19383863,
+          "encode_ns": 3313246,
+          "checksum_open_ns": 555707,
+          "restore_ns": 1876690,
+          "query_ns": 195865,
+          "graph_bytes": 295239,
+          "positions_bytes": 32962,
+          "nodes": 3081,
+          "edges": 4105,
+          "states": 3079,
+          "wall_seconds": 0.04364709799847333,
+          "peak_rss_kib": 80036
+        },
+        {
+          "size": 1024,
+          "checked_identity_ns": 2198235,
+          "stage_ns": 15780268,
+          "encode_ns": 3287801,
+          "checksum_open_ns": 552401,
+          "restore_ns": 1746621,
+          "query_ns": 268252,
+          "graph_bytes": 295239,
+          "positions_bytes": 32962,
+          "nodes": 3081,
+          "edges": 4105,
+          "states": 3079,
+          "wall_seconds": 0.03850277200399432,
+          "peak_rss_kib": 79880
+        },
+        {
+          "size": 1024,
+          "checked_identity_ns": 3315469,
+          "stage_ns": 18663588,
+          "encode_ns": 3296236,
+          "checksum_open_ns": 544427,
+          "restore_ns": 1394302,
+          "query_ns": 183392,
+          "graph_bytes": 295239,
+          "positions_bytes": 32962,
+          "nodes": 3081,
+          "edges": 4105,
+          "states": 3079,
+          "wall_seconds": 0.04145823900034884,
+          "peak_rss_kib": 80292
+        },
+        {
+          "size": 1024,
+          "checked_identity_ns": 3202902,
+          "stage_ns": 19833585,
+          "encode_ns": 3456367,
+          "checksum_open_ns": 575292,
+          "restore_ns": 1500087,
+          "query_ns": 219246,
+          "graph_bytes": 295239,
+          "positions_bytes": 32962,
+          "nodes": 3081,
+          "edges": 4105,
+          "states": 3079,
+          "wall_seconds": 0.04351894200226525,
+          "peak_rss_kib": 80084
+        },
+        {
+          "size": 1024,
+          "checked_identity_ns": 2258271,
+          "stage_ns": 17049138,
+          "encode_ns": 3288493,
+          "checksum_open_ns": 541281,
+          "restore_ns": 1385166,
+          "query_ns": 179686,
+          "graph_bytes": 295239,
+          "positions_bytes": 32962,
+          "nodes": 3081,
+          "edges": 4105,
+          "states": 3079,
+          "wall_seconds": 0.040339290993870236,
+          "peak_rss_kib": 80300
+        }
+      ],
+      "distributions": {
+        "checked_identity_ns": {
+          "median": 2258271,
+          "min": 1932127,
+          "max": 3359668,
+          "iqr": 1344153.0
+        },
+        "stage_ns": {
+          "median": 17319084,
+          "min": 15780268,
+          "max": 19833585,
+          "iqr": 3066421.0
+        },
+        "encode_ns": {
+          "median": 3296236,
+          "min": 3287801,
+          "max": 3579364,
+          "iqr": 167874.0
+        },
+        "checksum_open_ns": {
+          "median": 552401,
+          "min": 541281,
+          "max": 575292,
+          "iqr": 23882.0
+        },
+        "restore_ns": {
+          "median": 1500087,
+          "min": 1385166,
+          "max": 1876690,
+          "iqr": 352319.0
+        },
+        "query_ns": {
+          "median": 191376,
+          "min": 174466,
+          "max": 268252,
+          "iqr": 39560.0
+        },
+        "peak_rss_kib": {
+          "median": 80036,
+          "min": 79872,
+          "max": 80300,
+          "iqr": 416.0
+        }
+      }
+    }
+  ],
+  "snapshot_io": [
+    {
+      "mode": "analyze",
+      "samples": [
+        {
+          "seconds": 0.016363623006327543,
+          "peak_rss_kib": 40096,
+          "output_bytes": 151,
+          "output_sha256": "c4651474c35f2383d47313503209fc20397ec6d654353867b757b12405979e95",
+          "cache_telemetry": {},
+          "cache_disk": null
+        },
+        {
+          "seconds": 0.01546644600603031,
+          "peak_rss_kib": 40292,
+          "output_bytes": 151,
+          "output_sha256": "c4651474c35f2383d47313503209fc20397ec6d654353867b757b12405979e95",
+          "cache_telemetry": {},
+          "cache_disk": null
+        },
+        {
+          "seconds": 0.01741122500243364,
+          "peak_rss_kib": 40316,
+          "output_bytes": 151,
+          "output_sha256": "c4651474c35f2383d47313503209fc20397ec6d654353867b757b12405979e95",
+          "cache_telemetry": {},
+          "cache_disk": null
+        },
+        {
+          "seconds": 0.014497591997496784,
+          "peak_rss_kib": 40320,
+          "output_bytes": 151,
+          "output_sha256": "c4651474c35f2383d47313503209fc20397ec6d654353867b757b12405979e95",
+          "cache_telemetry": {},
+          "cache_disk": null
+        },
+        {
+          "seconds": 0.017566337999596726,
+          "peak_rss_kib": 40032,
+          "output_bytes": 151,
+          "output_sha256": "c4651474c35f2383d47313503209fc20397ec6d654353867b757b12405979e95",
+          "cache_telemetry": {},
+          "cache_disk": null
+        },
+        {
+          "seconds": 0.014156552002532408,
+          "peak_rss_kib": 39880,
+          "output_bytes": 151,
+          "output_sha256": "c4651474c35f2383d47313503209fc20397ec6d654353867b757b12405979e95",
+          "cache_telemetry": {},
+          "cache_disk": null
+        },
+        {
+          "seconds": 0.01631357500446029,
+          "peak_rss_kib": 40068,
+          "output_bytes": 151,
+          "output_sha256": "c4651474c35f2383d47313503209fc20397ec6d654353867b757b12405979e95",
+          "cache_telemetry": {},
+          "cache_disk": null
+        }
+      ],
+      "distributions": {
+        "seconds": {
+          "median": 0.01631357500446029,
+          "min": 0.014156552002532408,
+          "max": 0.017566337999596726,
+          "iqr": 0.0029136330049368553
+        },
+        "peak_rss_kib": {
+          "median": 40096,
+          "min": 39880,
+          "max": 40320,
+          "iqr": 284.0
+        }
+      }
+    },
+    {
+      "mode": "read",
+      "samples": [
+        {
+          "seconds": 0.011020979000022635,
+          "peak_rss_kib": 31128,
+          "output_bytes": 151,
+          "output_sha256": "c4651474c35f2383d47313503209fc20397ec6d654353867b757b12405979e95",
+          "cache_telemetry": {},
+          "cache_disk": null
+        },
+        {
+          "seconds": 0.011928705003811046,
+          "peak_rss_kib": 30908,
+          "output_bytes": 151,
+          "output_sha256": "c4651474c35f2383d47313503209fc20397ec6d654353867b757b12405979e95",
+          "cache_telemetry": {},
+          "cache_disk": null
+        },
+        {
+          "seconds": 0.01185517600242747,
+          "peak_rss_kib": 31048,
+          "output_bytes": 151,
+          "output_sha256": "c4651474c35f2383d47313503209fc20397ec6d654353867b757b12405979e95",
+          "cache_telemetry": {},
+          "cache_disk": null
+        },
+        {
+          "seconds": 0.010806580998178106,
+          "peak_rss_kib": 30948,
+          "output_bytes": 151,
+          "output_sha256": "c4651474c35f2383d47313503209fc20397ec6d654353867b757b12405979e95",
+          "cache_telemetry": {},
+          "cache_disk": null
+        },
+        {
+          "seconds": 0.011864001004141755,
+          "peak_rss_kib": 31020,
+          "output_bytes": 151,
+          "output_sha256": "c4651474c35f2383d47313503209fc20397ec6d654353867b757b12405979e95",
+          "cache_telemetry": {},
+          "cache_disk": null
+        },
+        {
+          "seconds": 0.010965711997414473,
+          "peak_rss_kib": 31100,
+          "output_bytes": 151,
+          "output_sha256": "c4651474c35f2383d47313503209fc20397ec6d654353867b757b12405979e95",
+          "cache_telemetry": {},
+          "cache_disk": null
+        },
+        {
+          "seconds": 0.014092420002270956,
+          "peak_rss_kib": 31208,
+          "output_bytes": 151,
+          "output_sha256": "c4651474c35f2383d47313503209fc20397ec6d654353867b757b12405979e95",
+          "cache_telemetry": {},
+          "cache_disk": null
+        }
+      ],
+      "distributions": {
+        "seconds": {
+          "median": 0.01185517600242747,
+          "min": 0.010806580998178106,
+          "max": 0.014092420002270956,
+          "iqr": 0.000962993006396573
+        },
+        "peak_rss_kib": {
+          "median": 31048,
+          "min": 30908,
+          "max": 31208,
+          "iqr": 180.0
+        }
+      }
+    }
+  ],
+  "residual": [
+    {
+      "mode": "off",
+      "samples": [
+        {
+          "seconds": 0.008767838997300714,
+          "peak_rss_kib": 29204,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 0,
+            "hits": 0,
+            "misses": 0,
+            "writes": 0,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 0,
+            "residual-hits": 0,
+            "residual-writes": 0,
+            "body-evaluations": 1,
+            "bodies-skipped": 0,
+            "dependency-ns": 0,
+            "query-ns": 0,
+            "read-ns": 0,
+            "decode-ns": 0,
+            "encode-ns": 0,
+            "publish-ns": 0,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 4107
+          },
+          "cache_disk": {
+            "files": 0,
+            "bytes": 0,
+            "objects": 0,
+            "manifests": 0
+          }
+        },
+        {
+          "seconds": 0.009837579003942665,
+          "peak_rss_kib": 29524,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 0,
+            "hits": 0,
+            "misses": 0,
+            "writes": 0,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 0,
+            "residual-hits": 0,
+            "residual-writes": 0,
+            "body-evaluations": 1,
+            "bodies-skipped": 0,
+            "dependency-ns": 0,
+            "query-ns": 0,
+            "read-ns": 0,
+            "decode-ns": 0,
+            "encode-ns": 0,
+            "publish-ns": 0,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 3787
+          },
+          "cache_disk": {
+            "files": 0,
+            "bytes": 0,
+            "objects": 0,
+            "manifests": 0
+          }
+        },
+        {
+          "seconds": 0.00869161499576876,
+          "peak_rss_kib": 29148,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 0,
+            "hits": 0,
+            "misses": 0,
+            "writes": 0,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 0,
+            "residual-hits": 0,
+            "residual-writes": 0,
+            "body-evaluations": 1,
+            "bodies-skipped": 0,
+            "dependency-ns": 0,
+            "query-ns": 0,
+            "read-ns": 0,
+            "decode-ns": 0,
+            "encode-ns": 0,
+            "publish-ns": 0,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 3937
+          },
+          "cache_disk": {
+            "files": 0,
+            "bytes": 0,
+            "objects": 0,
+            "manifests": 0
+          }
+        },
+        {
+          "seconds": 0.008783276003669016,
+          "peak_rss_kib": 29188,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 0,
+            "hits": 0,
+            "misses": 0,
+            "writes": 0,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 0,
+            "residual-hits": 0,
+            "residual-writes": 0,
+            "body-evaluations": 1,
+            "bodies-skipped": 0,
+            "dependency-ns": 0,
+            "query-ns": 0,
+            "read-ns": 0,
+            "decode-ns": 0,
+            "encode-ns": 0,
+            "publish-ns": 0,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 4067
+          },
+          "cache_disk": {
+            "files": 0,
+            "bytes": 0,
+            "objects": 0,
+            "manifests": 0
+          }
+        },
+        {
+          "seconds": 0.009921978002239484,
+          "peak_rss_kib": 29112,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 0,
+            "hits": 0,
+            "misses": 0,
+            "writes": 0,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 0,
+            "residual-hits": 0,
+            "residual-writes": 0,
+            "body-evaluations": 1,
+            "bodies-skipped": 0,
+            "dependency-ns": 0,
+            "query-ns": 0,
+            "read-ns": 0,
+            "decode-ns": 0,
+            "encode-ns": 0,
+            "publish-ns": 0,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 7974
+          },
+          "cache_disk": {
+            "files": 0,
+            "bytes": 0,
+            "objects": 0,
+            "manifests": 0
+          }
+        },
+        {
+          "seconds": 0.008749136002734303,
+          "peak_rss_kib": 29224,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 0,
+            "hits": 0,
+            "misses": 0,
+            "writes": 0,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 0,
+            "residual-hits": 0,
+            "residual-writes": 0,
+            "body-evaluations": 1,
+            "bodies-skipped": 0,
+            "dependency-ns": 0,
+            "query-ns": 0,
+            "read-ns": 0,
+            "decode-ns": 0,
+            "encode-ns": 0,
+            "publish-ns": 0,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 3325
+          },
+          "cache_disk": {
+            "files": 0,
+            "bytes": 0,
+            "objects": 0,
+            "manifests": 0
+          }
+        },
+        {
+          "seconds": 0.008643330002087168,
+          "peak_rss_kib": 29500,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 0,
+            "hits": 0,
+            "misses": 0,
+            "writes": 0,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 0,
+            "residual-hits": 0,
+            "residual-writes": 0,
+            "body-evaluations": 1,
+            "bodies-skipped": 0,
+            "dependency-ns": 0,
+            "query-ns": 0,
+            "read-ns": 0,
+            "decode-ns": 0,
+            "encode-ns": 0,
+            "publish-ns": 0,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 3707
+          },
+          "cache_disk": {
+            "files": 0,
+            "bytes": 0,
+            "objects": 0,
+            "manifests": 0
+          }
+        }
+      ],
+      "distributions": {
+        "seconds": {
+          "median": 0.008767838997300714,
+          "min": 0.008643330002087168,
+          "max": 0.009921978002239484,
+          "iqr": 0.0011459640081739053
+        },
+        "peak_rss_kib": {
+          "median": 29204,
+          "min": 29112,
+          "max": 29524,
+          "iqr": 352.0
+        }
+      }
+    },
+    {
+      "mode": "cold",
+      "samples": [
+        {
+          "seconds": 0.008773900000960566,
+          "peak_rss_kib": 30132,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 1,
+            "hits": 0,
+            "misses": 1,
+            "writes": 1,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 1,
+            "residual-hits": 0,
+            "residual-writes": 1,
+            "body-evaluations": 1,
+            "bodies-skipped": 0,
+            "dependency-ns": 46962,
+            "query-ns": 16559,
+            "read-ns": 41593,
+            "decode-ns": 0,
+            "encode-ns": 63782,
+            "publish-ns": 272569,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 3967
+          },
+          "cache_disk": {
+            "files": 5,
+            "bytes": 2420,
+            "objects": 3,
+            "manifests": 1
+          }
+        },
+        {
+          "seconds": 0.00881521200062707,
+          "peak_rss_kib": 29660,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 1,
+            "hits": 0,
+            "misses": 1,
+            "writes": 1,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 1,
+            "residual-hits": 0,
+            "residual-writes": 1,
+            "body-evaluations": 1,
+            "bodies-skipped": 0,
+            "dependency-ns": 26096,
+            "query-ns": 8565,
+            "read-ns": 40872,
+            "decode-ns": 0,
+            "encode-ns": 35763,
+            "publish-ns": 210260,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 2875
+          },
+          "cache_disk": {
+            "files": 5,
+            "bytes": 2420,
+            "objects": 3,
+            "manifests": 1
+          }
+        },
+        {
+          "seconds": 0.008729100998607464,
+          "peak_rss_kib": 29920,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 1,
+            "hits": 0,
+            "misses": 1,
+            "writes": 1,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 1,
+            "residual-hits": 0,
+            "residual-writes": 1,
+            "body-evaluations": 1,
+            "bodies-skipped": 0,
+            "dependency-ns": 42595,
+            "query-ns": 12452,
+            "read-ns": 46041,
+            "decode-ns": 0,
+            "encode-ns": 42545,
+            "publish-ns": 298265,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 6322
+          },
+          "cache_disk": {
+            "files": 5,
+            "bytes": 2420,
+            "objects": 3,
+            "manifests": 1
+          }
+        },
+        {
+          "seconds": 0.007763112000247929,
+          "peak_rss_kib": 29728,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 1,
+            "hits": 0,
+            "misses": 1,
+            "writes": 1,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 1,
+            "residual-hits": 0,
+            "residual-writes": 1,
+            "body-evaluations": 1,
+            "bodies-skipped": 0,
+            "dependency-ns": 27358,
+            "query-ns": 9376,
+            "read-ns": 35372,
+            "decode-ns": 0,
+            "encode-ns": 33850,
+            "publish-ns": 202276,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 3276
+          },
+          "cache_disk": {
+            "files": 5,
+            "bytes": 2420,
+            "objects": 3,
+            "manifests": 1
+          }
+        },
+        {
+          "seconds": 0.008794615998340305,
+          "peak_rss_kib": 29752,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 1,
+            "hits": 0,
+            "misses": 1,
+            "writes": 1,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 1,
+            "residual-hits": 0,
+            "residual-writes": 1,
+            "body-evaluations": 1,
+            "bodies-skipped": 0,
+            "dependency-ns": 42195,
+            "query-ns": 16489,
+            "read-ns": 40100,
+            "decode-ns": 0,
+            "encode-ns": 63221,
+            "publish-ns": 276276,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 4057
+          },
+          "cache_disk": {
+            "files": 5,
+            "bytes": 2420,
+            "objects": 3,
+            "manifests": 1
+          }
+        },
+        {
+          "seconds": 0.009830376999161672,
+          "peak_rss_kib": 30024,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 1,
+            "hits": 0,
+            "misses": 1,
+            "writes": 1,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 1,
+            "residual-hits": 0,
+            "residual-writes": 1,
+            "body-evaluations": 1,
+            "bodies-skipped": 0,
+            "dependency-ns": 49828,
+            "query-ns": 15817,
+            "read-ns": 43457,
+            "decode-ns": 0,
+            "encode-ns": 65716,
+            "publish-ns": 284630,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 3957
+          },
+          "cache_disk": {
+            "files": 5,
+            "bytes": 2420,
+            "objects": 3,
+            "manifests": 1
+          }
+        },
+        {
+          "seconds": 0.009778786996321287,
+          "peak_rss_kib": 29992,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 1,
+            "hits": 0,
+            "misses": 1,
+            "writes": 1,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 1,
+            "residual-hits": 0,
+            "residual-writes": 1,
+            "body-evaluations": 1,
+            "bodies-skipped": 0,
+            "dependency-ns": 40972,
+            "query-ns": 18683,
+            "read-ns": 41483,
+            "decode-ns": 0,
+            "encode-ns": 63382,
+            "publish-ns": 267400,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 4177
+          },
+          "cache_disk": {
+            "files": 5,
+            "bytes": 2420,
+            "objects": 3,
+            "manifests": 1
+          }
+        }
+      ],
+      "distributions": {
+        "seconds": {
+          "median": 0.008794615998340305,
+          "min": 0.007763112000247929,
+          "max": 0.009830376999161672,
+          "iqr": 0.0010496859977138229
+        },
+        "peak_rss_kib": {
+          "median": 29920,
+          "min": 29660,
+          "max": 30132,
+          "iqr": 296.0
+        }
+      }
+    },
+    {
+      "mode": "hot",
+      "samples": [
+        {
+          "seconds": 0.007737997999356594,
+          "peak_rss_kib": 29976,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 1,
+            "hits": 1,
+            "misses": 0,
+            "writes": 0,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 1,
+            "residual-hits": 1,
+            "residual-writes": 0,
+            "body-evaluations": 0,
+            "bodies-skipped": 1,
+            "dependency-ns": 28279,
+            "query-ns": 8635,
+            "read-ns": 85260,
+            "decode-ns": 53915,
+            "encode-ns": 0,
+            "publish-ns": 0,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 0
+          },
+          "cache_disk": {
+            "files": 5,
+            "bytes": 2420,
+            "objects": 3,
+            "manifests": 1
+          }
+        },
+        {
+          "seconds": 0.008900501998141408,
+          "peak_rss_kib": 29736,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 1,
+            "hits": 1,
+            "misses": 0,
+            "writes": 0,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 1,
+            "residual-hits": 1,
+            "residual-writes": 0,
+            "body-evaluations": 0,
+            "bodies-skipped": 1,
+            "dependency-ns": 24724,
+            "query-ns": 9447,
+            "read-ns": 78788,
+            "decode-ns": 52463,
+            "encode-ns": 0,
+            "publish-ns": 0,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 0
+          },
+          "cache_disk": {
+            "files": 5,
+            "bytes": 2420,
+            "objects": 3,
+            "manifests": 1
+          }
+        },
+        {
+          "seconds": 0.008801657997537404,
+          "peak_rss_kib": 29652,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 1,
+            "hits": 1,
+            "misses": 0,
+            "writes": 0,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 1,
+            "residual-hits": 1,
+            "residual-writes": 0,
+            "body-evaluations": 0,
+            "bodies-skipped": 1,
+            "dependency-ns": 42985,
+            "query-ns": 15067,
+            "read-ns": 108992,
+            "decode-ns": 100937,
+            "encode-ns": 0,
+            "publish-ns": 0,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 0
+          },
+          "cache_disk": {
+            "files": 5,
+            "bytes": 2420,
+            "objects": 3,
+            "manifests": 1
+          }
+        },
+        {
+          "seconds": 0.008751039000344463,
+          "peak_rss_kib": 29876,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 1,
+            "hits": 1,
+            "misses": 0,
+            "writes": 0,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 1,
+            "residual-hits": 1,
+            "residual-writes": 0,
+            "body-evaluations": 0,
+            "bodies-skipped": 1,
+            "dependency-ns": 43126,
+            "query-ns": 16739,
+            "read-ns": 112307,
+            "decode-ns": 93564,
+            "encode-ns": 0,
+            "publish-ns": 0,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 0
+          },
+          "cache_disk": {
+            "files": 5,
+            "bytes": 2420,
+            "objects": 3,
+            "manifests": 1
+          }
+        },
+        {
+          "seconds": 0.00998794400220504,
+          "peak_rss_kib": 29664,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 1,
+            "hits": 1,
+            "misses": 0,
+            "writes": 0,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 1,
+            "residual-hits": 1,
+            "residual-writes": 0,
+            "body-evaluations": 0,
+            "bodies-skipped": 1,
+            "dependency-ns": 52602,
+            "query-ns": 25094,
+            "read-ns": 117988,
+            "decode-ns": 92553,
+            "encode-ns": 0,
+            "publish-ns": 0,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 0
+          },
+          "cache_disk": {
+            "files": 5,
+            "bytes": 2420,
+            "objects": 3,
+            "manifests": 1
+          }
+        },
+        {
+          "seconds": 0.00881247699726373,
+          "peak_rss_kib": 29672,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 1,
+            "hits": 1,
+            "misses": 0,
+            "writes": 0,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 1,
+            "residual-hits": 1,
+            "residual-writes": 0,
+            "body-evaluations": 0,
+            "bodies-skipped": 1,
+            "dependency-ns": 41823,
+            "query-ns": 15978,
+            "read-ns": 113370,
+            "decode-ns": 92983,
+            "encode-ns": 0,
+            "publish-ns": 0,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 0
+          },
+          "cache_disk": {
+            "files": 5,
+            "bytes": 2420,
+            "objects": 3,
+            "manifests": 1
+          }
+        },
+        {
+          "seconds": 0.007754395999654662,
+          "peak_rss_kib": 29612,
+          "output_bytes": 0,
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "cache_telemetry": {
+            "lookups": 1,
+            "hits": 1,
+            "misses": 0,
+            "writes": 0,
+            "errors": 0,
+            "rejected": 0,
+            "budget-fallbacks": 0,
+            "residual-lookups": 1,
+            "residual-hits": 1,
+            "residual-writes": 0,
+            "body-evaluations": 0,
+            "bodies-skipped": 1,
+            "dependency-ns": 27237,
+            "query-ns": 8866,
+            "read-ns": 82024,
+            "decode-ns": 53965,
+            "encode-ns": 0,
+            "publish-ns": 0,
+            "resource-ns": 0,
+            "restore-ns": 0,
+            "evaluate-ns": 0
+          },
+          "cache_disk": {
+            "files": 5,
+            "bytes": 2420,
+            "objects": 3,
+            "manifests": 1
+          }
+        }
+      ],
+      "distributions": {
+        "seconds": {
+          "median": 0.008801657997537404,
+          "min": 0.007737997999356594,
+          "max": 0.00998794400220504,
+          "iqr": 0.001146105998486746
+        },
+        "peak_rss_kib": {
+          "median": 29672,
+          "min": 29612,
+          "max": 29976,
+          "iqr": 224.0
+        }
+      }
+    }
+  ],
+  "snapshot_object_sizes": [
+    16663,
+    178302
+  ]
+}

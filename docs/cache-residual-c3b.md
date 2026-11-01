@@ -63,7 +63,7 @@ Provenance、诊断及全部 AnalysisStats，并验证成功模块可降低为 M
 这版验证了实际跳过函数体，不代表完整增量编译、一般效果模板、递归模板
 或直接持久化 SSA MIR。
 
-Release 独立进程测量见 `build/benchmarks/evidence-c3.json` 与
+Release 独立进程测量见 [归档原始报告](../benchmarks/results/archive/evidence-c3.json) 与
 [C3a 记录](provenance-snapshot-c3a.md)。对两个相同 factor 的 scale 调用，
 7 次测量、2 次预热的 check wall median/IQR 为：
 

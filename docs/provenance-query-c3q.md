@@ -134,7 +134,7 @@ python3 scripts/benchmark_provenance_queries.py \
 ```
 
 测量环境为 AMD Ryzen AI 9 HX 470、Clang/LLVM 23.1.1、Linux Release。
-报告 `build/benchmarks/provenance-c3q.json` 包含 14 组、98 个计时样本和
+[归档原始报告](../benchmarks/results/archive/provenance-c3q.json)包含 14 组、98 个计时样本和
 28 个预热样本，以及二进制/来源/CMake 哈希、版本、每次结果、median、
 IQR、min/max。最终采样期间未同时运行本次构建或测试，没有锁定 CPU
 频率或控制 OS 页缓存；小耗时组波动明显，不据此宣称延迟排名。

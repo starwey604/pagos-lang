@@ -71,7 +71,7 @@ StageAnalyzer；零 Stage Fuel 的跨进程用例证明了这一点。显式读�
 及只读不写盘。CLI 在不同进程比较输出并验证读入路径没有 Stage 求值。
 
 测量工具见[开发指南](development.md)。Release 报告保存在
-`build/benchmarks/evidence-c3.json`，包含 8 组、56 个测量样本、16 个预热
+[归档原始报告](../benchmarks/results/archive/evidence-c3.json)，包含 8 组、56 个测量样本、16 个预热
 样本，以及来源/二进制/CMake 哈希、机器版本、每次数据及 median/IQR。
 环境为 Ryzen AI 9 HX 470、Clang/LLVM 23.1.1；采样时本次构建/测试均已
 结束，没有锁定 CPU 频率或控制 OS 页缓存。

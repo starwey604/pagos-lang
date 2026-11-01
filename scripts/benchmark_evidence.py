@@ -28,11 +28,14 @@ def main():
     parser.add_argument("--output", type=pathlib.Path, required=True)
     parser.add_argument("--repeats", type=int, default=7)
     parser.add_argument("--warmups", type=int, default=2)
+    parser.add_argument("--build-dir", type=pathlib.Path, default=ROOT / "build/release")
+    parser.add_argument("--target", help="explicit CLI target (default: host)")
     args = parser.parse_args()
     if args.repeats < 3 or args.warmups < 1:
         parser.error("requires >=3 repeats and >=1 warmup")
-    binary = ROOT / "build/release/pagosc"
-    probe = ROOT / "build/release/pagos_snapshot_bench"
+    binary = args.build_dir.resolve() / "pagosc"
+    probe = args.build_dir.resolve() / "pagos_snapshot_bench"
+    cli = [str(binary), *([f"--target={args.target}"] if args.target else [])]
     cache = (binary.parent / "CMakeCache.txt").read_text()
     if "CMAKE_BUILD_TYPE:STRING=Release" not in cache:
         parser.error("use a Release build")
@@ -50,7 +53,7 @@ def main():
                   source_sha256={name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in sources},
                   cmake_cache_sha256=hashlib.sha256(cache.encode()).hexdigest(), warmups=args.warmups, repeats=args.repeats,
                   measurement="Release independent children, per-child wait4 peak RSS includes startup/all phases. In-memory probe separates checked identity, Stage/recording, encoding, whole checksum/open, full restoration and one query. CLI snapshot read includes filesystem read/checksum/decoding plus current parsing/typecheck/identity; Stage is skipped with max-fuel=0. Residual off/cold/hot includes all compiler startup and check work; hot uses a seeded read-only cache, warm output hashes must equal off. No CPU/page-cache controls, no claim of lazy IO or reduced compiler peak RSS.",
-                  snapshot_phases=[], snapshot_io=[], residual=[])
+                  target=args.target or "host", snapshot_phases=[], snapshot_io=[], residual=[])
     with tempfile.TemporaryDirectory(prefix="pagos-evidence-benchmark-") as directory:
         directory = pathlib.Path(directory)
         for size in (128, 512, 1024):
@@ -62,10 +65,10 @@ def main():
         source = directory / "module.pgs"
         source.write_text("fn large(x: u32) -> u32 { let n0 = x + 1; " + " ".join(f"let n{i} = n{i-1} + 1;" for i in range(1, 512)) + " n511 } let result = large(external_input());")
         snapshots = directory / "snapshots"
-        exported = subprocess.run([str(binary), f"--snapshot-write={snapshots}", "explain-provenance", str(source)], capture_output=True, check=True)
+        exported = subprocess.run([*cli, f"--snapshot-write={snapshots}", "explain-provenance", str(source)], capture_output=True, check=True)
         report["snapshot_object_sizes"] = sorted(p.stat().st_size for p in (snapshots / "objects").rglob("*") if p.is_file())
         for mode in ("analyze", "read"):
-            command = [str(binary)] + ([] if mode == "analyze" else [f"--snapshot-read={snapshots}", "--max-fuel=0"]) + ["explain-provenance", str(source)]
+            command = cli + ([] if mode == "analyze" else [f"--snapshot-read={snapshots}", "--max-fuel=0"]) + ["explain-provenance", str(source)]
             for _ in range(args.warmups): run_sample(command, directory)
             samples = [run_sample(command, directory) for _ in range(args.repeats)]
             expected = hashlib.sha256(exported.stdout).hexdigest()
@@ -73,11 +76,11 @@ def main():
             report["snapshot_io"].append(dict(mode=mode, samples=samples, distributions=distribution(samples, ("seconds", "peak_rss_kib"))))
         source.write_text("fn scale(k: u32, x: u32) -> u32 { k * x } let a = external_input(); let b = external_input(); let aa = scale(4, a); let bb = scale(4, b);")
         store = directory / "residual-cache"
-        subprocess.run([str(binary), "--stage-cache=read-write", f"--cache-dir={store}", "check", str(source)], check=True)
+        subprocess.run([*cli, "--stage-cache=read-write", f"--cache-dir={store}", "check", str(source)], check=True)
         for mode in ("off", "cold", "hot"):
             def measured(index):
                 target = store if mode == "hot" else directory / f"{mode}-{index}"
-                command = [str(binary), f"--stage-cache={dict(off='off', cold='read-write', hot='read-only')[mode]}", f"--cache-dir={target}", "--cache-stats", "check", str(source)]
+                command = [*cli, f"--stage-cache={dict(off='off', cold='read-write', hot='read-only')[mode]}", f"--cache-dir={target}", "--cache-stats", "check", str(source)]
                 return run_sample(command, directory, target)
             for index in range(args.warmups): measured(f"warmup-{index}")
             samples = [measured(index) for index in range(args.repeats)]

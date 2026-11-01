@@ -1,0 +1,17 @@
+// S2 workload for the S3 UART demo: explicit configuration inputs, no MMIO.
+// Bus frequencies are scenario inputs, not verified CH32 clock settings.
+fn rounded_divisor(bus_hz: u32, baud: u32) -> u32 {
+    (bus_hz + baud / 2) / baud
+}
+
+fn choose_divisor(revision: u32, fast: u32, slow: u32) -> u32 {
+    if revision == 1 { fast } else { slow }
+}
+
+extern fn uart_exchange(value: u32) -> u32;
+let revision = 1;
+comptime let fast = rounded_divisor(72_000_000, 115_200);
+comptime let slow = rounded_divisor(36_000_000, 115_200);
+comptime let divisor = choose_divisor(revision, fast, slow);
+let received = uart_exchange(divisor);
+let result = received ^ revision;

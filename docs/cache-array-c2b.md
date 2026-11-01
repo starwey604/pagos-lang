@@ -116,7 +116,7 @@ CMake 4.4.4、Python 3.14.7 上运行 Release。源码基线 HEAD 为 `62a6915`�
 工作区有未提交的 C2a/C2b 与文档修改；实际二进制 SHA-256 为
 `5692a1fa5e9a8dc6ed4b384dacc765731e9a07c0519ccb1e0d6d66cfa007f69b`。
 完整源码、配置、预算、机器与输出身份以本机报告
-`build/benchmarks/cache-c2b.json` 为准。
+[归档原始报告](../benchmarks/results/archive/cache-c2b.json)为准。
 
 共 7 个用例 × 3 个命令 × 3 个缓存状态，441 个正式样本、126 个预热样本，
 另保存 21 个 hot seed 样本。每组预热 2 次、正式重复 7 次，采样期间没有
