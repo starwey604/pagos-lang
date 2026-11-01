@@ -1,7 +1,8 @@
 # 基线稳定与 CH32V307V-EVT-R1 实机验证计划
 
 日期：2026-11-01。探索基线：`llvm` 分支 `277691c`，探索开始时工作区干净。
-S0、S1 已完成并合入本地 `llvm`；S2 成本账本、S3 实机 Demo 和 S4 CRC 对照已完成。
+S0、S1 已完成并合入本地 `llvm`；S2 成本账本、S3 实机 Demo、S4 CRC 对照及
+后续原生优化/循环回归均已完成。
 
 执行更新（2026-11-01）：S0 修复提交为 `ae92865`。
 [GitHub Compiler 全矩阵](https://github.com/starwey604/pagos-lang/actions/runs/41270362461)
@@ -52,8 +53,35 @@ RAM 放置未改善；显式 Runtime 累加器恢复统一循环，代码由 96 
 
 原始数据、单变量解释及重跑入口在独立仓库的
 `evidence/s4-2026-11-01/README.md` 和 `docs/s4-crc-benchmark.md`。
-结束时已恢复 72 MHz 原生 UART 并通过 30 轮回显。下一步优先原生优化
-管线和残留循环形状回归，再扩展 S5 协议场景；本轮不改编译器及 C1–C4。
+S4 结束时已恢复 72 MHz 原生 UART 并通过 30 轮回显；S4 未改编译器及 C1–C4。
+
+### 原生优化管线与循环回归：已完成
+
+编译器 `7b301bb` 接入六档显式 LLVM 优化，以及 relocation / code model
+发射策略；`emit-llvm` / `emit-obj` 共用目标感知管线并在优化前后验证。
+不带选项保持旧行为，显式 O0 则关闭机器优化。发射策略不进入 Stage
+语义身份，不改变 C1–C4；详见[原生优化契约](development.md#native-optimization)。
+`9bb4214` 修复并行 CTest 时间戳目录碰撞，未改变缓存生产逻辑或协议。
+
+通用 CRC 回归独立放在本仓库：六档执行结果、RV32 尾递归消除、单循环及
+单次归纳更新、指针检查、缓存只读命中与低预算首错。原生 O2 还覆盖
+C ABI、全局存储和 volatile 次数/顺序；RV32/QEMU 现有入口扩展为 76 项，
+包含 Clang/GCC 链接及启动故障。本地固定 LLVM 22 四配置各 504 项 CTest、
+LLVM 23 兼容性回归通过；最终临时目录变更另验证全部受影响单元测试。
+
+外部 Demo 的构建/实测源码为 `48492fc`。相同源码和 generic-rv32 / IMAC /
+ILP32 / static / medium 下，原生 O2 与外部 O2 的内核代码、常量表逐字节一致。
+72/48 MHz 共 8 镜像、464 请求（440 成功、24 预期拒绝），核对
+17,057,952 bytes；主机另做 1,330 次 CRC 对照。推荐 frozen 仍为 68 B
+代码、1 KiB ROM 表、零内核静态 RAM、约 13.027 HCLK ticks/byte。
+本机 Runtime / frozen 的原生编译 wall 中位数为 25.624 / 35.114 ms，
+对应外部管线为 51.738 / 58.977 ms；采样条件及原始数据不与 S2/S4 混算。
+
+外部交付 HEAD 为 `5950438`。证据在该仓库
+`evidence/native-opt-2026-11-01/README.md`，入口为
+`docs/native-optimization.md`。结束时恢复原 72 MHz UART，30 轮 / 8,160 bytes
+精确回显通过。原隐式 seed 过早特化的反例不变，仍推荐显式 Runtime
+累加器；后续可推进 S5，不以原生 O2 代替阶段边界设计。
 
 ## 现状与目标
 
