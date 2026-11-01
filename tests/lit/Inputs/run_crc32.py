@@ -9,16 +9,27 @@ import tempfile
 import zlib
 
 
+# Recursive HIR printing expands shared expressions (about 152 MB for this
+# fixture). Allow sanitizer builds on hosted runners time to finish printing;
+# generated programs retain their separate five-second execution deadline.
+COMPILER_TIMEOUT = 60
+
+
 def main():
     pagosc, clang, source = sys.argv[1:]
-    hir = subprocess.run(
-        [pagosc, "emit-hir", source], check=True, capture_output=True,
-        text=True, timeout=10,
-    ).stdout
-    assert "binding known: u32 [Comptime] = 3421780262" in hir, hir
+    # Only the folded check vector is needed, not an in-memory copy of the
+    # entire expanded residual expression or a huge assertion failure dump.
+    with tempfile.TemporaryFile(mode="w+") as hir:
+        subprocess.run(
+            [pagosc, "emit-hir", source], check=True, stdout=hir,
+            stderr=subprocess.PIPE, text=True, timeout=COMPILER_TIMEOUT,
+        )
+        hir.seek(0)
+        assert any(line.rstrip() == "binding known: u32 [Comptime] = 3421780262"
+                   for line in hir), "missing or incorrect folded CRC check vector"
     emitted = subprocess.run(
         [pagosc, "emit-llvm", source], check=True, capture_output=True,
-        text=True, timeout=10,
+        text=True, timeout=COMPILER_TIMEOUT,
     ).stdout
     tables = re.findall(
         r"private unnamed_addr constant \[256 x i32\] \[([^\n]+)\]", emitted,

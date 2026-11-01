@@ -150,3 +150,6 @@ configure_file(
 add_test(
     NAME pagos-lit
     COMMAND ${PAGOS_LIT} -sv -j 1 ${CMAKE_CURRENT_BINARY_DIR}/lit)
+# This is the entire serial lit suite, not one compiler invocation. Hosted
+# ASan runs already approach the CI entry's default 300-second test deadline.
+set_tests_properties(pagos-lit PROPERTIES TIMEOUT 600)

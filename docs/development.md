@@ -541,6 +541,22 @@ and release each passed all 487 tests, including lit. The clean debug CI entry
 also passed benchmark checks, formatting, all 58 production translation units
 under clang-tidy, documentation checks and RV32/QEMU execution.
 
+The GitHub run for `277691c` passed debug, GCC and release, but ASan failed
+only the CRC lit case: its HIR emission exceeded the helper's ten-second
+deadline. With the pinned image on this machine, three ASan HIR samples took
+4.1 seconds each and emitted 151,662,017 bytes. This is expanded diagnostic
+output, not the size of the residual object or evidence store.
+
+The CRC helper now writes HIR to a temporary file and scans for the folded
+check vector, avoiding a full Python string and huge assertion dumps. Both
+Pagos emission steps have a finite 60-second deadline; external Clang retains
+30 seconds and each generated program retains five seconds. All table entries,
+the folded vector, Runtime messages and input-order checks remain enabled.
+The complete serial lit suite has an explicit 600-second CTest deadline;
+the old 300-second fallback was already close to its hosted ASan duration.
+These are correctness-test deadlines, not compiler performance acceptance
+thresholds. Keep performance comparisons in the Release benchmark reports.
+
 Inspect the [minimal record example](records.md) with:
 
 ```sh
