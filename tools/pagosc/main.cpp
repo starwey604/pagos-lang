@@ -46,6 +46,7 @@ struct Options {
     std::string source_path;
     pagos::stage::AnalysisLimits limits;
     pagos::codegen::TargetConfig target;
+    pagos::codegen::EmissionOptions emission;
     std::optional<std::string> output_path;
     pagos::stage::CacheConfig cache;
     bool cache_stats{};
@@ -71,6 +72,8 @@ void print_usage() {
         "[--max-array-elements=N] [--max-array-bytes=N] "
         "[--max-aggregate-members=N] [--max-aggregate-bytes=N] "
         "[--target=TRIPLE] [--cpu=CPU] [--features=FEATURES] "
+        "[-O0|-O1|-O2|-O3|-Os|-Oz] "
+        "[--relocation-model=pic|static] [--code-model=default|small|medium] "
         "[--stage-cache=off|read-write|read-only] "
         "[--cache-dir=PATH] [--cache-stats] "
         "[--cache-evidence=value|scalar-replay|generator-replay] "
@@ -153,6 +156,8 @@ std::expected<Options, std::string> parse_options(int argument_count,
     std::optional<std::string> source_path;
     pagos::stage::AnalysisLimits limits;
     pagos::codegen::TargetConfig target;
+    pagos::codegen::EmissionOptions emission;
+    bool emission_options = false;
     std::optional<std::string> output_path;
 
     pagos::stage::CacheConfig cache;
@@ -185,7 +190,47 @@ std::expected<Options, std::string> parse_options(int argument_count,
             "--max-aggregate-members=";
         constexpr std::string_view aggregate_bytes_prefix =
             "--max-aggregate-bytes=";
-        if (argument.starts_with("--replay-")) {
+        if (argument.starts_with("-O")) {
+            using Level = pagos::codegen::OptimizationLevel;
+            emission_options = true;
+            if (argument == "-O0")
+                emission.optimization = Level::O0;
+            else if (argument == "-O1")
+                emission.optimization = Level::O1;
+            else if (argument == "-O2")
+                emission.optimization = Level::O2;
+            else if (argument == "-O3")
+                emission.optimization = Level::O3;
+            else if (argument == "-Os")
+                emission.optimization = Level::Os;
+            else if (argument == "-Oz")
+                emission.optimization = Level::Oz;
+            else
+                return std::unexpected("invalid optimization level: " +
+                                       std::string(argument));
+        } else if (argument.starts_with("--relocation-model=")) {
+            emission_options = true;
+            const auto value = argument.substr(19);
+            if (value == "pic")
+                emission.relocation = pagos::codegen::RelocationModel::Pic;
+            else if (value == "static")
+                emission.relocation = pagos::codegen::RelocationModel::Static;
+            else
+                return std::unexpected("invalid relocation model: " +
+                                       std::string(value));
+        } else if (argument.starts_with("--code-model=")) {
+            emission_options = true;
+            const auto value = argument.substr(13);
+            if (value == "default")
+                emission.code_model.reset();
+            else if (value == "small")
+                emission.code_model = pagos::codegen::CodeModel::Small;
+            else if (value == "medium")
+                emission.code_model = pagos::codegen::CodeModel::Medium;
+            else
+                return std::unexpected("invalid code model: " +
+                                       std::string(value));
+        } else if (argument.starts_with("--replay-")) {
             const auto parsed =
                 pagos::driver::parse_scalar_replay_option(argument, replay);
             if (!parsed)
@@ -414,6 +459,10 @@ std::expected<Options, std::string> parse_options(int argument_count,
     if (!command || !source_path) {
         return std::unexpected("a command and source file are required");
     }
+    if (emission_options && *command != Command::EmitLlvm &&
+        *command != Command::EmitObject)
+        return std::unexpected(
+            "emission options require emit-llvm or emit-obj");
     if (*command != Command::ExplainReplay && replay.specified)
         return std::unexpected("replay options require explain-replay");
     if (*command == Command::ExplainReplay) {
@@ -516,6 +565,7 @@ std::expected<Options, std::string> parse_options(int argument_count,
                    .source_path = std::move(*source_path),
                    .limits = limits,
                    .target = std::move(target),
+                   .emission = emission,
                    .output_path = std::move(output_path),
                    .cache = std::move(cache),
                    .cache_stats = cache_stats,
@@ -931,7 +981,7 @@ int main(int argument_count, char** arguments) {
     }
     if (options->command == Command::EmitObject) {
         const auto bytes = pagos::codegen::LLVMCodegen::emit_object_for_target(
-            *mir_module, *target);
+            *mir_module, *target, options->emission);
         if (!bytes) {
             std::println(stderr, "error: {}", bytes.error());
             return 1;
@@ -945,8 +995,8 @@ int main(int argument_count, char** arguments) {
         return 0;
     }
 
-    auto llvm_ir =
-        pagos::codegen::LLVMCodegen::emit_for_target(*mir_module, *target);
+    auto llvm_ir = pagos::codegen::LLVMCodegen::emit_for_target(
+        *mir_module, *target, options->emission);
     if (!llvm_ir) {
         std::println(stderr, "error: {}", llvm_ir.error());
         return 1;

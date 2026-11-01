@@ -1,0 +1,31 @@
+// RUN: %run_native_opt %s
+// S4's CRC shape, kept independent of the external board repository.
+fn crc_entry(value: u32, polynomial: u32, bits: u32) -> u32 {
+    if bits == 0 { value } else {
+        crc_entry((value >> 1) ^ ((0 - (value & 1)) & polynomial), polynomial, bits - 1)
+    }
+}
+static const crc_table: [u32; 256] = [for i in 0..256 { crc_entry(i, 3988292384, 8) }];
+fn fold(data: *const u8, position: u32, length: u32, crc: u32) -> u32 {
+    if position < length {
+        let byte = *(((data as usize) + (position as usize)) as *const u8);
+        let next = crc_table[(crc ^ (byte as u32)) & 255] ^ (crc >> 8);
+        fold(data, position + 1, length, next)
+    } else { crc ^ 4294967295 }
+}
+export fn generic_crc(data: *const u8, length: u32, seed: u32) -> u32 {
+    runtime let position: u32 = 0;
+    fold(data, position, length, seed)
+}
+export fn frozen_crc(data: *const u8, length: u32) -> u32 {
+    runtime let position: u32 = 0;
+    // This boundary preserves a uniform residual loop instead of early peeling.
+    runtime let state: u32 = 4294967295;
+    fold(data, position, length, state)
+}
+
+// C2 currently admits this closed arithmetic generator, not recursive CRC entry
+// calls. Use it to verify that emission policy does not split semantic keys.
+fn make_probe() -> [u32; 16] { [for i in 0..16 { i * i }] }
+static const cache_probe: [u32; 16] = make_probe();
+export fn probe(index: u32) -> u32 { cache_probe[index & 15] }

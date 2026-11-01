@@ -3,6 +3,7 @@
 // RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR
 // RUN: %run_c_abi %s %S/../Inputs/pointers.c
 // RUN: %run_c_abi --optimize %s %S/../Inputs/pointers.c
+// RUN: %run_c_abi --native-optimize %s %S/../Inputs/pointers.c
 extern fn c_pointer() -> *mut u32;
 extern fn c_change(p: *mut u32) -> u32;
 fn read(p: *const u32) -> u32 { *p }

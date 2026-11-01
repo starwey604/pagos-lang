@@ -252,6 +252,9 @@ signatures are not C ABI.
 The minimal C ABI now provides `extern fn` imports and `export fn` definitions
 for `u32/i32` and integer/record pointers, with direct
 `emit-obj ... -o output.o` output.
+Add `-O2` for the integrated LLVM optimization pipeline, or use `-O0`, `-O1`,
+`-O3`, `-Os`, or `-Oz`; omission preserves the previous emission behavior.
+See [native optimization](docs/development.md#native-optimization).
 It is validated on x86-64 Linux LP64 and RV32 ELF ILP32 (I/M/A/C). The
 [bidirectional example](tests/lit/codegen/c-abi.pgs) runs with C on the host and
 as QEMU RV32 firmware; this ABI harness uses C/assembly startup and MMIO.

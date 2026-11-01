@@ -648,8 +648,15 @@ and the [RISC-V psABI](https://riscv-non-isa.github.io/riscv-elf-psabi-doc/).
 
 Object emission uses an initialized LLVM AsmPrinter and TargetMachine directly,
 with the same triple/CPU/features and checked DataLayout as semantic analysis.
-Objects use PIC relocation; RV32 sets soft-float ILP32 explicitly. There is no
-new middle-end optimization pipeline or embedded linker. The CLI writes an
+Objects default to PIC relocation; RV32 sets soft-float ILP32 explicitly.
+Explicit optimization uses LLVM's target-aware new-pass-manager standard
+pipeline before machine code generation, with verification before and after.
+`EmissionOptions` keeps optimization, relocation, and code model separate from
+semantic `TargetConfig` and persistent Stage query identity. Omitting options
+preserves raw IR and the existing backend optimization level; explicit O0
+disables machine optimization too. See the
+[level and target-policy contract](development.md#native-optimization).
+There is no embedded linker. The CLI writes an
 exclusive sibling temporary and renames only after emission/write success,
 rejecting an output that aliases the input. Linking remains an external
 Clang/GCC/LLD task. Library-style boundary modules omit synthetic `pagos_main`.

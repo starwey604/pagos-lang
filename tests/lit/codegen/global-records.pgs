@@ -3,6 +3,7 @@
 // RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR --implicit-check-not=alloca --implicit-check-not=extractvalue --implicit-check-not=unnamed_addr
 // RUN: %run_c_abi --no-traps %s %S/../Inputs/global_records.c
 // RUN: %run_c_abi --optimize --no-traps %s %S/../Inputs/global_records.c
+// RUN: %run_c_abi --native-optimize --no-traps %s %S/../Inputs/global_records.c
 // RUN: %pagosc emit-obj %s -o %t.o
 // RUN: llvm-readobj --sections --symbols %t.o | %FileCheck %s --check-prefix=ELF
 record State { tag: u8, count: u32, wide: u64, size: usize, tail: i16 }

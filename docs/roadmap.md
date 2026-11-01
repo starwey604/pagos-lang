@@ -279,8 +279,10 @@ data/BSS, two clock profiles, and CRC kernels on CH32V307V-EVT-R1. The
 [validation plan](ch32v307-validation-plan.md) records S3/S4 source/evidence
 locations. S4 uses identical CRC algorithms and a common LLVM O2 pipeline,
 measures device HCLK ticks and sections, and retains negative staging/code-shape
-results. Native compiler optimization integration is the next priority; this
-single-board result does not establish another MCU's support or an interrupt ABI.
+results. Native object/IR emission now supports explicit LLVM optimization
+levels, with CRC residual-loop shape and native RV32/MMIO regressions; see the
+[optimization contract](development.md#native-optimization). This single-board
+result does not establish another MCU's support or an interrupt ABI.
 
 ## Milestone 4: Typed board configuration experiment
 

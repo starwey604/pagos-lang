@@ -49,6 +49,9 @@ The differential test uses Python's standard-library `zlib`: it checks all
 zero bytes, high bits, and deterministically generated data. Each message runs
 under external Clang `-O0` and `-O2`; exact input order/count is checked too.
 These flags exercise residual code, not an integrated `pagosc -O` pipeline.
+The separate [native CRC regression](../tests/lit/codegen/optimized-crc-loop.pgs)
+checks variable-length pointer input at all six explicit optimization levels
+and the RV32 loop shape. See [native optimization](development.md#native-optimization).
 
 The example fits default limits: 41,554 fuel, 2,314 specializations, maximum
 depth 9, and 274 reserved array slots / 1,096 logical bytes. Those totals include

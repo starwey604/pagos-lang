@@ -184,6 +184,7 @@ else()
     llvm_map_components_to_libnames(PAGOS_LLVM_LIBRARIES
         Core
         CodeGen
+        Passes
         Support
         Target
         TargetParser

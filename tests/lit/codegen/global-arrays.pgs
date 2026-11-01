@@ -3,6 +3,7 @@
 // RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR --implicit-check-not=alloca --implicit-check-not=extractvalue --implicit-check-not=unnamed_addr
 // RUN: %run_c_abi %s %S/../Inputs/global_arrays.c read store address discard
 // RUN: %run_c_abi --optimize %s %S/../Inputs/global_arrays.c read store address discard
+// RUN: %run_c_abi --native-optimize %s %S/../Inputs/global_arrays.c read store address discard
 // RUN: %pagosc emit-obj %s -o %t.o
 // RUN: llvm-readobj --sections --symbols %t.o | %FileCheck %s --check-prefix=ELF
 static mut buffer: [u8; 16] section(".bss.buffer") align(64) = [for i in 0..16 { 0u8 }];

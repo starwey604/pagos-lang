@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PLATFORM = ROOT / "platforms/qemu-rv32-virt"
 ISA = ["-march=rv32imac", "-mabi=ilp32"]
 CPU = "rv32i,m=true,a=true,c=true,zicsr=true,zifencei=true"
+EMISSION_SUFFIXES = ("", "-opt", "-native")
 
 
 def checked(command):
@@ -48,12 +49,15 @@ def main():
                                   ("mmio", None)):
                 source = str(PLATFORM / "mmio.pgs" if harness is None else
                              ROOT / f"tests/lit/codegen/{name}.pgs")
-                objects[name] = str(Path(directory) / f"{name}.o")
-                objects[name + "-opt"] = str(Path(directory) / f"{name}-opt.o")
-                if harness is not None:
-                    harnesses[name] = harnesses[name + "-opt"] = str(ROOT / "tests/lit/Inputs" / harness)
+                for suffix in EMISSION_SUFFIXES:
+                    objects[name + suffix] = str(Path(directory) / f"{name}{suffix}.o")
+                    if harness is not None:
+                        harnesses[name + suffix] = str(ROOT / "tests/lit/Inputs" / harness)
                 subprocess.run([pagosc, *target, "emit-obj", source, "-o",
                                 objects[name]], check=True)
+                subprocess.run([pagosc, *target, "-O2", "--relocation-model=static",
+                                "--code-model=medium", "emit-obj", source, "-o",
+                                objects[name + "-native"]], check=True)
                 ir = subprocess.check_output([pagosc, *target, "emit-llvm", source])
                 subprocess.run(["clang", "--target=riscv32-unknown-elf", *ISA,
                                 "-O2", "-c", "-x", "ir", "-", "-o",
@@ -65,17 +69,17 @@ def main():
                         "poll_limit": (".rodata.uart", 32, False, False),
                         "boot_table": (".rodata.boot", 32, False, False),
                     }
-                    for key in (name, name + "-opt"):
+                    for key in (name + suffix for suffix in EMISSION_SUFFIXES):
                         verify_storage(objects[key], placement)
                 if name == "global-arrays":
-                    for key in (name, name + "-opt"):
+                    for key in (name + suffix for suffix in EMISSION_SUFFIXES):
                         verify_storage(objects[key], {
                             "buffer": (".bss.buffer", 64, True, True),
                             "squares": (".rodata.squares", 32, False, False),
                             "words": (".data.words", 4, True, False),
                         })
                 if name == "global-records":
-                    for key in (name, name + "-opt"):
+                    for key in (name + suffix for suffix in EMISSION_SUFFIXES):
                         verify_storage(objects[key], {
                             "state": (".data.state", 64, True, False),
                             "zero": (".bss.state", 32, True, True),
@@ -92,14 +96,15 @@ def main():
             cases += [(name, "WITH_PAGOS_C_ABI", 0) for name in harnesses]
             if args.pagosc:
                 cases += [(name, "WITH_PAGOS_MMIO", status)
-                          for name in ("mmio", "mmio-opt") for status in (0, 1)]
+                          for name in ("mmio" + suffix for suffix in EMISSION_SUFFIXES)
+                          for status in (0, 1)]
             cases = [(case, define, expected, None) for case, define, expected in cases]
             if args.pagosc:
                 cases += [(name, "WITH_PAGOS_MMIO", 1, fault)
-                          for name in ("mmio", "mmio-opt")
+                          for name in ("mmio" + suffix for suffix in EMISSION_SUFFIXES)
                           for fault in ("SKIP_DATA_COPY", "SKIP_BSS_CLEAR")]
                 cases += [(name, "WITH_PAGOS_C_ABI", 1, fault)
-                          for name in ("global-records", "global-records-opt")
+                          for name in ("global-records" + suffix for suffix in EMISSION_SUFFIXES)
                           for fault in ("SKIP_DATA_COPY", "SKIP_BSS_CLEAR")]
             for case, define, expected, fault in cases:
                 elf = str(Path(directory) / f"{compiler}-{case}-{fault or expected}.elf")
@@ -127,7 +132,7 @@ def main():
                     command += [str(PLATFORM / "smoke.c")]
                 command += [str(runtime), "-o", elf]
                 subprocess.run(command, check=True)
-                if case in ("global-records", "global-records-opt"):
+                if case in ("global-records" + suffix for suffix in EMISSION_SUFFIXES):
                     verify_storage(elf, {
                         "state": (".data", 64, True, False),
                         "zero": (".bss", 32, True, True),

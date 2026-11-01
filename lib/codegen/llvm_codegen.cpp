@@ -3,6 +3,7 @@
 #include <llvm/ADT/SmallVector.h>
 
 #include <llvm/ADT/APInt.h>
+#include <llvm/Config/llvm-config.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Function.h>
@@ -16,6 +17,8 @@
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/MC/TargetRegistry.h>
+#include <llvm/Passes/OptimizationLevel.h>
+#include <llvm/Passes/PassBuilder.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
@@ -37,10 +40,10 @@ namespace {
 
 class Generator {
   public:
-    explicit Generator(const TargetLayout& target)
+    explicit Generator(const TargetLayout& target, EmissionOptions options)
         : module_(std::make_unique<llvm::Module>("pagos", context_)),
           builder_(context_), config_(target.config()),
-          c_abi_supported_(target.supports_minimal_c_abi()) {
+          c_abi_supported_(target.supports_minimal_c_abi()), options_(options) {
         module_->setTargetTriple(llvm::Triple(config_.triple));
         module_->setDataLayout(target.data_layout());
     }
@@ -126,7 +129,28 @@ class Generator {
                                    verification_error);
         }
 
-        if (object) {
+        const auto level = options_.optimization;
+        const bool optimize = level != OptimizationLevel::Legacy &&
+                              level != OptimizationLevel::O0;
+        if (options_.relocation)
+            module_->setPICLevel(*options_.relocation == RelocationModel::Pic
+                                     ? llvm::PICLevel::BigPIC
+                                     : llvm::PICLevel::NotPIC);
+        std::optional<llvm::CodeModel::Model> code_model;
+        if (options_.code_model) {
+            code_model = *options_.code_model == CodeModel::Small
+                             ? llvm::CodeModel::Small
+                             : llvm::CodeModel::Medium;
+            const auto& triple = module_->getTargetTriple();
+            if (*options_.code_model == CodeModel::Medium &&
+                !triple.isRISCV() && triple.getArch() != llvm::Triple::x86_64)
+                return std::unexpected(
+                    "medium code model requires an x86-64 or RISC-V target");
+            module_->setCodeModel(*code_model);
+        }
+
+        std::unique_ptr<llvm::TargetMachine> machine;
+        if (object || optimize) {
             std::string error;
             const auto* target = llvm::TargetRegistry::lookupTarget(
                 llvm::Triple(config_.triple), error);
@@ -135,15 +159,77 @@ class Generator {
             llvm::TargetOptions options;
             if (llvm::Triple(config_.triple).isRISCV32())
                 options.MCOptions.ABIName = "ilp32";
-            std::unique_ptr<llvm::TargetMachine> machine(
-                target->createTargetMachine(llvm::Triple(config_.triple),
-                                            config_.cpu, config_.features,
-                                            options, llvm::Reloc::PIC_));
+            auto backend_level = llvm::CodeGenOptLevel::Default;
+            if (level == OptimizationLevel::O0)
+                backend_level = llvm::CodeGenOptLevel::None;
+            else if (level == OptimizationLevel::O1)
+                backend_level = llvm::CodeGenOptLevel::Less;
+            else if (level == OptimizationLevel::O3)
+                backend_level = llvm::CodeGenOptLevel::Aggressive;
+            machine.reset(target->createTargetMachine(
+                llvm::Triple(config_.triple), config_.cpu, config_.features,
+                options,
+                options_.relocation == RelocationModel::Static
+                    ? llvm::Reloc::Static
+                    : llvm::Reloc::PIC_,
+                code_model, backend_level));
             if (!machine)
                 return std::unexpected("cannot create object target machine");
             if (machine->createDataLayout() != module_->getDataLayout())
                 return std::unexpected(
                     "object target layout differs from semantic layout");
+        }
+
+        if (optimize) {
+            if (level == OptimizationLevel::Os ||
+                level == OptimizationLevel::Oz) {
+                for (auto& function : *module_) {
+                    if (function.isDeclaration())
+                        continue;
+                    function.addFnAttr(llvm::Attribute::OptimizeForSize);
+                    if (level == OptimizationLevel::Oz)
+                        function.addFnAttr(llvm::Attribute::MinSize);
+                }
+            }
+            auto optimization = llvm::OptimizationLevel::O2;
+            switch (level) {
+            case OptimizationLevel::O1:
+                optimization = llvm::OptimizationLevel::O1;
+                break;
+            case OptimizationLevel::O3:
+                optimization = llvm::OptimizationLevel::O3;
+                break;
+#if LLVM_VERSION_MAJOR < 23
+            case OptimizationLevel::Os:
+                optimization = llvm::OptimizationLevel::Os;
+                break;
+            case OptimizationLevel::Oz:
+                optimization = llvm::OptimizationLevel::Oz;
+                break;
+#endif
+            default:
+                break;
+            }
+            llvm::LoopAnalysisManager loops;
+            llvm::FunctionAnalysisManager functions;
+            llvm::CGSCCAnalysisManager cgscc;
+            llvm::ModuleAnalysisManager modules;
+            llvm::PassBuilder passes(machine.get());
+            passes.registerModuleAnalyses(modules);
+            passes.registerCGSCCAnalyses(cgscc);
+            passes.registerFunctionAnalyses(functions);
+            passes.registerLoopAnalyses(loops);
+            passes.crossRegisterProxies(loops, functions, cgscc, modules);
+            auto pipeline = passes.buildPerModuleDefaultPipeline(optimization);
+            pipeline.run(*module_, modules);
+            if (llvm::verifyModule(*module_, &verification_stream)) {
+                verification_stream.flush();
+                return std::unexpected("invalid optimized LLVM IR: " +
+                                       verification_error);
+            }
+        }
+
+        if (object) {
             llvm::SmallVector<char, 0> bytes;
             llvm::raw_svector_ostream stream(bytes);
             llvm::legacy::PassManager passes;
@@ -699,6 +785,7 @@ class Generator {
     llvm::IRBuilder<> builder_;
     TargetConfig config_;
     bool c_abi_supported_{};
+    EmissionOptions options_;
     std::unordered_map<mir::ValueId, llvm::Value*> values_;
     std::unordered_map<mir::ValueId, llvm::Type*> record_pointees_;
     // LLVM integer types erase signedness; retain each MIR definition's fact.
@@ -711,33 +798,36 @@ class Generator {
 } // namespace
 
 std::expected<std::string, std::string>
-LLVMCodegen::emit(const mir::Module& mir_module, TargetConfig config) {
+LLVMCodegen::emit(const mir::Module& mir_module, TargetConfig config,
+                  EmissionOptions options) {
     const auto target = TargetLayout::create(std::move(config));
     if (!target) {
         return std::unexpected(target.error());
     }
-    return emit_for_target(mir_module, *target);
+    return emit_for_target(mir_module, *target, options);
 }
 
 std::expected<std::string, std::string>
 LLVMCodegen::emit_for_target(const mir::Module& mir_module,
-                             const TargetLayout& target) {
+                             const TargetLayout& target,
+                             EmissionOptions options) {
     if (mir_module.pointer_bits != 0 &&
         mir_module.pointer_bits != target.pointer_bits()) {
         return std::unexpected(
             "MIR semantic target pointer width does not match emission target");
     }
-    return Generator(target).emit(mir_module);
+    return Generator(target, options).emit(mir_module);
 }
 
 std::expected<std::string, std::string>
 LLVMCodegen::emit_object_for_target(const mir::Module& mir_module,
-                                    const TargetLayout& target) {
+                                    const TargetLayout& target,
+                                    EmissionOptions options) {
     if (mir_module.pointer_bits != 0 &&
         mir_module.pointer_bits != target.pointer_bits())
         return std::unexpected(
             "MIR semantic target pointer width does not match emission target");
-    return Generator(target).emit(mir_module, true);
+    return Generator(target, options).emit(mir_module, true);
 }
 
 } // namespace pagos::codegen

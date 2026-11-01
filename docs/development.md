@@ -15,6 +15,7 @@ Required tools and libraries are:
 - GoogleTest for C++ unit tests;
 - Python 3, LLVM `lit`, and `FileCheck` for language-level golden tests;
 - Clang 22 or 23 and a host C linker/runtime for executing generated LLVM IR;
+- LLD (`ld.lld`), `llvm-nm`, and `llvm-objdump` for RV32 loop-shape regressions;
 - `clang-format` and `clang-tidy` for local quality checks.
 
 LLVM packages differ across distributions. CMake loads `LLVMConfig.cmake`,
@@ -207,8 +208,58 @@ build/debug/pagosc emit-obj source.pgs -o source.o
 Compilation failures preserve existing output; a successful write atomically
 replaces it via an exclusive `<output>.tmp` sibling. An existing temporary,
 missing parent directory, or input/output alias is an error. Text commands do
-not accept `-o`. Objects use PIC relocation; this command adds no `-O2` IR pass
-pipeline. Link with a matching external toolchain and required target runtime.
+not accept `-o`. Link with a matching external toolchain and required target
+runtime.
+
+### Native optimization
+
+Use `-O2` to optimize residual LLVM IR and emit an object in one compiler
+invocation; external `opt` and `llc` are no longer required for this path:
+
+```sh
+build/debug/pagosc -O2 --target=riscv32-unknown-elf --cpu=generic-rv32 \
+  --features=+m,+a,+c --relocation-model=static --code-model=medium \
+  emit-obj tests/lit/codegen/optimized-crc-loop.pgs -o build/crc.o
+build/debug/pagosc -O2 emit-llvm source.pgs
+```
+
+`emit-llvm` and `emit-obj` use the same target-aware LLVM new-pass-manager
+pipeline. Both verify LLVM IR before optimization and verify it again after
+optimization; MIR verification still runs before lowering. Supported levels:
+
+| Option | LLVM IR | Machine code optimization |
+| --- | --- | --- |
+| omitted | Original, unoptimized IR | Existing backend default |
+| `-O0` | Original, unoptimized IR | None |
+| `-O1` | Standard O1 pipeline | Less |
+| `-O2` | Standard O2 pipeline | Default |
+| `-O3` | Standard O3 pipeline | Aggressive |
+| `-Os` / `-Oz` | Size / minimum-size optimization | Default |
+
+Omitting the option preserves the old behavior; it is **not** an alias for
+explicit `-O0`. LLVM 22 uses its Os/Oz pipelines and size function attributes.
+LLVM 23 removed those pipeline levels, so it uses O2 with `optsize` / `minsize`
+attributes. Exact instruction sequences can differ across supported LLVM versions.
+
+Relocation defaults to the existing PIC policy; select `pic` or `static` with
+`--relocation-model`. `--code-model=default|small|medium` selects LLVM's default
+or an explicit model; medium is supported here only for x86-64 and RISC-V.
+Linker scripts, startup code, and programming remain external responsibilities.
+These options and optimization levels apply only to `emit-llvm` / `emit-obj`;
+other commands reject them. Repeated options use the last value.
+
+Emission policy does not change Stage decisions, semantic target layout,
+resource accounting, or C1–C4 protocol encodings and semantic cache keys. The
+compiler-build identity still rolls when compiler sources change. Optimization
+does not guarantee bounded recursion or a particular loop shape for arbitrary
+programs. The [CRC regression](../tests/lit/codegen/optimized-crc-loop.pgs)
+protects S4's explicit Runtime accumulator: tail calls disappear, one backward
+loop and one induction update remain, and pointer checks are retained.
+Host execution also checks all six explicit levels against zlib, while native
+C ABI, pointer, global-storage, and volatile harnesses exercise the O2 path.
+`scripts/check_rv32.py` also links native O2 objects with both Clang and GCC,
+alongside the legacy and external-optimization paths. It checks UART/MMIO,
+data/BSS initialization and injected failures in QEMU.
 
 For the [minimal C ABI example](../tests/lit/codegen/c-abi.pgs):
 

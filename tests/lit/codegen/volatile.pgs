@@ -2,8 +2,10 @@
 // RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
 // RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR
 // RUN: %pagosc emit-llvm %s | opt -S -passes='default<O2>' | %FileCheck %s --check-prefix=OPT
+// RUN: %pagosc -O2 emit-llvm %s | %FileCheck %s --check-prefix=OPT
 // RUN: %run_c_abi %s %S/../Inputs/volatile.c null-read null-store misaligned-read misaligned-store discard-null
 // RUN: %run_c_abi --optimize %s %S/../Inputs/volatile.c null-read null-store misaligned-read misaligned-store discard-null
+// RUN: %run_c_abi --native-optimize %s %S/../Inputs/volatile.c null-read null-store misaligned-read misaligned-store discard-null
 extern fn address(p: *mut u32) -> *mut u32;
 extern fn value(p: *mut u32) -> u32;
 fn read(p: *const u32) -> u32 { volatile *p }

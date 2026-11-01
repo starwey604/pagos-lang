@@ -1,6 +1,7 @@
 find_package(GTest REQUIRED CONFIG)
 
 add_executable(pagos_unit_tests
+    unit/emission_test.cpp
     unit/c_abi_test.cpp
     unit/pointer_test.cpp
     unit/integer_test.cpp
@@ -135,6 +136,12 @@ find_program(PAGOS_LIT NAMES lit llvm-lit HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRE
 find_program(PAGOS_FILECHECK NAMES FileCheck
     HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
 find_program(PAGOS_TEST_CLANG NAMES clang
+    HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
+find_program(PAGOS_TEST_LLD NAMES ld.lld
+    HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
+find_program(PAGOS_TEST_NM NAMES llvm-nm
+    HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
+find_program(PAGOS_TEST_OBJDUMP NAMES llvm-objdump
     HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
 
 add_test(NAME pagos-generator-replay-effect-process

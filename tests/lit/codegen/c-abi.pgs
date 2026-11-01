@@ -3,6 +3,7 @@
 // RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=IR
 // RUN: %run_c_abi %s
 // RUN: %run_c_abi --optimize %s
+// RUN: %run_c_abi --native-optimize %s
 extern fn c_next() -> u32;
 extern fn c_neg(x: i32) -> i32;
 extern fn c_identity(x: u32) -> u32;

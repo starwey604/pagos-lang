@@ -83,6 +83,18 @@ config.substitutions.append((
     ]),
 ))
 config.substitutions.append((
+    "%run_native_opt",
+    " ".join(shlex.quote(value) for value in [
+        config.python,
+        os.path.join(config.pagos_test_source_root, "Inputs", "run_native_opt.py"),
+        config.pagosc,
+        config.test_clang,
+        config.test_lld,
+        config.test_nm,
+        config.test_objdump,
+    ]),
+))
+config.substitutions.append((
     "%run_c_abi",
     " ".join(shlex.quote(value) for value in [
         config.python,

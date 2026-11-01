@@ -1,0 +1,17 @@
+// RUN: not %pagosc -O4 emit-llvm %s 2>&1 | %FileCheck %s --check-prefix=LEVEL
+// RUN: not %pagosc --relocation-model=dynamic emit-llvm %s 2>&1 | %FileCheck %s --check-prefix=RELOC
+// RUN: not %pagosc --code-model=large emit-llvm %s 2>&1 | %FileCheck %s --check-prefix=MODEL
+// RUN: not %pagosc -O2 check %s 2>&1 | %FileCheck %s --check-prefix=COMMAND
+// RUN: not %pagosc --target=thumbv7m-none-eabi -O2 --code-model=medium emit-llvm %s 2>&1 | %FileCheck %s --check-prefix=TARGET
+// RUN: %pagosc -O0 -O2 emit-llvm %s | %FileCheck %s --check-prefix=OK
+// RUN: %pagosc -Os emit-llvm %s | %FileCheck %s --check-prefix=SIZE
+// RUN: %pagosc -Oz emit-llvm %s | %FileCheck %s --check-prefix=MIN
+let result = 42;
+// LEVEL: error: invalid optimization level: -O4
+// RELOC: error: invalid relocation model: dynamic
+// MODEL: error: invalid code model: large
+// COMMAND: error: emission options require emit-llvm or emit-obj
+// TARGET: error: medium code model requires an x86-64 or RISC-V target
+// OK: ret i32 42
+// SIZE: optsize
+// MIN: minsize

@@ -9,6 +9,9 @@ import tempfile
 
 def main():
     pagosc, clang, *arguments = sys.argv[1:]
+    native = arguments[0] == "--native-optimize"
+    if native:
+        arguments = arguments[1:]
     optimize = arguments[0] == "--optimize"
     if optimize:
         arguments = arguments[1:]
@@ -26,11 +29,11 @@ def main():
             subprocess.run([clang, "-O2", "-x", "ir", "-c", "-", "-o", str(obj)],
                            input=ir, check=True, timeout=20)
         else:
-            subprocess.run([pagosc, "emit-obj", source, "-o", str(obj)],
+            subprocess.run([pagosc, *(["-O2"] if native else []), "emit-obj", source, "-o", str(obj)],
                            check=True, timeout=20)
             assert obj.read_bytes().startswith(b"\x7fELF")
         program = root / "program"
-        subprocess.run([clang, "-O2" if optimize else "-O0", str(obj),
+        subprocess.run([clang, "-O2" if optimize or native else "-O0", str(obj),
                         str(harness), "-o", str(program)],
                        check=True, timeout=20)
         subprocess.run([str(program)], check=True, timeout=5)
