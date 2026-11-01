@@ -46,6 +46,9 @@ paths for staging failures and verify successful residual output.
 
 ## Commit & Pull Request Guidelines
 
+Work in the local workspace by default. Create pull requests or push remote
+branches only when explicitly requested by the user.
+
 Git history is currently too small to establish a commit convention. Use short,
 imperative subjects such as `docs: clarify runtime branch effects`, and keep
 each commit focused. Pull requests should state the milestone or design question

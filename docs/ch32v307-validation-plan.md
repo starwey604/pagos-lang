@@ -1,21 +1,21 @@
 # 基线稳定与 CH32V307V-EVT-R1 实机验证计划
 
 日期：2026-11-01。探索基线：`llvm` 分支 `277691c`，探索开始时工作区干净。
-本文是待执行计划，不代表 CI 已修复、协议已冻结或实机已通过。
+S0、S1 已完成并合入本地 `llvm`；S2、S3 待执行。
 
-执行更新（2026-11-01）：S0 修复提交 `ae92865` 位于
-`codex/stabilize-crc-ci` 分支，尚未合并到 `llvm`。
+执行更新（2026-11-01）：S0 修复提交为 `ae92865`。
 [GitHub Compiler 全矩阵](https://github.com/starwey604/pagos-lang/actions/runs/41270362461)
 的 Debug、GCC、ASan、Release 作业均通过，
 [Documentation](https://github.com/starwey604/pagos-lang/actions/runs/41270362462)
 也通过。本地固定 LLVM 22.1.8 的四配置干净构建各通过 487 项 CTest；
 Debug 的 58 个生产代码单元静态检查及 54 项 RV32/QEMU 检查通过。
-修复已整理为[草稿 PR #1](https://github.com/starwey604/pagos-lang/pull/1)。
-CRC 验证保留原有断言，编译
-限时改为 60 秒，HIR 经临时文件读取；完整串行 lit 限时为 600 秒。
+CRC 验证保留原有断言，编译限时改为 60 秒，HIR 经临时文件读取；
+完整串行 lit 限时为 600 秒。
 S1 已形成[协议基线清单](cache-protocol-baseline.md)、21 份固定字节样本
-与 13 项新增测试，验证结果以配套提交的 CI 为准。S2–S3 尚未开始；
-正式冻结应以合入后的全绿提交为准。
+与 13 项新增测试，提交为 `cb58c7f`。
+[S1 四配置 CI](https://github.com/starwey604/pagos-lang/actions/runs/41272477410)
+及文档检查通过；本地 Debug、ASan 各通过 500 项 CTest。
+两个草稿 PR 已关闭，后续默认直接在本地工作区推进。
 
 ## 现状与目标
 
