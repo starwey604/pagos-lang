@@ -197,8 +197,9 @@ storage does not require enumerating every path or dynamic recursive call.
 The [M3 preparation baseline](m3-preparation.md) is complete as of 2026-09-26.
 It covers measurement, locally exercised pinned CI, type/value foundations,
 target layout, effect interfaces, and the RV32 environment probe. Full M3
-language work has begun; remote CI and static-component
-LLVM linking are not claimed as verified.
+language work has begun. Later pinned remote CI and CH32 hardware results are
+recorded in the [validation plan](ch32v307-validation-plan.md); static-component
+LLVM linking remains unverified.
 
 The first M3 slice implements `u8/u16/u32/u64`, typed decimal literals,
 explicit integer `as` conversions, and width-aware constants, arrays, records,
@@ -223,7 +224,7 @@ address conversions, without `unsafe` or mandatory borrowing. Aggregate call
 lowering, additional ABI types/targets and allocation remain open. The ninth
 slice adds explicit volatile accesses, natural-alignment checks and native
 integer-width limits. Pagos-native UART/test-device firmware now runs in QEMU
-without C device helpers; fences, DMA, interrupts and real hardware remain open.
+without C device helpers; language-level fences, DMA and interrupts remain open.
 The tenth slice adds private integer globals with pure Comptime initializers,
 symbolic global addresses and default ELF data sections. Pagos-owned startup
 state detects missing data copying or BSS clearing in QEMU. The eleventh slice adds
@@ -272,9 +273,14 @@ Simulator baseline acceptance:
 - no host pointer or host layout leaks into target output, and virtual-board
   addresses remain in platform support rather than the compiler core.
 
-Hardware follow-up remains distinct: validate blink/UART, chip-specific startup
-and peripherals, flash/RAM usage, and relevant real cycle counts. A simulator
-baseline does not imply that any particular CH32, STM32, or other MCU is supported.
+Hardware follow-up remains distinct from simulator acceptance. The external
+`pagos-ch32v307-demo` repository now validates polling UART, chip startup,
+data/BSS, two clock profiles, and CRC kernels on CH32V307V-EVT-R1. The
+[validation plan](ch32v307-validation-plan.md) records S3/S4 source/evidence
+locations. S4 uses identical CRC algorithms and a common LLVM O2 pipeline,
+measures device HCLK ticks and sections, and retains negative staging/code-shape
+results. Native compiler optimization integration is the next priority; this
+single-board result does not establish another MCU's support or an interrupt ABI.
 
 ## Milestone 4: Typed board configuration experiment
 
