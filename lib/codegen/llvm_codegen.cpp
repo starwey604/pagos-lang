@@ -159,6 +159,10 @@ class Generator {
             llvm::TargetOptions options;
             if (llvm::Triple(config_.triple).isRISCV32())
                 options.MCOptions.ABIName = "ilp32";
+            if (module_->getTargetTriple().isThumb() && c_abi_supported_) {
+                options.MCOptions.ABIName = "aapcs";
+                options.FloatABIType = llvm::FloatABI::Soft;
+            }
             auto backend_level = llvm::CodeGenOptLevel::Default;
             if (level == OptimizationLevel::O0)
                 backend_level = llvm::CodeGenOptLevel::None;

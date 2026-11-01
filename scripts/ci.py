@@ -16,6 +16,7 @@ def main():
                         default="debug")
     parser.add_argument("--quality", action="store_true")
     parser.add_argument("--rv32", action="store_true")
+    parser.add_argument("--arm", action="store_true")
     parser.add_argument("--jobs", type=int, default=4)
     args = parser.parse_args()
     if args.jobs < 1:
@@ -63,6 +64,12 @@ def main():
                  str(ROOT / "tests/lit/Inputs/global_arrays.c"),
                  str(ROOT / "tests/lit/Inputs/global_records.c"),
                  str(ROOT / "tests/lit/Inputs/record_pointers.c"),
+                 str(ROOT / "tests/lit/Inputs/volatile32.c"),
+                 str(ROOT / "tests/lit/Inputs/host_signals.h"),
+                 str(ROOT / "tests/lit/Inputs/runtime.c"),
+                 str(ROOT / "platforms/qemu-cortex-m33/smoke.c"),
+                 str(ROOT / "platforms/qemu-cortex-m33/traps.c"),
+                 str(ROOT / "platforms/qemu-cortex-m33/crc.c"),
                  str(ROOT / "tests/lit/Inputs/sections.c")])
             for folder in ("lib", "tools"):
                 for source in sorted((ROOT / folder).rglob("*.cpp")):
@@ -73,6 +80,8 @@ def main():
             run(["git", "show", "--format=", "--check", "HEAD"])
         if args.rv32:
             run(["python3", "scripts/check_rv32.py", "--pagosc", str(build / "pagosc")])
+        if args.arm:
+            run(["python3", "scripts/check_arm.py", "--pagosc", str(build / "pagosc")])
     print(f"PASS {args.preset}; logs: {log_root}", flush=True)
 
 

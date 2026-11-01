@@ -33,7 +33,7 @@ jobs:
         run: |
           extra=()
           if [[ '${{ matrix.preset }}' == debug ]]; then
-            extra+=(--quality --rv32)
+            extra+=(--quality --rv32 --arm)
           fi
           docker run --rm --network none \
             --user "$(id -u):$(id -g)" \

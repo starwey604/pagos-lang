@@ -138,6 +138,16 @@ bool TargetLayout::supports_minimal_c_abi() const {
     if (triple.getArch() == llvm::Triple::x86_64 && triple.isOSLinux() &&
         pointer_bits() == 64)
         return true;
+    // Validated Cortex-M33 base AAPCS32: Thumb ARMv8-M Mainline, bare-metal
+    // EABI, and the CPU's default features. This does not admit hard-float,
+    // arbitrary ARM CPUs, or aggregate-by-value boundary signatures.
+    if (triple.getArch() == llvm::Triple::thumb &&
+        triple.getSubArch() == llvm::Triple::ARMSubArch_v8m_mainline &&
+        triple.getOS() == llvm::Triple::UnknownOS &&
+        triple.getEnvironment() == llvm::Triple::EABI &&
+        triple.isOSBinFormatELF() && config_.cpu == "cortex-m33" &&
+        config_.features.empty())
+        return true;
     if (!triple.isRISCV32() || triple.getOS() != llvm::Triple::UnknownOS ||
         !triple.isOSBinFormatELF() || config_.cpu != "generic-rv32")
         return false;

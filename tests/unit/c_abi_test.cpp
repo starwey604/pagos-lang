@@ -194,4 +194,53 @@ TEST(CAbi, EmitsRealElfObjectsAndRejectsSemanticTargetMismatch) {
             codegen::LLVMCodegen::emit_object_for_target(*module, *target));
     }
 }
+
+TEST(CAbi, CortexM33RequiresThumbMainlineBaseEabiAndDefaultFeatures) {
+    using codegen::TargetConfig;
+    using codegen::TargetLayout;
+    const auto supported = TargetLayout::create(
+        {.triple = "thumbv8m.main-none-eabi", .cpu = "cortex-m33"});
+    ASSERT_TRUE(supported);
+    EXPECT_TRUE(supported->supports_minimal_c_abi());
+    EXPECT_EQ(supported->pointer_bits(), 32U);
+    EXPECT_TRUE(supported->little_endian());
+    for (const auto& config : {
+             TargetConfig{.triple = "thumbv8m.main-none-eabihf",
+                          .cpu = "cortex-m33"},
+             TargetConfig{.triple = "armv8m.main-none-eabi",
+                          .cpu = "cortex-m33"},
+             TargetConfig{.triple = "thumbv7m-none-eabi", .cpu = "cortex-m3"},
+             TargetConfig{.triple = "thumbv8m.main-none-eabi",
+                          .cpu = "cortex-m4"},
+             TargetConfig{.triple = "thumbv8m.main-none-eabi",
+                          .cpu = "cortex-m33",
+                          .features = "+dsp"},
+         }) {
+        const auto target = TargetLayout::create(config);
+        ASSERT_TRUE(target) << target.error();
+        EXPECT_FALSE(target->supports_minimal_c_abi()) << config.triple;
+    }
+    BoundaryInput input("export fn api(x: u32) -> u32 { x + 1 }", 32);
+    stage::StageAnalyzer analyzer(input.diagnostics, input.checker.types());
+    const auto hir = analyzer.analyze(*input.syntax);
+    ASSERT_FALSE(input.diagnostics.has_error());
+    const auto module = mir::lower(*hir);
+    ASSERT_TRUE(module);
+    for (const auto level :
+         {codegen::OptimizationLevel::Legacy, codegen::OptimizationLevel::O0,
+          codegen::OptimizationLevel::O1, codegen::OptimizationLevel::O2,
+          codegen::OptimizationLevel::O3, codegen::OptimizationLevel::Os,
+          codegen::OptimizationLevel::Oz}) {
+        const auto object = codegen::LLVMCodegen::emit_object_for_target(
+            *module, *supported,
+            {.optimization = level,
+             .relocation = codegen::RelocationModel::Static});
+        ASSERT_TRUE(object) << object.error();
+        EXPECT_TRUE(object->starts_with("\x7f"
+                                        "ELF"));
+        ASSERT_GE(object->size(), 40U);
+        EXPECT_EQ(static_cast<unsigned char>((*object)[4]), 1U);   // ELF32.
+        EXPECT_EQ(static_cast<unsigned char>((*object)[18]), 40U); // EM_ARM.
+    }
+}
 } // namespace

@@ -680,8 +680,10 @@ int main(int argument_count, char** arguments) {
                        pagos::syntax::Function::Linkage::Internal;
             }) &&
         !target->supports_minimal_c_abi()) {
-        std::println(stderr, "error: minimal C ABI requires x86-64 Linux LP64 "
-                             "or generic RV32 ELF ILP32 (I/M/A/C)");
+        std::println(stderr, "error: minimal C ABI requires x86-64 Linux LP64, "
+                             "generic RV32 ELF ILP32 (I/M/A/C), or "
+                             "Cortex-M33 Thumb ARMv8-M Mainline base EABI "
+                             "(default features)");
         return 1;
     }
 

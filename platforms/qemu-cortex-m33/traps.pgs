@@ -1,0 +1,7 @@
+export fn null_read(p: *const u32) -> u32 { *p }
+export fn null_store(p: *mut u32) -> u32 { *p = 7; 0 }
+export fn unaligned_volatile(p: *const u32) -> u32 { volatile *p }
+export fn discarded(p: *const u32) -> u32 { *p; 7 }
+export fn shift(value: u32, bits: u32) -> u32 { value >> bits }
+export fn divide(value: u32, by: u32) -> u32 { value / by }
+export fn lookup(index: u32) -> u32 { let a = [1, 2, 3]; a[index] }

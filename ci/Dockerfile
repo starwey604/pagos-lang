@@ -4,5 +4,6 @@ RUN printf 'Server = https://archive.archlinux.org/repos/2026/09/25/$repo/os/$ar
     && pacman -Syyuu --noconfirm --needed \
        cmake ninja clang llvm lld compiler-rt gcc gtest python git time \
        qemu-system-riscv riscv64-elf-gcc \
+       qemu-system-arm arm-none-eabi-gcc arm-none-eabi-newlib \
     && pacman -Q
 WORKDIR /work

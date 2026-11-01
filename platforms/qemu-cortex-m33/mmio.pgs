@@ -1,0 +1,45 @@
+// MPS2 AN505 only; Pagos owns all UART and startup-state accesses.
+static mut boot_seed: [u32; 2] section(".data.boot") align(64) = [37, 99];
+static mut boot_count: [u32; 2] section(".bss.boot") align(128) = [0, 0];
+static const boot_table: [u32; 16] section(".rodata.boot") align(32) = [for i in 0..16 { i * i }];
+static const poll_limit: u32 section(".rodata.uart") align(32) = 100000;
+
+fn bump_boot() -> u32 { *&boot_count[0] = boot_count[0] + 1; boot_count[0] }
+fn boot_ok() -> bool {
+    // Volatile reads inspect physical startup state even after LLVM optimization.
+    (volatile *&boot_seed[0]) == 37 && (volatile *&boot_seed[1]) == 99 &&
+    (volatile *&boot_count[0]) == 0 && (volatile *&boot_count[1]) == 0 &&
+    (volatile *&boot_table[15]) == 225 &&
+    bump_boot() == 1 && bump_boot() == 2 && (volatile *&boot_count[0]) == 2
+}
+fn put(byte: u8) -> u32 {
+    let output = 1075838976usize as *mut u32; // CMSDK UART DATA, 0x40200000.
+    let status = 1075838980usize as *const u32;
+    let attempts = volatile *&poll_limit;
+    for i in 0..attempts {
+        if (volatile *status & 1) == 0 {
+            volatile *output = byte as u32;
+            return 1;
+        } else { 0 };
+    }
+    0
+}
+
+export fn mmio_main(mode: u32) -> u32 {
+    volatile *(1075838992usize as *mut u32) = 16; // BAUDDIV.
+    volatile *(1075838984usize as *mut u32) = 1;  // CTRL: TX enable.
+    let passed = mode == 0 && boot_ok();
+    let text = if passed {
+        [80u8, 65u8, 71u8, 79u8, 83u8, 32u8, 77u8, 77u8,
+         73u8, 79u8, 32u8, 80u8, 65u8, 83u8, 83u8, 10u8]
+    } else {
+        [80u8, 65u8, 71u8, 79u8, 83u8, 32u8, 77u8, 77u8,
+         73u8, 79u8, 32u8, 70u8, 65u8, 73u8, 76u8, 10u8]
+    };
+    for i in 0..16 {
+        if put(text[i]) == 0 {
+            return 4;
+        } else { 0 };
+    }
+    if passed { 0 } else { 1 }
+}

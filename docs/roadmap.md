@@ -284,6 +284,13 @@ levels, with CRC residual-loop shape and native RV32/MMIO regressions; see the
 [optimization contract](development.md#native-optimization). This single-board
 result does not establish another MCU's support or an interrupt ABI.
 
+The next board consumer, `pagos-frdm-mcxn947-demo`, starts with a generic
+[Cortex-M33 base AAPCS32 baseline](arm-cortex-m33.md). The compiler's ARM
+whitelist and AN505 QEMU regression cover integer/pointer C ABI, native
+optimization, global storage, volatile/MMIO, traps and startup failures.
+MCXN947 boot metadata, clocks, LP-FLEXCOMM and physical-board acceptance stay
+in the external repository; the simulator does not model those peripherals.
+
 ## Milestone 4: Typed board configuration experiment
 
 Choose one real robotics controller and model:

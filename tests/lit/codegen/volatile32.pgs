@@ -1,0 +1,27 @@
+// RUN: %run_c_abi --native-optimize %s %S/../Inputs/volatile32.c null
+// RUN: %pagosc --target=thumbv8m.main-none-eabi --cpu=cortex-m33 -O2 emit-llvm %s | %FileCheck %s
+export fn sequence(p: *mut u32, byte: *mut u8, half: *mut i16) -> u32 {
+    volatile *p = 1;
+    volatile *p = 2;
+    let before = volatile *p;
+    volatile *p = 3;
+    volatile *byte = 255u8;
+    volatile *half = -1234i16;
+    before + before + (volatile *p)
+}
+export fn discarded(p: *const u32) -> u32 { volatile *p; volatile *p; 7 }
+export fn early(p: *mut u32, flag: u32) -> u32 {
+    volatile *p = if flag == 0 { return 77; } else { 44 };
+    volatile *p
+}
+// CHECK-LABEL: define i32 @sequence(
+// CHECK: store volatile i32 1,
+// CHECK: store volatile i32 2,
+// CHECK: load volatile i32,
+// CHECK: store volatile i32 3,
+// CHECK: store volatile i8 -1,
+// CHECK: store volatile i16 -1234,
+// CHECK: load volatile i32,
+// CHECK-LABEL: define {{.*}}i32 @discarded(
+// CHECK-COUNT-2: load volatile i32,
+// CHECK: ret i32 7

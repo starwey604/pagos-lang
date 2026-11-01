@@ -640,7 +640,10 @@ The minimal boundary now carries linkage/declaration flags from syntax through
 HIR and MIR. Export roots and extern signatures are predeclared independently
 of internal specialization caches; MIR retains public source names and verifies
 the `u32/i32` and integer/record-pointer subset. LLVM uses its default C calling
-convention, gated to x86-64 Linux LP64 and generic RV32 ELF ILP32 with I/M/A/C.
+convention, gated to x86-64 Linux LP64, generic RV32 ELF ILP32 with I/M/A/C,
+and Cortex-M33 Thumb ARMv8-M Mainline base EABI with default features.
+The ARM target machine selects AAPCS and soft-float explicitly; the
+[Cortex-M33 regression](arm-cortex-m33.md) cross-links both Clang and GCC.
 Supporting other
 types/targets requires explicit ABI classification, not just LLVM storage types;
 see [LLVM calling conventions](https://llvm.org/docs/LangRef.html#calling-conventions)

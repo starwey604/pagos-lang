@@ -1,0 +1,12 @@
+// RUN: %pagosc --target=thumbv8m.main-none-eabi --cpu=cortex-m33 -O2 emit-llvm %s | %FileCheck %s
+// RUN: not %pagosc --target=thumbv8m.main-none-eabihf --cpu=cortex-m33 emit-llvm %s 2>&1 | %FileCheck %s --check-prefix=REJECT
+// RUN: not %pagosc --target=thumbv7m-none-eabi --cpu=cortex-m3 emit-llvm %s 2>&1 | %FileCheck %s --check-prefix=REJECT
+// RUN: not %pagosc --target=thumbv8m.main-none-eabi --cpu=cortex-m33 --features=+dsp emit-llvm %s 2>&1 | %FileCheck %s --check-prefix=REJECT
+extern fn c_next(value: u32) -> u32;
+export fn arm_api(value: u32) -> u32 { c_next(value) + 1 }
+// CHECK: target triple = "thumbv8m.main-unknown-none-eabi"
+// CHECK: declare i32 @c_next(i32)
+// CHECK: define i32 @arm_api(i32
+// CHECK: call i32 @c_next
+// CHECK: "target-cpu"="cortex-m33"
+// REJECT: error: minimal C ABI requires x86-64 Linux LP64,

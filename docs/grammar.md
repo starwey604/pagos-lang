@@ -185,8 +185,10 @@ including calls to a constant-returning export with Comptime arguments. Normal
 helpers inside an export still specialize. Foreign code never runs during
 compilation. Argument order, checked traps, and early returns remain unchanged.
 
-The validated ABI subset is x86-64 Linux LP64 and generic RV32 ELF soft-float
-ILP32 (I with optional M/A/C). Other C-boundary target configurations are
+The validated ABI subset is x86-64 Linux LP64, generic RV32 ELF soft-float
+ILP32 (I with optional M/A/C), and Cortex-M33 Thumb ARMv8-M Mainline base EABI
+with default CPU features. See the [ARM target contract](arm-cortex-m33.md).
+Other C-boundary target configurations are
 rejected, rather than inferred from storage layout. The caller must supply
 matching C prototypes and target options; no headers or linker checks for
 cross-language type mismatches are generated. Unwinding across the boundary,
@@ -511,10 +513,11 @@ relative to other volatile accesses. It is not a general ordering barrier for
 unrelated ordinary memory. These guarantees follow
 [LLVM volatile semantics](https://llvm.org/docs/LangRef.html#volatile-memory-accesses).
 
-Emission is initially restricted to the same target configurations as the
-minimal C ABI: x86-64 Linux LP64 and generic RV32 ELF ILP32 (I/M/A/C).
+Emission is restricted to the same target configurations as the minimal C ABI:
+x86-64 Linux LP64, generic RV32 ELF ILP32 (I/M/A/C), and Cortex-M33 base EABI.
 Integer access widths are 8/16/32 bits, plus 64 bits on x86-64; `usize` uses the
-target width. RV32 volatile `u64/i64` accesses are rejected with `E1012`, even
+target width. RV32 and Cortex-M33 volatile `u64/i64` accesses are rejected
+with `E1012`, even
 though ordinary RAM supports those types. Natural alignment is required:
 address modulo access size must be zero. Known misalignment reports `E4014`;
 dynamic misalignment traps before access. The existing null checks also apply,
