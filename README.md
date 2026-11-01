@@ -107,6 +107,8 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
   snapshots, residual templates, construction spill, and pure detail replay
 - [C1–C4 protocol baseline](docs/cache-protocol-baseline.md): version inventory,
   compatibility boundaries, delivery contracts, and fixed encoding samples
+- [Cache cost ledger S2](docs/cache-costs-s2.md): reproducible Release costs,
+  edit invalidation, evidence/query/replay tradeoffs, and board-demo defaults
 - [Cache identity C1a](docs/cache-identity-c1a.md): implemented canonical codecs,
   stable definition fingerprints, source anchors, and cross-process validation
 - [Cache store C1b](docs/cache-store-c1b.md): filesystem manifests, immutable CAS,

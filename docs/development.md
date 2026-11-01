@@ -372,6 +372,10 @@ limits deliberately. AST, HIR, cache copies, and LLVM memory are not counted.
 
 ### Compiler performance baseline
 
+For the combined cache/evidence/query/replay measurements, start with the
+[S2 cost ledger](cache-costs-s2.md). Its runner reuses the tools below and
+records one Release build, explicit RV32 targets, edit sequences and replay.
+
 Build `release`, then run:
 
 ```sh
@@ -386,8 +390,9 @@ machine, and
 tool versions. Wall time includes process startup, output capture and wait4
 polling at a 1 ms interval. Differences between commands are not precise phase
 timings. Avoid concurrent
-builds/tests and compare repeated runs on the same machine. Reports stay under
-ignored `build/`; keep only concise conclusions in the preparation plan.
+builds/tests and compare repeated runs on the same machine. Use ignored
+`build/` for local runs; retain raw reports supporting published conclusions
+under `benchmarks/results/`, with their source/build identity.
 Use `--reference-compiler /path/to/old/build/release/pagosc` for alternating
 old/new samples with reversed order on each repeat. Both binaries must be
 Release builds; results include the reference hash/revision and paired ratios.

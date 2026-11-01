@@ -1,7 +1,7 @@
 # 基线稳定与 CH32V307V-EVT-R1 实机验证计划
 
 日期：2026-11-01。探索基线：`llvm` 分支 `277691c`，探索开始时工作区干净。
-S0、S1 已完成并合入本地 `llvm`；S2、S3 待执行。
+S0、S1 已完成并合入本地 `llvm`；S2 成本账本已完成，S3 待执行。
 
 执行更新（2026-11-01）：S0 修复提交为 `ae92865`。
 [GitHub Compiler 全矩阵](https://github.com/starwey604/pagos-lang/actions/runs/41270362461)
@@ -16,6 +16,12 @@ S1 已形成[协议基线清单](cache-protocol-baseline.md)、21 份固定字�
 [S1 四配置 CI](https://github.com/starwey604/pagos-lang/actions/runs/41272477410)
 及文档检查通过；本地 Debug、ASan 各通过 500 项 CTest。
 两个草稿 PR 已关闭，后续默认直接在本地工作区推进。
+
+S2 已完成[统一成本账本](cache-costs-s2.md)：固定 LLVM 22.1.8 的同一
+Release 构建、138 组/966 个正式样本、六份原始报告和统一 ledger。
+位置/定义/无关/板级版本编辑、记录/读取/查询续接和纯重放均已覆盖；
+历史 C2/C3 原始报告已归档。保持 cache off / memory 默认值，S3 接入
+实际板卡后沿用板级配置负载的对照口径。
 
 ## 现状与目标
 
@@ -97,9 +103,9 @@ checkpoint/预算/损坏恢复验证仍通过。
 - [C4b3b](provenance-working-set-c4b3b.md)：最大图 spill 峰值约降
   7.25 MiB（3.9%），Stage 中位数约慢 24%；小输入没有稳定内存收益。
 
-其中 C2/C3 部分报告只在 `build/benchmarks/`，C4 部分已在
-`benchmarks/results/`。发布基线需把采用的原始数据放入可长期访问的位置，
-避免文档依赖仅本机存在的文件。
+历史 C2/C3 原始报告现已移入 `benchmarks/results/archive/`，C4 历史报告
+保留在 `benchmarks/results/`；本轮统一数据见
+[S2 成本账本](cache-costs-s2.md)。所有用于结论的原始报告均可从仓库访问。
 
 统一记录 commit/dirty diff、二进制和配置摘要、工具链、CPU、文件系统、
 目标、输入规模、预算与重复次数。使用同一 Release 二进制做受控比较；
@@ -110,8 +116,9 @@ checkpoint/预算/损坏恢复验证仍通过。
 列出 wall 分布、RSS、对象/文件数、字节与 IO、实际跳过的工作和逻辑计费。
 区分应用冷缓存与 OS 页缓存；区分逻辑容量、进程峰值和物理设备 IO。
 
-先用小样本确认采集正确，再顺序运行正式样本。Demo 本身也纳入矩阵；
-小板级配置即使无缓存收益也接受，收益判断不影响语义正确性验收。
+先用小样本确认采集正确，再顺序运行正式样本。板级配置工作负载已纳入
+矩阵，S3 接入硬件后加入实际固件输入；小板级配置即使无缓存收益也接受，
+收益判断不影响语义正确性验收。
 默认保持 cache off、evidence memory，只有实测支持才另提策略调整。
 
 退出条件：有可复跑命令、原始报告、同口径成本表及适用范围结论。
