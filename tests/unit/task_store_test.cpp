@@ -1,5 +1,6 @@
 #include "../../lib/cache/wire.h"
 #include "pagos/cache/task_store.h"
+#include "temporary_directory.h"
 
 #include <atomic>
 #include <fstream>
@@ -18,19 +19,6 @@ Bytes payload(unsigned value = 0) {
 }
 class TaskStoreTest : public ::testing::Test {
   protected:
-    TaskStoreTest() {
-        static std::atomic<unsigned> sequence{};
-        parent =
-            fs::temp_directory_path() /
-            ("pagos-task-store-" +
-             std::to_string(
-                 std::chrono::steady_clock::now().time_since_epoch().count()) +
-             "-" + std::to_string(sequence++));
-    }
-    ~TaskStoreTest() override {
-        std::error_code ec;
-        fs::remove_all(parent, ec);
-    }
     TaskStore open(TaskAccess access = TaskAccess::ReadWrite,
                    TaskStoreOptions options = {}) {
         auto result =
@@ -54,7 +42,8 @@ class TaskStoreTest : public ::testing::Test {
             throw std::runtime_error("head unavailable");
         return *head;
     }
-    fs::path parent;
+    pagos::test::TemporaryDirectory temporary{"pagos-task-store"};
+    fs::path parent = temporary.path() / "store";
 };
 TEST_F(TaskStoreTest, MissingReadOnlyDoesNotCreateAnythingAndCannotWrite) {
     const auto missing = TaskStore::open(parent, task_id, TaskAccess::ReadOnly);

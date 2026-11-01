@@ -1,9 +1,8 @@
 #include "cache_test_input.h"
 #include "pagos/stage/evidence_view.h"
 #include "pagos/stage/provenance_query.h"
+#include "temporary_directory.h"
 
-#include <atomic>
-#include <chrono>
 #include <fstream>
 #include <thread>
 
@@ -59,19 +58,6 @@ void equivalent(const QueryResult& left, const QueryResult& right) {
 }
 class EvidenceViewTest : public ::testing::Test {
   protected:
-    EvidenceViewTest() {
-        static std::atomic<unsigned> sequence{};
-        directory =
-            fs::temp_directory_path() /
-            ("pagos-evidence-test-" +
-             std::to_string(
-                 std::chrono::steady_clock::now().time_since_epoch().count()) +
-             "-" + std::to_string(sequence++));
-    }
-    ~EvidenceViewTest() override {
-        std::error_code error;
-        fs::remove_all(directory, error);
-    }
     void publish(const FixtureGraph& fixture,
                  std::optional<cache::Bytes> a = {}) {
         const std::array artifacts{
@@ -113,7 +99,8 @@ class EvidenceViewTest : public ::testing::Test {
         const auto hash = blocks[index].object.digest.hex();
         return directory / "objects" / hash.substr(0, 2) / hash;
     }
-    fs::path directory;
+    test::TemporaryDirectory temporary{"pagos-evidence-test"};
+    fs::path directory = temporary.path() / "store";
     cache::QueryKey key{cache_test::key()};
     cache::Digest inputs{cache::fingerprint("inputs", {})};
     cache::Digest semantic{cache::fingerprint("test-block-directory", {})};

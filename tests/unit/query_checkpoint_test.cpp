@@ -4,6 +4,7 @@
 #include "pagos/stage/provenance_topology.h"
 #include "pagos/stage/stage_analyzer.h"
 #include "protocol_fixture.h"
+#include "temporary_directory.h"
 
 #include <atomic>
 #include <fstream>
@@ -23,19 +24,6 @@ const std::string program =
 const auto task_id = cache::fingerprint("test.logical-query.1", {});
 class QueryCheckpointTest : public ::testing::Test {
   protected:
-    QueryCheckpointTest() {
-        static std::atomic<unsigned> sequence{};
-        directory =
-            fs::temp_directory_path() /
-            ("pagos-query-checkpoint-" +
-             std::to_string(
-                 std::chrono::steady_clock::now().time_since_epoch().count()) +
-             "-" + std::to_string(sequence++));
-    }
-    ~QueryCheckpointTest() override {
-        std::error_code error;
-        fs::remove_all(directory, error);
-    }
     void publish(std::string text = program) {
         source_text = std::move(text);
         cache_test::Input input(source_text);
@@ -77,7 +65,8 @@ class QueryCheckpointTest : public ::testing::Test {
             throw std::runtime_error("binding missing");
         return *value;
     }
-    fs::path directory;
+    test::TemporaryDirectory temporary{"pagos-query-checkpoint"};
+    fs::path directory = temporary.path() / "store";
     std::string source_text;
     CacheIdentity identity;
 };

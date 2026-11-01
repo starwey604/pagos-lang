@@ -3,9 +3,8 @@
 #include "pagos/stage/function_evidence.h"
 #include "pagos/stage/provenance_snapshot.h"
 #include "pagos/stage/stage_analyzer.h"
+#include "temporary_directory.h"
 
-#include <atomic>
-#include <chrono>
 #include <fstream>
 #include <sstream>
 #include <thread>
@@ -66,19 +65,6 @@ std::string large_function(unsigned count = 256) {
 }
 class StageSpillTest : public ::testing::Test {
   protected:
-    StageSpillTest() {
-        static std::atomic<unsigned> serial{};
-        directory =
-            fs::temp_directory_path() /
-            ("pagos-stage-spill-" +
-             std::to_string(
-                 std::chrono::steady_clock::now().time_since_epoch().count()) +
-             "-" + std::to_string(serial++));
-    }
-    ~StageSpillTest() override {
-        std::error_code ignored;
-        fs::remove_all(directory, ignored);
-    }
     EvidenceBuildConfig config() const {
         EvidenceBuildConfig c;
         c.mode = EvidenceBuildMode::Spill;
@@ -91,7 +77,8 @@ class StageSpillTest : public ::testing::Test {
     CacheConfig cache() const {
         return {CacheMode::ReadWrite, directory / "semantic"};
     }
-    fs::path directory;
+    test::TemporaryDirectory temporary{"pagos-stage-spill"};
+    fs::path directory = temporary.path() / "store";
 };
 TEST_F(StageSpillTest, CensusTracksMetadataAndPrunesExpiredFoldedHir) {
     const std::string text =

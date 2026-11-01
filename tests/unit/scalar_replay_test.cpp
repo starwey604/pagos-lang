@@ -4,9 +4,9 @@
 #include "pagos/stage/provenance_analysis.h"
 #include "pagos/stage/stage_analyzer.h"
 #include "protocol_fixture.h"
+#include "temporary_directory.h"
 
 #include <array>
-#include <atomic>
 #include <fstream>
 #include <sstream>
 
@@ -16,19 +16,6 @@ using namespace pagos::stage;
 namespace fs = std::filesystem;
 class ScalarReplay : public ::testing::Test {
   protected:
-    ScalarReplay() {
-        static std::atomic<unsigned> sequence{};
-        root =
-            fs::temp_directory_path() /
-            ("pagos-scalar-replay-" +
-             std::to_string(
-                 std::chrono::steady_clock::now().time_since_epoch().count()) +
-             "-" + std::to_string(sequence++));
-    }
-    ~ScalarReplay() override {
-        std::error_code error;
-        fs::remove_all(root, error);
-    }
     struct Outcome {
         std::array<std::size_t, 11> stats;
         CacheTelemetry cache;
@@ -96,7 +83,8 @@ class ScalarReplay : public ::testing::Test {
         fs::remove(root / "queries" / hash.substr(0, 2) / hash /
                    (identity.module_fingerprint.hex() + ".manifest"));
     }
-    fs::path root;
+    test::TemporaryDirectory temporary{"pagos-scalar-replay"};
+    fs::path root = temporary.path() / "store";
     const std::string program = "fn square(x: u32) -> u32 { x * x } let a = "
                                 "square(7); let b = square(7);";
 };

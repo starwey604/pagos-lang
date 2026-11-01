@@ -4,8 +4,8 @@
 #include "pagos/stage/provenance_recursive.h"
 #include "pagos/stage/stage_analyzer.h"
 #include "protocol_fixture.h"
+#include "temporary_directory.h"
 
-#include <atomic>
 #include <fstream>
 #include <iostream>
 #include <set>
@@ -28,19 +28,6 @@ const std::string program =
     "b), read(a), known(b), even(a)];";
 class RecursiveCheckpointTest : public ::testing::Test {
   protected:
-    RecursiveCheckpointTest() {
-        static std::atomic<unsigned> sequence{};
-        directory =
-            fs::temp_directory_path() /
-            ("pagos-recursive-checkpoint-" +
-             std::to_string(
-                 std::chrono::steady_clock::now().time_since_epoch().count()) +
-             "-" + std::to_string(sequence++));
-    }
-    ~RecursiveCheckpointTest() override {
-        std::error_code error;
-        fs::remove_all(directory, error);
-    }
     void SetUp() override {
         cache_test::Input input(program);
         identity = *input.identity();
@@ -73,7 +60,8 @@ class RecursiveCheckpointTest : public ::testing::Test {
                 return entry.id;
         throw std::runtime_error("missing summary");
     }
-    fs::path directory;
+    test::TemporaryDirectory temporary{"pagos-recursive-checkpoint"};
+    fs::path directory = temporary.path() / "store";
     CacheIdentity identity;
 };
 void finish_task(RecursiveSummaryTask& task) {

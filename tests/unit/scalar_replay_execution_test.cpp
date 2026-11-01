@@ -2,9 +2,9 @@
 #include "pagos/stage/scalar_replay_execution.h"
 #include "pagos/stage/stage_analyzer.h"
 #include "pagos/vm/evaluator.h"
+#include "temporary_directory.h"
 
 #include <algorithm>
-#include <atomic>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -362,20 +362,9 @@ TEST(ScalarReplayExecution,
 TEST(ScalarReplayExecution,
      LoadedRealStageRecordOutlivesCompilerAndExecutionDoesNotWriteCache) {
     namespace fs = std::filesystem;
-    static std::atomic<unsigned> sequence{};
-    const auto path =
-        fs::temp_directory_path() /
-        ("pagos-execute-replay-" +
-         std::to_string(
-             std::chrono::steady_clock::now().time_since_epoch().count()) +
-         "-" + std::to_string(sequence++));
-    struct Cleanup {
-        fs::path path;
-        ~Cleanup() {
-            std::error_code error;
-            fs::remove_all(path, error);
-        }
-    } cleanup{path};
+    test::TemporaryDirectory temporary("pagos-execute-replay");
+    const auto path = temporary.path() / "store";
+
     std::optional<ScalarReplayRecord> owned;
     {
         cache_test::Input source(

@@ -5,9 +5,9 @@
 #include "pagos/stage/generator_replay.h"
 #include "pagos/stage/stage_analyzer.h"
 #include "protocol_fixture.h"
+#include "temporary_directory.h"
 
 #include <array>
-#include <atomic>
 #include <sstream>
 #include <type_traits>
 
@@ -401,20 +401,9 @@ TEST(GeneratorReplay, ExplicitCasRoundTripDoesNotGrantSourceAdmission) {
     cache_test::Input input(program);
     auto admitted = admit(input);
     ASSERT_TRUE(admitted);
-    static std::atomic<unsigned> sequence{};
-    const auto root =
-        std::filesystem::temp_directory_path() /
-        ("pagos-generator-replay-" +
-         std::to_string(
-             std::chrono::steady_clock::now().time_since_epoch().count()) +
-         "-" + std::to_string(sequence++));
-    struct Cleanup {
-        std::filesystem::path root;
-        ~Cleanup() {
-            std::error_code error;
-            std::filesystem::remove_all(root, error);
-        }
-    } cleanup{root};
+    test::TemporaryDirectory temporary("pagos-generator-replay");
+    const auto root = temporary.path() / "store";
+
     auto forged = admitted->descriptor();
     forged.element.nodes.back().operation = Op::Subtract;
     const auto bytes = encode_generator_replay_descriptor(forged);

@@ -3,8 +3,7 @@
 #include "pagos/cache/store.h"
 #include "pagos/stage/replay_descriptor.h"
 #include "protocol_fixture.h"
-
-#include <atomic>
+#include "temporary_directory.h"
 
 namespace {
 using namespace pagos;
@@ -432,20 +431,9 @@ TEST(ReplayDescriptor, BoundedCodecAndIterativeReachabilityHandleLongRecipes) {
 }
 TEST(ReplayDescriptor, FilesystemCasRoundTripIsExplicitAndIndependentOfStage) {
     Fixture fixture;
-    static std::atomic<unsigned> sequence{};
-    const auto directory =
-        std::filesystem::temp_directory_path() /
-        ("pagos-replay-" +
-         std::to_string(
-             std::chrono::steady_clock::now().time_since_epoch().count()) +
-         "-" + std::to_string(sequence++));
-    struct Cleanup {
-        std::filesystem::path path;
-        ~Cleanup() {
-            std::error_code error;
-            std::filesystem::remove_all(path, error);
-        }
-    } cleanup{directory};
+    test::TemporaryDirectory temporary("pagos-replay");
+    const auto directory = temporary.path() / "store";
+
     const auto bytes = encode_replay_descriptor(fixture.descriptor);
     ASSERT_TRUE(bytes);
     const cache::FileStore store(directory);

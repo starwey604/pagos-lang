@@ -3,9 +3,8 @@
 #include "pagos/stage/provenance_topology.h"
 #include "pagos/stage/stage_analyzer.h"
 #include "protocol_fixture.h"
+#include "temporary_directory.h"
 
-#include <atomic>
-#include <chrono>
 #include <fstream>
 #include <sstream>
 
@@ -211,17 +210,8 @@ TEST(ProvenanceSnapshot,
         ProvenanceSnapshot::validate_positions(positions, encoded.semantic));
 }
 struct TemporaryStore {
-    std::filesystem::path path;
-    TemporaryStore() {
-        static std::atomic<unsigned> serial{};
-        path =
-            std::filesystem::temp_directory_path() /
-            ("pagos-snapshot-" +
-             std::to_string(
-                 std::chrono::steady_clock::now().time_since_epoch().count()) +
-             "-" + std::to_string(serial++));
-    }
-    ~TemporaryStore() { std::filesystem::remove_all(path); }
+    test::TemporaryDirectory temporary{"pagos-snapshot"};
+    std::filesystem::path path = temporary.path() / "store";
 };
 TEST(ProvenanceSnapshot,
      CasSeparatesSourceRevisionsAndReadOnlyLoadRepairsOptionalPositions) {

@@ -1,12 +1,11 @@
 #include "pagos/stage/evidence_builder.h"
 #include "pagos/stage/provenance_query.h"
 #include "pagos/stage/provenance_topology.h"
+#include "temporary_directory.h"
 
 #include <gtest/gtest.h>
 
 #include <array>
-#include <atomic>
-#include <chrono>
 #include <fstream>
 #include <thread>
 
@@ -16,19 +15,6 @@ using namespace pagos::stage::provenance;
 namespace fs = std::filesystem;
 class EvidenceBuilderTest : public ::testing::Test {
   protected:
-    EvidenceBuilderTest() {
-        static std::atomic<unsigned> sequence{};
-        directory =
-            fs::temp_directory_path() /
-            ("pagos-builder-test-" +
-             std::to_string(
-                 std::chrono::steady_clock::now().time_since_epoch().count()) +
-             "-" + std::to_string(sequence++));
-    }
-    ~EvidenceBuilderTest() override {
-        std::error_code ignored;
-        fs::remove_all(directory, ignored);
-    }
     EvidenceBuildConfig config() const {
         EvidenceBuildConfig value;
         value.mode = EvidenceBuildMode::Spill;
@@ -45,7 +31,8 @@ class EvidenceBuilderTest : public ::testing::Test {
                 return entry.path();
         throw std::runtime_error("missing spill object");
     }
-    fs::path directory;
+    test::TemporaryDirectory temporary{"pagos-builder-test"};
+    fs::path directory = temporary.path() / "store";
 };
 NodeId add(EvidenceBuilder& builder, Rule rule, SiteId site,
            std::span<const Edge> edges = {}, std::uint32_t payload = 0,

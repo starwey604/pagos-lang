@@ -5,9 +5,8 @@
 #include "pagos/stage/provenance_recursive.h"
 #include "pagos/stage/provenance_topology.h"
 #include "pagos/stage/stage_analyzer.h"
+#include "temporary_directory.h"
 
-#include <atomic>
-#include <chrono>
 #include <fstream>
 #include <map>
 #include <set>
@@ -146,19 +145,6 @@ semantic_result(const FrozenGraph& graph, std::span<const ProvenanceSite> sites,
 }
 class FunctionEvidenceTest : public ::testing::Test {
   protected:
-    FunctionEvidenceTest() {
-        static std::atomic<unsigned> sequence{};
-        directory =
-            fs::temp_directory_path() /
-            ("pagos-function-evidence-" +
-             std::to_string(
-                 std::chrono::steady_clock::now().time_since_epoch().count()) +
-             "-" + std::to_string(sequence++));
-    }
-    ~FunctionEvidenceTest() override {
-        std::error_code error;
-        fs::remove_all(directory, error);
-    }
     void publish(const Prepared& prepared) {
         auto result = FunctionEvidence::publish(
             cache::FileStore(directory), *prepared.analysis, prepared.identity,
@@ -216,7 +202,8 @@ class FunctionEvidenceTest : public ::testing::Test {
         ASSERT_TRUE(store.publish(key, prepared.identity.module_fingerprint,
                                   semantic, artifacts));
     }
-    fs::path directory;
+    test::TemporaryDirectory temporary{"pagos-function-evidence"};
+    fs::path directory = temporary.path() / "store";
 };
 
 TEST_F(FunctionEvidenceTest,

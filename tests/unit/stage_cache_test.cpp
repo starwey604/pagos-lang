@@ -5,9 +5,8 @@
 #include "pagos/stage/provenance_snapshot.h"
 #include "pagos/stage/stage_analyzer.h"
 #include "protocol_fixture.h"
+#include "temporary_directory.h"
 
-#include <atomic>
-#include <chrono>
 #include <fstream>
 #include <sstream>
 
@@ -26,18 +25,12 @@ struct Outcome {
 
 class StageCache : public ::testing::Test {
   protected:
-    StageCache() {
-        static std::atomic<unsigned> sequence{};
-        root =
-            fs::temp_directory_path() /
-            ("pagos-stage-cache-" +
-             std::to_string(
-                 std::chrono::steady_clock::now().time_since_epoch().count()) +
-             "-" + std::to_string(sequence++));
-    }
+    StageCache()
+        : directory(test::temporary_directory("pagos-stage-cache")),
+          root(directory / "cache") {}
     ~StageCache() override {
         std::error_code error;
-        fs::remove_all(root, error);
+        fs::remove_all(directory, error);
     }
     Outcome run(std::string text, stage::CacheMode mode,
                 stage::AnalysisLimits limits = {},
@@ -76,6 +69,7 @@ class StageCache : public ::testing::Test {
                   b.stats.residual_specializations);
         EXPECT_EQ(a.stats.residual_cache_hits, b.stats.residual_cache_hits);
     }
+    fs::path directory;
     fs::path root;
     const std::string square = "fn square(x: u32) -> u32 { x * x } let a = "
                                "square(7); let b = square(7);";

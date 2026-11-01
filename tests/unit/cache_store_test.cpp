@@ -1,7 +1,7 @@
 #include "cache_test_input.h"
 #include "pagos/cache/store.h"
+#include "temporary_directory.h"
 
-#include <atomic>
 #include <chrono>
 #include <fstream>
 #include <thread>
@@ -37,13 +37,7 @@ void checksum(Bytes& bytes) {
 class CacheStore : public ::testing::Test {
   protected:
     CacheStore() {
-        static std::atomic<unsigned> sequence{};
-        const auto time =
-            std::chrono::steady_clock::now().time_since_epoch().count();
-        directory = fs::temp_directory_path() /
-                    ("pagos-store-test-" + std::to_string(time) + "-" +
-                     std::to_string(sequence++));
-        fs::create_directory(directory);
+        directory = test::temporary_directory("pagos-store-test");
         root = directory / "cache";
     }
     ~CacheStore() override {
