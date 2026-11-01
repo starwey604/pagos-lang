@@ -3,6 +3,7 @@
 #include "pagos/stage/function_evidence_view.h"
 #include "pagos/stage/provenance_recursive.h"
 #include "pagos/stage/stage_analyzer.h"
+#include "protocol_fixture.h"
 
 #include <atomic>
 #include <fstream>
@@ -934,5 +935,51 @@ TEST_F(RecursiveCheckpointTest,
     mismatched.status = cache::TaskStatus::AwaitingDelivery;
     EXPECT_FALSE(RecursiveSummaryTask::restore(
         binding(view), *store, mismatched, id, QueryKind::Value));
+}
+
+TEST_F(RecursiveCheckpointTest, FrozenBaselineResidentRecursiveStateRestores) {
+    auto view = open();
+    const auto id = summary(view);
+    RecursiveSummaryTask task(binding(view), task_id, id);
+    (void)task.advance(1);
+    const auto bytes = task.checkpoint();
+    ASSERT_TRUE(bytes);
+    protocol_test::freeze("recursive-checkpoint", *bytes);
+    auto restored = RecursiveSummaryTask::restore(
+        binding(view), task_id, id, QueryKind::Value,
+        protocol_test::fixture("recursive-checkpoint"));
+    ASSERT_TRUE(restored);
+    ASSERT_TRUE(restored->checkpoint());
+    EXPECT_EQ(*restored->checkpoint(), *bytes);
+    EXPECT_EQ(restored->result(), task.result());
+}
+
+TEST_F(RecursiveCheckpointTest, FrozenBaselineSegmentedStateAndFinalReceipt) {
+    auto view = open();
+    const auto id = summary(view);
+    RecursiveSummaryTask task(binding(view), task_id, id);
+    (void)task.advance(1);
+    auto store = cache::TaskStore::open(directory / "baseline-task", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    const auto head = task.save_segmented(*store, 0, 128);
+    ASSERT_TRUE(head);
+    protocol_test::freeze_store("recursive-task-store", store->directory());
+    auto restored = RecursiveSummaryTask::restore(binding(view), *store, *head,
+                                                  id, QueryKind::Value);
+    ASSERT_TRUE(restored);
+    ASSERT_TRUE(restored->checkpoint());
+    ASSERT_TRUE(task.checkpoint());
+    EXPECT_EQ(*restored->checkpoint(), *task.checkpoint());
+    finish_task(task);
+    ASSERT_TRUE(task.acknowledge_result(1));
+    const auto receipt = task.save_segmented(*store, head->generation, 128);
+    ASSERT_TRUE(receipt);
+    protocol_test::freeze_store("recursive-receipt-store", store->directory());
+    auto completed = RecursiveSummaryTask::restore(
+        binding(view), *store, *receipt, id, QueryKind::Value);
+    ASSERT_TRUE(completed);
+    EXPECT_EQ(completed->acknowledged_sequence(), 1U);
+    EXPECT_EQ(completed->result(), task.result());
 }
 } // namespace

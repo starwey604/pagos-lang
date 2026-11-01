@@ -53,3 +53,12 @@ addressed, summarize observable behavior changes, link relevant issues, and
 include test evidence. For semantic changes, update all affected examples and
 call out newly opened or resolved questions; screenshots are only useful for
 rendering or diagnostic-output changes.
+
+## Persistent Protocol Baseline
+
+Consult `docs/cache-protocol-baseline.md` before changing C1–C4 encodings,
+identity/hash domains, resource accounting, checkpoint engines, or explicit
+explain JSON contracts. Review the relevant version and old-format read or
+rejection policy together. Preserve fixed protocol fixtures; do not regenerate
+them merely to make an encoding change pass. Keep semantic cache fallback
+distinct from explicit query/replay failure, and retain cross-process tests.

@@ -31,6 +31,7 @@ target_link_libraries(pagos_provenance_tests
 gtest_discover_tests(pagos_provenance_tests DISCOVERY_MODE PRE_TEST)
 
 add_executable(pagos_cache_tests
+    unit/protocol_baseline_test.cpp
     unit/cache_codec_test.cpp unit/cache_key_test.cpp unit/cache_store_test.cpp
     unit/replay_descriptor_test.cpp unit/scalar_replay_test.cpp
     unit/scalar_replay_execution_test.cpp unit/generator_replay_test.cpp

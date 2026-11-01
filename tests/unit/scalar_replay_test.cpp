@@ -3,6 +3,7 @@
 #include "pagos/mir/lowering.h"
 #include "pagos/stage/provenance_analysis.h"
 #include "pagos/stage/stage_analyzer.h"
+#include "protocol_fixture.h"
 
 #include <array>
 #include <atomic>
@@ -330,5 +331,18 @@ TEST_F(ScalarReplay,
     EXPECT_EQ(failed.cache.replay_writes, 0U);
     cache_test::Input input(failure);
     EXPECT_FALSE(load(input));
+}
+
+TEST_F(ScalarReplay, FrozenBaselineCapabilityStoreIsReadOnlyReusable) {
+    const auto cold =
+        run(program, CacheMode::ReadWrite, CacheEvidence::ScalarReplay);
+    EXPECT_GT(cold.cache.replay_writes, 0U);
+    protocol_test::freeze_store("scalar-replay-store", root);
+    const auto hot =
+        run(program, CacheMode::ReadOnly, CacheEvidence::ScalarReplay);
+    EXPECT_GT(hot.cache.replay_hits, 0U);
+    EXPECT_EQ(cold.stats, hot.stats);
+    EXPECT_EQ(cold.text, hot.text);
+    protocol_test::freeze_store("scalar-replay-store", root);
 }
 } // namespace

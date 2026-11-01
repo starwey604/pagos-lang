@@ -4,6 +4,7 @@
 #include "pagos/stage/generator_replay_execution.h"
 #include "pagos/stage/provenance_analysis.h"
 #include "pagos/stage/stage_analyzer.h"
+#include "protocol_fixture.h"
 
 #include <array>
 #include <atomic>
@@ -550,5 +551,18 @@ TEST_F(GeneratorRecord,
     capability.arguments[0].stage = cache::ArgumentStage::Runtime;
     capability.arguments[0].value.reset();
     EXPECT_FALSE(cache::encode_query_key(capability));
+}
+
+TEST_F(GeneratorRecord, FrozenBaselineCapabilityStoreIsReadOnlyReusable) {
+    const auto cold =
+        run(program, CacheMode::ReadWrite, CacheEvidence::GeneratorReplay);
+    EXPECT_GT(cold.telemetry.replay_writes, 0U);
+    protocol_test::freeze_store("generator-replay-store", root);
+    const auto hot =
+        run(program, CacheMode::ReadOnly, CacheEvidence::GeneratorReplay);
+    EXPECT_GT(hot.telemetry.replay_hits, 0U);
+    EXPECT_EQ(cold.stats, hot.stats);
+    EXPECT_EQ(cold.text, hot.text);
+    protocol_test::freeze_store("generator-replay-store", root);
 }
 } // namespace

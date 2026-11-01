@@ -2,6 +2,7 @@
 #include "cache_test_input.h"
 #include "pagos/cache/store.h"
 #include "pagos/stage/replay_descriptor.h"
+#include "protocol_fixture.h"
 
 #include <atomic>
 
@@ -461,5 +462,17 @@ TEST(ReplayDescriptor, FilesystemCasRoundTripIsExplicitAndIndependentOfStage) {
     std::filesystem::remove(directory / "objects" / hex.substr(0, 2) / hex);
     EXPECT_FALSE(
         store.read_object(*object)); // No synthesized old-value detail.
+}
+
+TEST(ReplayDescriptor, FrozenBaselineDescriptorDecodesAndValidates) {
+    Fixture f;
+    const auto bytes = encode_replay_descriptor(f.descriptor);
+    ASSERT_TRUE(bytes);
+    protocol_test::freeze("scalar-replay", *bytes);
+    const auto restored =
+        decode_replay_descriptor(protocol_test::fixture("scalar-replay"));
+    ASSERT_TRUE(restored);
+    EXPECT_EQ(*restored, f.descriptor);
+    EXPECT_TRUE(f.validate(&*restored));
 }
 } // namespace

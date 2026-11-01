@@ -3,6 +3,7 @@
 #include "pagos/stage/function_evidence_view.h"
 #include "pagos/stage/provenance_topology.h"
 #include "pagos/stage/stage_analyzer.h"
+#include "protocol_fixture.h"
 
 #include <atomic>
 #include <fstream>
@@ -1871,5 +1872,76 @@ TEST_F(QueryCheckpointTest,
     }
     EXPECT_THROW((void)task->invocation(UINT32_MAX), std::out_of_range);
     EXPECT_FALSE(task->storage_failure());
+}
+
+TEST_F(QueryCheckpointTest, FrozenBaselineResidentQueryAndTopologyRestore) {
+    publish();
+    auto view = open();
+    const auto selected = root(view);
+    QueryTask native(binding(view), task_id, selected, QueryKind::Value, true);
+    (void)native.advance({1000, 1000, 1000, 2});
+    const auto checkpoint = native.checkpoint();
+    ASSERT_TRUE(checkpoint);
+    protocol_test::freeze("query-checkpoint", *checkpoint);
+    const auto restored =
+        QueryTask::restore(binding(view), task_id, selected, QueryKind::Value,
+                           true, protocol_test::fixture("query-checkpoint"));
+    ASSERT_TRUE(restored);
+    equal_result(native, *restored);
+    TopologyTask topology(binding(view), task_id, selected);
+    const auto bytes = topology.checkpoint();
+    ASSERT_TRUE(bytes);
+    protocol_test::freeze("topology-checkpoint", *bytes);
+    auto loaded =
+        TopologyTask::restore(binding(view), task_id, selected,
+                              protocol_test::fixture("topology-checkpoint"));
+    ASSERT_TRUE(loaded);
+    ASSERT_TRUE(loaded->checkpoint());
+    EXPECT_EQ(*loaded->checkpoint(), *bytes);
+}
+
+TEST_F(QueryCheckpointTest, FrozenBaselineSegmentedAndPagedTaskStores) {
+    publish();
+    protocol_test::freeze_store("function-evidence-store",
+                                directory / "evidence");
+    auto view = open();
+    const auto selected = root(view);
+    for (const bool paged : {false, true}) {
+        auto store =
+            cache::TaskStore::open(directory / (paged ? "paged" : "native"),
+                                   task_id, cache::TaskAccess::ReadWrite);
+        ASSERT_TRUE(store);
+        auto task =
+            paged ? QueryTask::begin_paged(binding(view), *store, selected,
+                                           QueryKind::Value, true)
+                  : std::expected<QueryTask, CheckpointError>(
+                        QueryTask(binding(view), task_id, selected,
+                                  QueryKind::Value, true));
+        ASSERT_TRUE(task);
+        (void)task->advance({1000, 1000, 1000, 2});
+        const auto head = task->save(*store, 0, 256);
+        ASSERT_TRUE(head);
+        protocol_test::freeze_store(paged ? "paged-task-store"
+                                          : "native-task-store",
+                                    store->directory());
+        auto restored = QueryTask::restore(binding(view), *store, *head,
+                                           selected, QueryKind::Value, true);
+        ASSERT_TRUE(restored);
+        equal_result(*task, *restored);
+    }
+    TopologyTask topology(binding(view), task_id, selected);
+    (void)topology.advance({8, 8, 8, 2});
+    auto store = cache::TaskStore::open(directory / "topology", task_id,
+                                        cache::TaskAccess::ReadWrite);
+    ASSERT_TRUE(store);
+    const auto head = topology.save_segmented(*store, 0, 256);
+    ASSERT_TRUE(head);
+    protocol_test::freeze_store("topology-task-store", store->directory());
+    auto restored =
+        TopologyTask::restore(binding(view), *store, *head, selected);
+    ASSERT_TRUE(restored);
+    ASSERT_TRUE(restored->checkpoint());
+    ASSERT_TRUE(topology.checkpoint());
+    EXPECT_EQ(*restored->checkpoint(), *topology.checkpoint());
 }
 } // namespace

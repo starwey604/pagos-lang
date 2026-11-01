@@ -1,5 +1,6 @@
 #include "cache_test_input.h"
 #include "pagos/stage/stage_analyzer.h"
+#include "protocol_fixture.h"
 
 namespace {
 using namespace pagos;
@@ -358,5 +359,19 @@ TEST(CacheKey, IdentityAndAnchorsOutliveSyntaxAndAnalyzerContextIsReadOnly) {
     ++wrong.position;
     wrong.definition.module.workspace = "other";
     EXPECT_EQ(snapshot.resolve(wrong).error(), Error::InvalidAnchor);
+}
+
+TEST(CacheKey, FrozenBaselineAnchorDecodesIndependently) {
+    cache_test::Input input("fn square(x: u32) -> u32 { x * x }");
+    const auto identity = input.identity();
+    ASSERT_TRUE(identity);
+    ASSERT_FALSE(identity->sites.empty());
+    const auto anchor = identity->sites.front().anchor;
+    const auto bytes = stage::encode_source_anchor(anchor);
+    ASSERT_TRUE(bytes);
+    protocol_test::freeze("source-anchor", *bytes);
+    EXPECT_EQ(
+        stage::decode_source_anchor(protocol_test::fixture("source-anchor")),
+        anchor);
 }
 } // namespace

@@ -1,5 +1,6 @@
 #include "../../lib/cache/wire.h"
 #include "cache_test_input.h"
+#include "protocol_fixture.h"
 
 #include <limits>
 
@@ -214,5 +215,18 @@ TEST(CacheCodec, InvalidContextsCannotProduceUsableKeys) {
     const auto bytes = encode_query_key(key);
     ASSERT_TRUE(bytes);
     EXPECT_EQ(decode_query_key(*bytes).error(), Error::IncompatibleVersion);
+}
+
+TEST(CacheCodec, FrozenBaselineValuesAndKeysDecodeIndependently) {
+    const TypedValue value{sema::Type::integer(32), IntegerValue(7)};
+    const auto encoded = encode_value(value);
+    ASSERT_TRUE(encoded);
+    protocol_test::freeze("value-u32", *encoded);
+    EXPECT_EQ(decode_value(protocol_test::fixture("value-u32")), value);
+    const auto key = cache_test::key();
+    const auto bytes = encode_query_key(key);
+    ASSERT_TRUE(bytes);
+    protocol_test::freeze("query-key", *bytes);
+    EXPECT_EQ(decode_query_key(protocol_test::fixture("query-key")), key);
 }
 } // namespace

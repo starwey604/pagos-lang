@@ -4,6 +4,7 @@
 #include "pagos/stage/provenance_analysis.h"
 #include "pagos/stage/provenance_snapshot.h"
 #include "pagos/stage/stage_analyzer.h"
+#include "protocol_fixture.h"
 
 #include <atomic>
 #include <chrono>
@@ -838,4 +839,21 @@ TEST_F(StageCache, ResidualMissingEvidenceRecipeAndInvalidTemplateFailClosed) {
     }
 }
 
+TEST_F(StageCache, FrozenBaselineScalarArrayAndResidualStores) {
+    const std::vector<std::pair<std::string, std::string>> cases{
+        {"scalar-cache-store", square},
+        {"array-cache-store", "fn table(x: u32) -> [u32; 4] { [for i in 0..4 { "
+                              "i * x }] } let a = table(7);"},
+        {"residual-cache-store", "fn scale(k: u32, x: u32) -> u32 { k * x } "
+                                 "let a = scale(4, external_input());"}};
+    for (const auto& [name, text] : cases) {
+        fs::remove_all(root);
+        const auto cold = run(text, stage::CacheMode::ReadWrite);
+        EXPECT_GT(cold.telemetry.writes, 0U);
+        protocol_test::freeze_store(name, root);
+        const auto hot = run(text, stage::CacheMode::ReadOnly);
+        EXPECT_GT(hot.telemetry.hits, 0U);
+        equivalent(cold, hot);
+    }
+}
 } // namespace

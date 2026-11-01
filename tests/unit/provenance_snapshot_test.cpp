@@ -2,6 +2,7 @@
 #include "pagos/stage/provenance_snapshot.h"
 #include "pagos/stage/provenance_topology.h"
 #include "pagos/stage/stage_analyzer.h"
+#include "protocol_fixture.h"
 
 #include <atomic>
 #include <chrono>
@@ -307,4 +308,19 @@ TEST(ProvenanceSnapshot, RestoredGraphOutlivesSourceAnalyzerAndEncodedHandle) {
     ASSERT_EQ(task.result().sources.size(), 1U);
 }
 
+TEST(ProvenanceSnapshot, FrozenBaselineGraphAndPositionsRestoreIndependently) {
+    cache_test::Input input("let a = external_input(); let b = a + 1;");
+    const auto [encoded, original] = snapshot(input);
+    protocol_test::freeze("snapshot", encoded.graph);
+    protocol_test::freeze("positions", encoded.positions);
+    const auto opened =
+        ProvenanceSnapshot::open(protocol_test::fixture("snapshot"));
+    ASSERT_TRUE(opened);
+    const auto restored =
+        opened->restore(*input.identity(), cache_test::context());
+    ASSERT_TRUE(restored);
+    equivalent(*original, **restored);
+    EXPECT_TRUE(ProvenanceSnapshot::validate_positions(
+        protocol_test::fixture("positions"), encoded.semantic));
+}
 } // namespace

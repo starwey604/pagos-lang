@@ -4,6 +4,7 @@
 #include "pagos/mir/lowering.h"
 #include "pagos/stage/generator_replay.h"
 #include "pagos/stage/stage_analyzer.h"
+#include "protocol_fixture.h"
 
 #include <array>
 #include <atomic>
@@ -466,5 +467,20 @@ TEST(GeneratorReplay, AdmissionPreservesStageFuelConstructionAndResidualMir) {
     for (const auto limits : {AnalysisLimits{}, AnalysisLimits{.fuel = 1},
                               AnalysisLimits{.array_elements = 3}})
         EXPECT_EQ(run(false, limits), run(true, limits));
+}
+
+TEST(GeneratorReplay, FrozenBaselineDescriptorRequiresCurrentSourceAdmission) {
+    cache_test::Input input(program);
+    const auto admitted = admit(input);
+    ASSERT_TRUE(admitted);
+    const auto bytes =
+        encode_generator_replay_descriptor(admitted->descriptor());
+    ASSERT_TRUE(bytes);
+    protocol_test::freeze("generator-replay", *bytes);
+    const auto restored = decode_generator_replay_descriptor(
+        protocol_test::fixture("generator-replay"));
+    ASSERT_TRUE(restored);
+    EXPECT_EQ(*restored, admitted->descriptor());
+    EXPECT_TRUE(validate(*restored, input));
 }
 } // namespace
