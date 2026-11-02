@@ -300,8 +300,7 @@ ProvenanceSnapshot::open(cache::Bytes bytes, cache::Limits limits) {
                 seen[kind] = true;
             }
             previous = offset + size;
-            result.sections_.push_back(
-                {static_cast<EvidenceSection>(kind), required, offset, size});
+            result.sections_.push_back({kind, required, offset, size});
         }
         for (unsigned i = 1; i <= 8; ++i)
             if (!seen[i])
@@ -337,7 +336,8 @@ std::span<const EvidenceSectionInfo> ProvenanceSnapshot::sections() const {
 std::span<const std::uint8_t>
 ProvenanceSnapshot::section(EvidenceSection kind) const {
     const auto found =
-        std::ranges::find(sections_, kind, &EvidenceSectionInfo::kind);
+        std::ranges::find(sections_, static_cast<std::uint32_t>(kind),
+                          &EvidenceSectionInfo::kind);
     return found == sections_.end()
                ? std::span<const std::uint8_t>{}
                : std::span(*bytes_).subspan(

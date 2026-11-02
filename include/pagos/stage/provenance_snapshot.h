@@ -19,7 +19,8 @@ enum class EvidenceSection : std::uint32_t {
     String
 };
 struct EvidenceSectionInfo {
-    EvidenceSection kind;
+    // Preserve unknown optional wire tags without converting them to enums.
+    std::uint32_t kind;
     bool required;
     std::uint64_t offset;
     std::uint64_t size;

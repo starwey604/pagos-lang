@@ -138,11 +138,48 @@ void u32(cache::Bytes& bytes, std::size_t offset, std::uint32_t value) {
     for (unsigned i = 0; i < 4; ++i)
         bytes[offset + i] = static_cast<std::uint8_t>(value >> (8U * i));
 }
+void u64(cache::Bytes& bytes, std::size_t offset, std::uint64_t value) {
+    for (unsigned i = 0; i < 8; ++i)
+        bytes[offset + i] = static_cast<std::uint8_t>(value >> (8U * i));
+}
 void sign(cache::Bytes& bytes) {
     const auto hash =
         cache::fingerprint("pagos.provenance.snapshot.v1",
                            std::span(bytes).first(bytes.size() - 32));
     std::ranges::copy(hash.bytes, bytes.end() - 32);
+}
+TEST(ProvenanceSnapshot, PreservesUnknownOptionalTagsAndRejectsRequiredOnes) {
+    cache_test::Input input("let a = external_input(); let b = a + 1;");
+    const auto [encoded, original] = snapshot(input);
+    const auto known = ProvenanceSnapshot::open(encoded.graph);
+    ASSERT_TRUE(known);
+    constexpr std::size_t header = 85, record = 21,
+                          directory_end = header + 8 * record;
+    for (const std::uint32_t tag : {0U, 9U, UINT32_MAX}) {
+        auto bytes = encoded.graph;
+        bytes.insert(bytes.begin() + directory_end, record, 0);
+        u32(bytes, header - 4, 9);
+        for (std::size_t i = 0; i < 8; ++i)
+            u64(bytes, header + i * record + 5,
+                known->sections()[i].offset + record);
+        u32(bytes, directory_end, tag);
+        u64(bytes, directory_end + 5, bytes.size() - 32);
+        sign(bytes);
+        const auto opened = ProvenanceSnapshot::open(bytes);
+        ASSERT_TRUE(opened);
+        ASSERT_EQ(opened->sections().size(), 9U);
+        EXPECT_EQ(opened->sections().back().kind, tag);
+        EXPECT_FALSE(opened->sections().back().required);
+        const auto restored =
+            opened->restore(*input.identity(), cache_test::context());
+        ASSERT_TRUE(restored);
+        equivalent(*original, **restored);
+        bytes[directory_end + 4] = 1;
+        sign(bytes);
+        const auto rejected = ProvenanceSnapshot::open(std::move(bytes));
+        ASSERT_FALSE(rejected);
+        EXPECT_EQ(rejected.error(), cache::Error::IncompatibleVersion);
+    }
 }
 TEST(ProvenanceSnapshot,
      RejectsTruncationDirectoriesVersionsIdsOwnersAndEdges) {
@@ -179,7 +216,8 @@ TEST(ProvenanceSnapshot,
     ASSERT_TRUE(opened);
     const auto find = [&](EvidenceSection section) {
         return static_cast<std::size_t>(
-            std::ranges::find(opened->sections(), section,
+            std::ranges::find(opened->sections(),
+                              static_cast<std::uint32_t>(section),
                               &EvidenceSectionInfo::kind)
                 ->offset);
     };
