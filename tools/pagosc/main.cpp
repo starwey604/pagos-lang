@@ -686,6 +686,7 @@ int run_driver(int argument_count, char** arguments) {
             }) &&
         !target->supports_minimal_c_abi()) {
         std::println(stderr, "error: minimal C ABI requires x86-64 Linux LP64, "
+                             "Windows x64 MSVC COFF, "
                              "generic RV32 ELF ILP32 (I/M/A/C), or "
                              "Cortex-M33 Thumb ARMv8-M Mainline base EABI "
                              "(default features)");

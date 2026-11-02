@@ -1,29 +1,71 @@
 """C4e3c: native effect trace and residual output remain unchanged by replay."""
+import argparse
+from dataclasses import dataclass
 import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
-import sys
+from string import Template
 import tempfile
 
-BINARY, CLANG = sys.argv[1:3]
-PROGRAM = """
-extern fn observe(x: u32) -> u32;
+
+@dataclass(frozen=True)
+class EffectFixture:
+    program: str
+    entry: str
+    callback: str
+    expected_trace: str
+
+
+TABLE = """
 fn table(x: u32) -> [u32; 4] { [for i in 2..6 { i * x + 1 }] }
+"""
+FIXTURES = {
+    "minimal-c": EffectFixture(
+        program="extern fn observe(x: u32) -> u32;\n" + TABLE + """
 fn effects(x: u32) -> [u32; 4] { [for i in 2..6 { observe(i + x) }] }
 export fn entry() -> u32 {
     let data = table(7);
     let work = effects(7);
     observe(data[2] + work[0])
 }
-"""
-RUNTIME = r"""
+""",
+        entry="entry",
+        callback="uint32_t observe(uint32_t x) { record_effect(x); return x; }",
+        expected_trace="9\n10\n11\n12\n38\n",
+    ),
+    # The synthetic entry/builtin input boundary works without admitting the
+    # explicit extern/export C ABI, which still requires target validation.
+    "builtin-entry": EffectFixture(
+        program=TABLE + """
+fn effects(x: u32) -> [u32; 4] { [for i in 2..6 { external_input() + i + x }] }
+let data = table(7); let work = effects(7); data[2] + work[0];
+""",
+        entry="pagos_main",
+        callback="""uint32_t pagos_external_input(void) {
+    static unsigned calls;
+    record_effect(++calls);
+    return 0;
+}""",
+        expected_trace="1\n2\n3\n4\n",
+    ),
+}
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("binary")
+parser.add_argument("clang")
+parser.add_argument("--abi", choices=FIXTURES, required=True)
+parser.add_argument("--executable-suffix", default="")
+args_config = parser.parse_args()
+fixture = FIXTURES[args_config.abi]
+
+RUNTIME = Template(r"""
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-extern uint32_t entry(void);
-uint32_t observe(uint32_t x) {
+extern uint32_t ${entry}(void);
+static void record_effect(uint32_t x) {
     FILE *input = fopen(getenv("PAGOS_EFFECT_INPUT"), "r");
     unsigned marker = 0;
     if (!input || fscanf(input, "%u", &marker) != 1 || marker != 17) abort();
@@ -32,28 +74,14 @@ uint32_t observe(uint32_t x) {
     if (!stream) abort();
     fprintf(stream, "%u\n", x);
     if (fclose(stream)) abort();
-    return x;
 }
+${callback}
 int main(void) {
-    uint32_t result = entry();
+    uint32_t result = ${entry}();
     printf("%u\n", result);
     return 0;
 }
-"""
-
-if os.name == "nt":
-    # Windows C ABI admission is a later milestone. Exercise actual Runtime
-    # effects through the existing synthetic entry/builtin input boundary.
-    PROGRAM = """
-fn table(x: u32) -> [u32; 4] { [for i in 2..6 { i * x + 1 }] }
-fn effects(x: u32) -> [u32; 4] { [for i in 2..6 { external_input() + i + x }] }
-let data = table(7); let work = effects(7); data[2] + work[0];
-"""
-    RUNTIME = RUNTIME.replace("extern uint32_t entry(void);",
-                              "extern uint32_t pagos_main(void);\nstatic unsigned calls;")
-    RUNTIME = RUNTIME.replace("uint32_t observe(uint32_t x) {",
-                              "uint32_t pagos_external_input(void) { unsigned x = ++calls;")
-    RUNTIME = RUNTIME.replace("return x;", "return 0;").replace("entry();", "pagos_main();")
+""").substitute(entry=fixture.entry, callback=fixture.callback)
 
 
 def files(root):
@@ -65,32 +93,32 @@ with tempfile.TemporaryDirectory(prefix="pagos-generator-effects-") as tmp:
     root = Path(tmp)
     source, store, log, runtime = root / "effects.pgs", root / "cache", root / "effects.log", root / "runtime.c"
     input_file = root / "input.txt"
-    source.write_text(PROGRAM, encoding="utf-8", newline="\n")
+    source.write_text(fixture.program, encoding="utf-8", newline="\n")
     runtime.write_text(RUNTIME, encoding="utf-8", newline="\n")
     log.write_text("", encoding="utf-8", newline="\n")
     input_file.write_text("17\n", encoding="utf-8", newline="\n")
     input_snapshot = (input_file.read_bytes(), input_file.stat().st_mtime_ns)
     environment = dict(os.environ, PAGOS_EFFECT_LOG=str(log), PAGOS_EFFECT_INPUT=str(input_file))
-    target = "--target=" + ("x86_64-pc-windows-msvc" if os.name == "nt" else "x86_64-unknown-linux-gnu")
+    # Both the compiler and linker use their native host target.
 
     def execute(args, codes=(0,)):
-        result = subprocess.run([BINARY, *map(str, args)], text=True, capture_output=True, env=environment, timeout=60)
+        result = subprocess.run([args_config.binary, *map(str, args)], text=True, capture_output=True, env=environment, timeout=60)
         assert result.returncode in codes, (args, result.returncode, result.stdout, result.stderr)
         return result
 
     def replay(name="table", extra=(), codes=(0,)):
-        return execute([target, f"--replay-read={store}", f"--replay-function={name}",
+        return execute([f"--replay-read={store}", f"--replay-function={name}",
                         "--replay-arg=7", "--replay-element=2", "--max-fuel=0", *extra,
                         "explain-replay", source], codes)
 
     def generated(mode, name, evidence="value"):
-        options = [target, f"--stage-cache={mode}"]
+        options = [f"--stage-cache={mode}"]
         if mode != "off":
             options += [f"--cache-dir={store}", f"--cache-evidence={evidence}"]
         llvm = execute([*options, "emit-llvm", source]).stdout
-        obj, exe = root / f"{name}.o", root / (name + (".exe" if os.name == "nt" else ""))
+        obj, exe = root / f"{name}.o", root / (name + args_config.executable_suffix)
         execute([*options, "emit-obj", source, "-o", obj])
-        linked = subprocess.run([CLANG, str(obj), str(runtime), "-o", str(exe)], capture_output=True, text=True, timeout=60)
+        linked = subprocess.run([args_config.clang, str(obj), str(runtime), "-o", str(exe)], capture_output=True, text=True, timeout=60)
         assert linked.returncode == 0, linked.stderr
         return llvm, exe
 
@@ -103,8 +131,7 @@ with tempfile.TemporaryDirectory(prefix="pagos-generator-effects-") as tmp:
         log.write_text("", encoding="utf-8", newline="\n")
         result = subprocess.run([str(exe)], capture_output=True, text=True, env=environment, timeout=30)
         assert result.returncode == 0 and result.stdout == "38\n", (result.returncode, result.stdout, result.stderr)
-        expected_trace = "1\n2\n3\n4\n" if os.name == "nt" else "9\n10\n11\n12\n38\n"
-        assert log.read_text() == expected_trace, log.read_text()
+        assert log.read_text() == fixture.expected_trace, log.read_text()
 
     runtime_check(off)
     runtime_check(cold)

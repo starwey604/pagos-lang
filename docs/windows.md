@@ -2,14 +2,15 @@
 
 ## Scope
 
-W1-W3 provide native Windows x64 development for the C++23 compiler.
+W1-W4 provide native Windows x64 development for the C++23 compiler.
 MSVC and clang-cl have Ninja Release and RelWithDebInfo configurations.
 Windows hosts can use the existing LLVM X86, RISCV, and ARM backends.
 
-Host unit, process, lit, and builtin-entry execution regressions run on Windows.
-Explicit Windows `extern fn` / `export fn` remain rejected pending ABI validation.
-Target admission, DLLs, platform libraries, and Pagos source-level debugging
-are later work. Linux/QEMU remains the embedded execution baseline.
+Host unit, process, lit, and native execution regressions run on Windows.
+W4 admits the minimal `extern fn` / `export fn` C ABI on Windows x64 MSVC
+COFF, with actual MSVC and Clang C interoperability and static archives.
+DLLs, platform libraries, and Pagos source-level debugging are later work.
+Linux/QEMU remains the embedded execution baseline.
 
 ## Dependencies
 
@@ -151,7 +152,8 @@ cmake --preset windows-msvc-release `
 ```
 
 lit requires Python, lit, FileCheck, Clang, ld.lld, llvm-nm, and llvm-objdump.
-Process regressions require Python and Clang. These options never auto-disable
+Process regressions require Python, Clang and `llvm-ar`; Windows also uses
+`cl` for its C interoperability matrix. These options never auto-disable
 themselves when a tool is missing. Some Windows LLVM development archives omit
 FileCheck; the preparation step above supplies a matching binary.
 
@@ -169,9 +171,10 @@ the same byte meaning on both hosts.
 Frontend/MIR/IR goldens use an explicit x86-64 Linux semantic target.
 Runtime helpers use the real host target and assert its exact trap status
 (POSIX SIGILL or Windows illegal-instruction exception). Features distinguish
-`native-entry`, `minimal-c-abi`, `elf-native`, and `symlinks`. Windows C ABI,
-ELF native libraries/sections, and unavailable symlink cases are reported as
-unsupported; ordinary frontend, cache, and builtin-entry execution still run.
+`native-entry`, `minimal-c-abi`, `elf-native`, and `symlinks`. Native C ABI,
+pointer, volatile, ordinary global storage and separate-module tests run on
+both x64 hosts. Tests requiring ELF sections/native shared libraries or
+unavailable symlink permissions are reported as unsupported.
 `tests/lit-results.json` in each build directory records individual outcomes
 and unsupported reasons; CI preserves it alongside CTest's JUnit report.
 
@@ -196,6 +199,54 @@ blocked-output lease checks still run there.
 
 Benchmark smoke checks run on both hosts. Windows omits unavailable wait4/RSS
 counters explicitly; performance measurements still require the Linux path.
+
+## Native C Interoperability (W4)
+
+The admitted Windows target normalizes to x86-64, MSVC environment, COFF,
+and 64-bit pointers; use `--target=x86_64-pc-windows-msvc` explicitly when
+cross-compiling. The native Windows default selects that ABI. The existing
+Linux, RV32 and Cortex-M33 admissions retain their previous rules. Windows
+x86, MinGW/Cygwin environments, and non-COFF variants remain rejected at the
+C boundary; LLVM backend availability alone does not admit another ABI.
+
+The boundary accepts `u32/i32` and pointers to supported integer/record types.
+Use C `uint32_t`, `int32_t`, and corresponding pointer types. A `usize` field
+or pointee maps to `uintptr_t`, which is 64 bits under Windows LLP64; do not
+substitute C `long`. Records require matching natural field layout and are
+exchanged through pointers. By-value `usize`, other integer widths, records,
+arrays, floating point, varargs and direct C++ ABI remain outside this subset.
+
+Generate an object and link the existing bidirectional C example with MSVC
+from the configured x64 developer environment:
+
+```powershell
+./build/windows-msvc-release/pagosc.exe -O2 emit-obj `
+    tests/lit/codegen/c-abi.pgs -o build/c-abi.obj
+cl /nologo /TC /std:c11 /MT /D_CRT_SECURE_NO_WARNINGS `
+    tests/lit/Inputs/c_abi.c /Fobuild/c-abi-caller.obj /Febuild/c-abi.exe `
+    /link build/c-abi.obj
+./build/c-abi.exe
+```
+
+Use `llvm-ar rcs build/pagos-abi.lib build/c-abi.obj` to create a static
+archive, then pass that `.lib` instead of the object after `/link`. These
+are ordinary external toolchain steps; `pagosc` does not embed a linker.
+Public function names retain their source spelling. Boundary-only modules
+omit `pagos_main`, so separately compiled Pagos objects can import each other.
+
+Both MSVC-built and clang-cl-built compilers run the same native Clang C
+harnesses and an additional 15-case MSVC C matrix. The matrix covers raw IR/
+object emission, external O2 and native O2, direct object/static archive
+linking, signed values, ten-argument calls, mixed scalar/pointer stack slots,
+recursion, record layouts, initialized/zero/readonly storage, pointer-sized
+fields, aliasing, volatile effects and exact trap status. A cross-target
+fixture checks COFF machine/symbol information and non-leaf unwind records
+from any compiler host. Generator replay now tests both explicit C effects
+and builtin input effects on both hosts with the same assertion paths.
+
+Explicit `section(...)` metadata remains ELF-only; ordinary globals and
+alignment work in COFF. DLL import/export annotations, Windows SDK bindings,
+exceptions crossing Pagos frames and source-level debugging remain deferred.
 
 ## Continuous Regression
 
@@ -228,6 +279,6 @@ non-UTF-8 wire names retain the baseline admission and round-trip behavior.
 The conservative compiler build identity includes CMake module content,
 C++ standard mode, frontend variant, and selected CRT, in addition to existing
 source/configuration inputs. Changing the host toolchain can invalidate cache
-reuse as intended. W1-W3 do not change C1-C4 wire formats, hash domains,
+reuse as intended. W1-W4 do not change C1-C4 wire formats, hash domains,
 versions, fixed fixtures, or old-format rejection rules; see the
 [protocol baseline](cache-protocol-baseline.md).

@@ -640,7 +640,8 @@ The minimal boundary now carries linkage/declaration flags from syntax through
 HIR and MIR. Export roots and extern signatures are predeclared independently
 of internal specialization caches; MIR retains public source names and verifies
 the `u32/i32` and integer/record-pointer subset. LLVM uses its default C calling
-convention, gated to x86-64 Linux LP64, generic RV32 ELF ILP32 with I/M/A/C,
+convention, gated to x86-64 Linux LP64, Windows x64 MSVC COFF,
+generic RV32 ELF ILP32 with I/M/A/C,
 and Cortex-M33 Thumb ARMv8-M Mainline base EABI with default features.
 The ARM target machine selects AAPCS and soft-float explicitly; the
 [Cortex-M33 regression](arm-cortex-m33.md) cross-links both Clang and GCC.
@@ -648,6 +649,11 @@ Supporting other
 types/targets requires explicit ABI classification, not just LLVM storage types;
 see [LLVM calling conventions](https://llvm.org/docs/LangRef.html#calling-conventions)
 and the [RISC-V psABI](https://riscv-non-isa.github.io/riscv-elf-psabi-doc/).
+For the [Windows x64 convention](https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention),
+LLVM selects register/stack arguments, shadow space and unwind records from
+the target triple. The same lowering handles scalar and pointer boundaries;
+there is no Windows-specific semantic or MIR implementation. Real MSVC and
+Clang C callers/callees validate the admitted subset, including static archives.
 
 Object emission uses an initialized LLVM AsmPrinter and TargetMachine directly,
 with the same triple/CPU/features and checked DataLayout as semantic analysis.

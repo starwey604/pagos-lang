@@ -1,0 +1,25 @@
+// REQUIRES: minimal-c-abi
+// RUN: %run_c_abi --no-traps %s %S/../Inputs/c_abi_storage.c
+// RUN: %run_c_abi --optimize --no-traps %s %S/../Inputs/c_abi_storage.c
+// RUN: %run_c_abi --native-optimize --no-traps %s %S/../Inputs/c_abi_storage.c
+record State { tag: u8, count: u32, wide: u64, size: usize, tail: i16 }
+static mut state: State align(64) =
+    State(tag: 3u8, count: 12, wide: ~0u64, size: ~0usize, tail: -7i16);
+static mut zero: State =
+    State(tag: 0u8, count: 0, wide: 0u64, size: 0usize, tail: 0i16);
+static mut buffer: [u32; 8] = [for i in 0..8 { 0 }];
+static const squares: [u32; 8] = [for i in 0..8 { i * i }];
+extern fn c_touch(a: u32, p: *mut State, b: u32, q: *mut u32,
+                  c: u32, r: *mut State, d: u32) -> *mut State;
+export fn storage_state() -> *mut State { &state }
+export fn storage_zero() -> *const State { &zero as *const State }
+export fn storage_word(index: u32) -> *mut u32 { &buffer[index] }
+export fn storage_write(index: u32, value: u32) -> u32 {
+    *&buffer[index] = value;
+    buffer[index] + squares[index]
+}
+export fn storage_roundtrip(p: *mut State, q: *mut u32) -> *mut State {
+    let returned = c_touch(11, p, 22, q, 33, &state, 44);
+    *&(*returned).count = (*returned).count + 1;
+    returned
+}

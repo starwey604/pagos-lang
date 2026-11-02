@@ -135,8 +135,12 @@ bool TargetLayout::little_endian() const {
 
 bool TargetLayout::supports_minimal_c_abi() const {
     const llvm::Triple triple(config_.triple);
-    if (triple.getArch() == llvm::Triple::x86_64 && triple.isOSLinux() &&
-        pointer_bits() == 64)
+    // Scalar i32/u32 and pointer boundaries use LLVM's target-selected C
+    // convention on both validated x64 ABIs. The normalized Windows triple
+    // must select MSVC and COFF; MinGW and other Windows ABIs stay unadmitted.
+    if (triple.getArch() == llvm::Triple::x86_64 && pointer_bits() == 64 &&
+        (triple.isOSLinux() || (triple.isKnownWindowsMSVCEnvironment() &&
+                                triple.isOSBinFormatCOFF())))
         return true;
     // Validated Cortex-M33 base AAPCS32: Thumb ARMv8-M Mainline, bare-metal
     // EABI, and the CPU's default features. This does not admit hard-float,

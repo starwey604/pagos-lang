@@ -152,14 +152,17 @@ TEST(CAbi, VerifierRejectsMalformedExternalSignaturesAndBodies) {
 TEST(CAbi, TargetWhitelistRejectsUnvalidatedCallingConventions) {
     using codegen::TargetLayout;
     for (const auto* triple :
-         {"x86_64-unknown-linux-gnu", "riscv32-unknown-elf"}) {
+         {"x86_64-unknown-linux-gnu", "riscv32-unknown-elf",
+          "x86_64-pc-windows-msvc", "x86_64-pc-windows-msvc19.51",
+          "x86_64-pc-windows"}) {
         const auto target = TargetLayout::create({.triple = triple});
         ASSERT_TRUE(target) << target.error();
         EXPECT_TRUE(target->supports_minimal_c_abi());
     }
     for (const auto* triple :
-         {"riscv64-unknown-elf", "arm-none-eabi", "x86_64-pc-windows-msvc",
-          "i386-unknown-linux-gnu"}) {
+         {"riscv64-unknown-elf", "arm-none-eabi", "i386-unknown-linux-gnu",
+          "i686-pc-windows-msvc", "x86_64-w64-windows-gnu",
+          "x86_64-pc-windows-cygnus", "x86_64-pc-windows-msvc-elf"}) {
         const auto target = TargetLayout::create({.triple = triple});
         ASSERT_TRUE(target) << target.error();
         EXPECT_FALSE(target->supports_minimal_c_abi());
@@ -193,6 +196,40 @@ TEST(CAbi, EmitsRealElfObjectsAndRejectsSemanticTargetMismatch) {
         EXPECT_FALSE(
             codegen::LLVMCodegen::emit_object_for_target(*module, *target));
     }
+}
+
+TEST(CAbi, WindowsX64EmitsCoffWithScalarAndPointerBoundaries) {
+    const auto target =
+        codegen::TargetLayout::create({.triple = "x86_64-pc-windows-msvc"});
+    ASSERT_TRUE(target) << target.error();
+    EXPECT_EQ(target->pointer_bits(), 64U);
+    BoundaryInput input("extern fn foreign(p: *mut u32, x: i32) -> *mut u32; "
+                        "export fn api(p: *mut u32, x: i32) -> *mut u32 { "
+                        "foreign(p, x) }");
+    stage::StageAnalyzer analyzer(input.diagnostics, input.checker.types());
+    const auto hir = analyzer.analyze(*input.syntax);
+    ASSERT_FALSE(input.diagnostics.has_error());
+    auto module = mir::lower(*hir);
+    ASSERT_TRUE(module) << module.error();
+    const auto ir = codegen::LLVMCodegen::emit_for_target(*module, *target);
+    ASSERT_TRUE(ir) << ir.error();
+    EXPECT_NE(ir->find("declare ptr @foreign(ptr, i32)"), std::string::npos);
+    EXPECT_NE(ir->find("define ptr @api(ptr"), std::string::npos);
+    EXPECT_EQ(ir->find("@pagos_main"), std::string::npos);
+    for (auto level :
+         {codegen::OptimizationLevel::O0, codegen::OptimizationLevel::O2}) {
+        const auto object = codegen::LLVMCodegen::emit_object_for_target(
+            *module, *target, {.optimization = level});
+        ASSERT_TRUE(object) << object.error();
+        EXPECT_TRUE(object->starts_with("\x64\x86"));
+    }
+    const auto mingw =
+        codegen::TargetLayout::create({.triple = "x86_64-w64-windows-gnu"});
+    ASSERT_TRUE(mingw) << mingw.error();
+    EXPECT_FALSE(codegen::LLVMCodegen::emit_for_target(*module, *mingw));
+    module->pointer_bits = 32;
+    EXPECT_FALSE(
+        codegen::LLVMCodegen::emit_object_for_target(*module, *target));
 }
 
 TEST(CAbi, CortexM33RequiresThumbMainlineBaseEabiAndDefaultFeatures) {

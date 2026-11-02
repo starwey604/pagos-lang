@@ -257,7 +257,8 @@ for `u32/i32` and integer/record pointers, with direct
 Add `-O2` for the integrated LLVM optimization pipeline, or use `-O0`, `-O1`,
 `-O3`, `-Os`, or `-Oz`; omission preserves the previous emission behavior.
 See [native optimization](docs/development.md#native-optimization).
-It is validated on x86-64 Linux LP64, RV32 ELF ILP32 (I/M/A/C), and
+It is validated on x86-64 Linux LP64, Windows x64 MSVC COFF,
+RV32 ELF ILP32 (I/M/A/C), and
 [Cortex-M33 base AAPCS32](docs/arm-cortex-m33.md). The
 [bidirectional example](tests/lit/codegen/c-abi.pgs) runs with C on the host and
 as QEMU RV32 firmware; this ABI harness uses C/assembly startup and MMIO.

@@ -1,0 +1,25 @@
+// RUN: %pagosc --target=x86_64-pc-windows-msvc emit-llvm %s | %FileCheck %s --check-prefix=IR
+// RUN: %pagosc --target=x86_64-pc-windows-msvc -O0 emit-obj %s -o %t.o
+// RUN: llvm-readobj --file-headers --symbols --unwind %t.o | %FileCheck %s --check-prefix=COFF
+// RUN: llvm-nm %t.o | %FileCheck %s --check-prefix=SYMBOLS
+// RUN: not %pagosc --target=x86_64-w64-windows-gnu emit-obj %s -o %t.rejected 2>&1 | %FileCheck %s --check-prefix=REJECT
+// RUN: %assert_absent %t.rejected
+extern fn foreign(a: u32, b: i32, c: *mut u32, d: u32,
+                   e: *const u32, f: i32) -> i32;
+export fn windows_api(a: u32, b: i32, c: *mut u32, d: u32,
+                       e: *const u32, f: i32) -> i32 {
+    foreign(a, b, c, d, e, f) + 1i32
+}
+// IR: target triple = "x86_64-pc-windows-msvc"
+// IR: declare i32 @foreign(i32, i32, ptr, i32, ptr, i32)
+// IR: define i32 @windows_api(i32
+// IR-NOT: @pagos_main
+// COFF: Format: COFF-x86-64
+// COFF: Machine: IMAGE_FILE_MACHINE_AMD64
+// COFF: UnwindInformation [
+// COFF: StartAddress: windows_api
+// COFF: UnwindCodes [
+// COFF: Name: windows_api
+// SYMBOLS: U foreign
+// SYMBOLS: T windows_api
+// REJECT: minimal C ABI requires

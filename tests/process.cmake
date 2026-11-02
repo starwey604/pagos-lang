@@ -100,6 +100,60 @@ find_program(PAGOS_TEST_CLANG NAMES clang
 
 add_test(NAME pagos-generator-replay-effect-process
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/generator_replay_effect_process.py
-            $<TARGET_FILE:pagosc> ${PAGOS_TEST_CLANG})
-set_tests_properties(pagos-generator-replay-effect-process PROPERTIES TIMEOUT 120)
+            $<TARGET_FILE:pagosc> ${PAGOS_TEST_CLANG}
+            --abi=minimal-c
+            --executable-suffix=${CMAKE_EXECUTABLE_SUFFIX})
+add_test(NAME pagos-generator-replay-builtin-effect-process
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/generator_replay_effect_process.py
+            $<TARGET_FILE:pagosc> ${PAGOS_TEST_CLANG}
+            --abi=builtin-entry
+            --executable-suffix=${CMAKE_EXECUTABLE_SUFFIX})
+set_tests_properties(pagos-generator-replay-effect-process
+    pagos-generator-replay-builtin-effect-process PROPERTIES TIMEOUT 120)
+
+find_program(PAGOS_TEST_AR NAMES llvm-ar HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
+add_test(NAME pagos-c-interop-archive-process
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/lit/Inputs/run_c_abi.py
+        $<TARGET_FILE:pagosc> ${PAGOS_TEST_CLANG}
+        --native-optimize --archive-tool=${PAGOS_TEST_AR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/lit/codegen/c-abi.pgs)
+set_tests_properties(pagos-c-interop-archive-process PROPERTIES TIMEOUT 120)
+
+# Reuse the native C interop fixtures with actual MSVC C callers/callees.
+# Native O2 also links through a static archive; other modes link objects.
+if(WIN32)
+    find_program(PAGOS_TEST_MSVC NAMES cl REQUIRED)
+    foreach(PAGOS_ABI_CASE c-abi pointers record-pointers volatile c-abi-storage)
+        string(REPLACE "-" "_" PAGOS_ABI_HARNESS "${PAGOS_ABI_CASE}")
+        set(PAGOS_ABI_OPTIONS)
+        set(PAGOS_ABI_TRAPS trap)
+        if(PAGOS_ABI_CASE STREQUAL "pointers")
+            set(PAGOS_ABI_TRAPS read store discard)
+        elseif(PAGOS_ABI_CASE STREQUAL "record-pointers")
+            set(PAGOS_ABI_TRAPS read first discard store volatile late alignment)
+        elseif(PAGOS_ABI_CASE STREQUAL "volatile")
+            set(PAGOS_ABI_TRAPS null-read null-store misaligned-read misaligned-store discard-null)
+        elseif(PAGOS_ABI_CASE STREQUAL "c-abi-storage")
+            set(PAGOS_ABI_OPTIONS --no-traps)
+        endif()
+        foreach(PAGOS_ABI_MODE legacy native external)
+            set(PAGOS_ABI_OPTIMIZATION)
+            if(PAGOS_ABI_MODE STREQUAL "native")
+                set(PAGOS_ABI_OPTIMIZATION --native-optimize --archive-tool=${PAGOS_TEST_AR})
+            elseif(PAGOS_ABI_MODE STREQUAL "external")
+                set(PAGOS_ABI_OPTIMIZATION --optimize)
+            endif()
+            set(PAGOS_ABI_TEST "pagos-c-interop-msvc-${PAGOS_ABI_CASE}-${PAGOS_ABI_MODE}")
+            add_test(NAME ${PAGOS_ABI_TEST}
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/lit/Inputs/run_c_abi.py
+                    $<TARGET_FILE:pagosc> ${PAGOS_TEST_CLANG}
+                    --c-driver=msvc --c-compiler=${PAGOS_TEST_MSVC}
+                    ${PAGOS_ABI_OPTIMIZATION} ${PAGOS_ABI_OPTIONS}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/lit/codegen/${PAGOS_ABI_CASE}.pgs
+                    ${CMAKE_CURRENT_SOURCE_DIR}/lit/Inputs/${PAGOS_ABI_HARNESS}.c
+                    ${PAGOS_ABI_TRAPS})
+            set_tests_properties(${PAGOS_ABI_TEST} PROPERTIES TIMEOUT 120)
+        endforeach()
+    endforeach()
+endif()
 

@@ -32,8 +32,8 @@ config.available_features.add("host-" + platform.system().lower())
 if platform.machine().lower() in ("amd64", "x86_64"):
     if platform.system() in ("Windows", "Linux"):
         config.available_features.add("native-entry")
-    if platform.system() == "Linux":
         config.available_features.add("minimal-c-abi")
+    if platform.system() == "Linux":
         config.available_features.add("elf-native")
 os.makedirs(config.test_exec_root, exist_ok=True)
 with tempfile.TemporaryDirectory(dir=config.test_exec_root) as directory:

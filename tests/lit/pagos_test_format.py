@@ -1,12 +1,16 @@
 import os
 import hashlib
+from pathlib import Path, PurePath
 import shlex
 import lit.formats
 import lit.TestRunner
 
 
 def shell_quote(value):
-    return shlex.quote(str(value).replace("\\", "/"))
+    # Only native Windows separators need conversion. A POSIX backslash is
+    # part of the filename; preserve it when quoting for lit's internal shell.
+    path = value if isinstance(value, PurePath) else Path(value)
+    return shlex.quote(path.as_posix())
 
 
 class PagosShTest(lit.formats.ShTest):

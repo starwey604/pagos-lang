@@ -288,10 +288,12 @@ python3 scripts/check_rv32.py --pagosc build/debug/pagosc
 
 `extern fn` imports and `export fn` exports use exact source symbol names,
 accept `u32/i32` and integer/record pointers, and always denote Runtime calls.
-Validated targets are x86-64 Linux LP64, generic RV32 ELF ILP32 with I/M/A/C,
+Validated targets are x86-64 Linux LP64, Windows x64 MSVC COFF,
+generic RV32 ELF ILP32 with I/M/A/C,
 and Cortex-M33 Thumb ARMv8-M Mainline base EABI with default CPU features.
 See the [ARM execution guide](arm-cortex-m33.md) for QEMU, target flags and
-the exact boundary scope.
+the exact boundary scope. The [Windows guide](windows.md#native-c-interoperability-w4)
+provides MSVC link commands and the Windows target limits.
 The C prototype and
 target flags must match; neither headers nor cross-language signature checks
 are generated. Boundary-only modules omit `pagos_main`, allowing separate

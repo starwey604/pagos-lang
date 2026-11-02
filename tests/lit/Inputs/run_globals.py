@@ -3,6 +3,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from test_runtime import executable_path
 
 
 def main():
@@ -25,12 +26,15 @@ def main():
             objects.append(str(obj))
         metadata = subprocess.check_output(
             ["llvm-readobj", "--sections", "--symbols", "--relocations", objects[0]], text=True)
-        for section in (".data", ".bss", ".rodata"):
+        coff = Path(objects[0]).read_bytes().startswith(b"\x64\x86")
+        for section in (".data", ".bss", ".rdata" if coff else ".rodata"):
             assert f"Name: {section}" in metadata, metadata
         for name in ("counter", "configured", "identity", "twin"):
             assert f"Name: pagos.global.{name}" in metadata, metadata
-        assert "Binding: Local" in metadata and "R_X86_64_" in metadata, metadata
-        program = root / "program"
+        local = "StorageClass: Static" if coff else "Binding: Local"
+        relocation = "IMAGE_REL_AMD64_" if coff else "R_X86_64_"
+        assert local in metadata and relocation in metadata, metadata
+        program = executable_path(root / "program")
         subprocess.run([clang, "-O2", *objects, str(inputs / "globals.c"), "-o", str(program)],
                        check=True, timeout=20)
         subprocess.run([str(program)], check=True, timeout=5)
