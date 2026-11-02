@@ -232,6 +232,87 @@ TEST(CAbi, WindowsX64EmitsCoffWithScalarAndPointerBoundaries) {
         codegen::LLVMCodegen::emit_object_for_target(*module, *target));
 }
 
+TEST(CAbi, SharedLibraryPolicyPreservesTheSameBoundaryAndPrivateStorage) {
+    BoundaryInput input("static mut state: u32 = 17; "
+                        "extern fn foreign(x: u32) -> u32; "
+                        "fn helper(x: u32) -> u32 { x + 1 } "
+                        "export fn api(x: u32) -> u32 { foreign(helper(x)) } "
+                        "export fn address() -> *mut u32 { &state }");
+    stage::StageAnalyzer analyzer(input.diagnostics, input.checker.types());
+    const auto hir = analyzer.analyze(*input.syntax);
+    ASSERT_FALSE(input.diagnostics.has_error());
+    const auto module = mir::lower(*hir);
+    ASSERT_TRUE(module) << module.error();
+    for (const auto* triple :
+         {"x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"}) {
+        SCOPED_TRACE(triple);
+        const auto target = codegen::TargetLayout::create({.triple = triple});
+        ASSERT_TRUE(target) << target.error();
+        EXPECT_TRUE(target->supports_shared_c_library());
+        const bool windows =
+            std::string_view(triple).find("windows") != std::string_view::npos;
+        const auto ir = codegen::LLVMCodegen::emit_for_target(
+            *module, *target, {.shared_library = true});
+        ASSERT_TRUE(ir) << ir.error();
+        EXPECT_NE(ir->find(windows ? "define dllexport i32 @api("
+                                   : "define i32 @api("),
+                  std::string::npos);
+        EXPECT_NE(ir->find("declare i32 @foreign(i32)"), std::string::npos);
+        EXPECT_NE(ir->find("define internal i32 @pagos.helper."),
+                  std::string::npos);
+        EXPECT_NE(ir->find("@pagos.global.state = internal global i32 17"),
+                  std::string::npos);
+        EXPECT_EQ(ir->find("dllimport"), std::string::npos);
+        EXPECT_NE(ir->find("\"PIC Level\", i32 2"), std::string::npos);
+        for (auto level :
+             {codegen::OptimizationLevel::O0, codegen::OptimizationLevel::O2}) {
+            const auto object = codegen::LLVMCodegen::emit_object_for_target(
+                *module, *target,
+                {.optimization = level, .shared_library = true});
+            ASSERT_TRUE(object) << object.error();
+            if (windows) {
+                EXPECT_NE(object->find("/EXPORT:api"), std::string::npos);
+                EXPECT_NE(object->find("/EXPORT:address"), std::string::npos);
+                EXPECT_EQ(object->find("/EXPORT:foreign"), std::string::npos);
+            }
+        }
+        const auto ordinary =
+            codegen::LLVMCodegen::emit_for_target(*module, *target);
+        ASSERT_TRUE(ordinary) << ordinary.error();
+        EXPECT_EQ(ordinary->find("dllexport"), std::string::npos);
+        EXPECT_FALSE(codegen::LLVMCodegen::emit_for_target(
+            *module, *target,
+            {.relocation = codegen::RelocationModel::Static,
+             .shared_library = true}));
+    }
+    for (const auto* triple :
+         {"riscv32-unknown-elf", "x86_64-w64-windows-gnu"}) {
+        const auto target = codegen::TargetLayout::create({.triple = triple});
+        ASSERT_TRUE(target) << target.error();
+        EXPECT_FALSE(target->supports_shared_c_library());
+        EXPECT_FALSE(codegen::LLVMCodegen::emit_for_target(
+            *module, *target, {.shared_library = true}));
+    }
+}
+
+TEST(CAbi, SharedLibraryRejectsImplicitEntryAndMissingExports) {
+    for (const auto* source :
+         {"extern fn foreign() -> u32;",
+          "export fn api() -> u32 { 42 } let result = api();"}) {
+        BoundaryInput input(source);
+        stage::StageAnalyzer analyzer(input.diagnostics, input.checker.types());
+        const auto hir = analyzer.analyze(*input.syntax);
+        ASSERT_FALSE(input.diagnostics.has_error());
+        const auto module = mir::lower(*hir);
+        ASSERT_TRUE(module) << module.error();
+        const auto target =
+            codegen::TargetLayout::create({.triple = "x86_64-pc-windows-msvc"});
+        ASSERT_TRUE(target) << target.error();
+        EXPECT_FALSE(codegen::LLVMCodegen::emit_for_target(
+            *module, *target, {.shared_library = true}));
+    }
+}
+
 TEST(CAbi, CortexM33RequiresThumbMainlineBaseEabiAndDefaultFeatures) {
     using codegen::TargetConfig;
     using codegen::TargetLayout;

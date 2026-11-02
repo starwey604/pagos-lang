@@ -37,6 +37,7 @@ class TargetLayout {
     [[nodiscard]] unsigned pointer_bits() const;
     [[nodiscard]] bool little_endian() const;
     [[nodiscard]] bool supports_minimal_c_abi() const;
+    [[nodiscard]] bool supports_shared_c_library() const;
     [[nodiscard]] std::expected<TypeLayout, std::string>
     layout_of(const mir::Type& type) const;
 

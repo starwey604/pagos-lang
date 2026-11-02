@@ -1,0 +1,9 @@
+// RUN: not %pagosc --shared-library emit-obj %s -o %t.absent 2>&1 | %FileCheck %s
+// RUN: %assert_absent %t.absent
+// RUN: echo preserved > %t.before
+// RUN: echo preserved > %t.existing
+// RUN: not %pagosc --shared-library emit-obj %s -o %t.existing 2>&1 | %FileCheck %s
+// RUN: %diff_text %t.before %t.existing
+export fn api() -> u32 { 42 }
+let result = api();
+// CHECK: shared library emission does not accept a synthetic entry

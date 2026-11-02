@@ -265,6 +265,11 @@ as QEMU RV32 firmware; this ABI harness uses C/assembly startup and MMIO.
 Other boundary types and targets remain unsupported. See the
 [build/run commands](docs/development.md#host-compiler-commands).
 
+For x86-64 Linux ELF and Windows x64 MSVC COFF, `--shared-library` emits PIC
+objects with the platform's shared-library export policy. Link `.so`/DLL and
+Windows import libraries externally; native tests cover C producers/consumers,
+loading, state and failure paths. See [shared libraries](docs/windows.md#shared-and-platform-libraries-w5).
+
 Raw `*const T` / `*mut T` pointers now support integer memory loads/stores and
 explicit target-`usize` address conversions. Memory access stays Runtime even
 at a Comptime address. The [RAM example](tests/lit/codegen/pointers.pgs) runs on

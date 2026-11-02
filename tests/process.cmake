@@ -119,11 +119,22 @@ add_test(NAME pagos-c-interop-archive-process
         ${CMAKE_CURRENT_SOURCE_DIR}/lit/codegen/c-abi.pgs)
 set_tests_properties(pagos-c-interop-archive-process PROPERTIES TIMEOUT 120)
 
+find_program(PAGOS_TEST_READOBJ NAMES llvm-readobj HINTS ${LLVM_TOOLS_BINARY_DIR} REQUIRED)
+add_test(NAME pagos-shared-library-process
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shared_library_process.py
+        $<TARGET_FILE:pagosc> ${PAGOS_TEST_CLANG} ${PAGOS_TEST_READOBJ})
+set_tests_properties(pagos-shared-library-process PROPERTIES TIMEOUT 180)
+
 # Reuse the native C interop fixtures with actual MSVC C callers/callees.
 # Native O2 also links through a static archive; other modes link objects.
 if(WIN32)
     find_program(PAGOS_TEST_MSVC NAMES cl REQUIRED)
-    foreach(PAGOS_ABI_CASE c-abi pointers record-pointers volatile c-abi-storage)
+    add_test(NAME pagos-shared-library-msvc-process
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/shared_library_process.py
+            $<TARGET_FILE:pagosc> ${PAGOS_TEST_CLANG} ${PAGOS_TEST_READOBJ}
+            --c-driver=msvc --c-compiler=${PAGOS_TEST_MSVC})
+    set_tests_properties(pagos-shared-library-msvc-process PROPERTIES TIMEOUT 180)
+    foreach(PAGOS_ABI_CASE c-abi pointers record-pointers volatile c-abi-storage windows-sdk)
         string(REPLACE "-" "_" PAGOS_ABI_HARNESS "${PAGOS_ABI_CASE}")
         set(PAGOS_ABI_OPTIONS)
         set(PAGOS_ABI_TRAPS trap)
@@ -135,6 +146,8 @@ if(WIN32)
             set(PAGOS_ABI_TRAPS null-read null-store misaligned-read misaligned-store discard-null)
         elseif(PAGOS_ABI_CASE STREQUAL "c-abi-storage")
             set(PAGOS_ABI_OPTIONS --no-traps)
+        elseif(PAGOS_ABI_CASE STREQUAL "windows-sdk")
+            set(PAGOS_ABI_OPTIONS --no-traps --link-library=kernel32.lib)
         endif()
         foreach(PAGOS_ABI_MODE legacy native external)
             set(PAGOS_ABI_OPTIMIZATION)

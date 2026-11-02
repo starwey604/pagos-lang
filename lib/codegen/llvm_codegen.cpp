@@ -43,7 +43,9 @@ class Generator {
     explicit Generator(const TargetLayout& target, EmissionOptions options)
         : module_(std::make_unique<llvm::Module>("pagos", context_)),
           builder_(context_), config_(target.config()),
-          c_abi_supported_(target.supports_minimal_c_abi()), options_(options) {
+          c_abi_supported_(target.supports_minimal_c_abi()),
+          shared_c_supported_(target.supports_shared_c_library()),
+          options_(options) {
         module_->setTargetTriple(llvm::Triple(config_.triple));
         module_->setDataLayout(target.data_layout());
     }
@@ -52,6 +54,26 @@ class Generator {
                                                  bool object = false) {
         if (auto valid = mir::verify(mir_module); !valid) {
             return std::unexpected("invalid MIR: " + valid.error());
+        }
+        if (options_.shared_library) {
+            if (!shared_c_supported_)
+                return std::unexpected("shared C libraries require x86-64 "
+                                       "Linux ELF or Windows x64 MSVC COFF");
+            if (options_.relocation == RelocationModel::Static)
+                return std::unexpected(
+                    "shared library emission requires PIC relocation");
+            bool exported = false;
+            for (const auto& function : mir_module.functions) {
+                if (!function.declaration && !function.internal) {
+                    if (!function.c_abi)
+                        return std::unexpected("shared library emission does "
+                                               "not accept a synthetic entry");
+                    exported = true;
+                }
+            }
+            if (!exported)
+                return std::unexpected("shared library emission requires an "
+                                       "exported C definition");
         }
         for (const auto& global : mir_module.globals) {
             if (!global.storage.section.empty() &&
@@ -92,11 +114,16 @@ class Generator {
                 parameters.push_back(llvm_type(parameter));
             auto* type = llvm::FunctionType::get(
                 llvm_type(function.result_type), parameters, false);
-            llvm::Function::Create(type,
-                                   function.internal
-                                       ? llvm::Function::InternalLinkage
-                                       : llvm::Function::ExternalLinkage,
-                                   function.name, *module_);
+            auto* emitted = llvm::Function::Create(
+                type,
+                function.internal ? llvm::Function::InternalLinkage
+                                  : llvm::Function::ExternalLinkage,
+                function.name, *module_);
+            if (options_.shared_library && function.c_abi &&
+                !function.declaration &&
+                module_->getTargetTriple().isOSBinFormatCOFF())
+                emitted->setDLLStorageClass(
+                    llvm::GlobalValue::DLLExportStorageClass);
         }
         for (const auto& function : mir_module.functions) {
             if (function.declaration)
@@ -132,10 +159,10 @@ class Generator {
         const auto level = options_.optimization;
         const bool optimize = level != OptimizationLevel::Legacy &&
                               level != OptimizationLevel::O0;
-        if (options_.relocation)
-            module_->setPICLevel(*options_.relocation == RelocationModel::Pic
-                                     ? llvm::PICLevel::BigPIC
-                                     : llvm::PICLevel::NotPIC);
+        if (options_.relocation || options_.shared_library)
+            module_->setPICLevel(options_.relocation == RelocationModel::Static
+                                     ? llvm::PICLevel::NotPIC
+                                     : llvm::PICLevel::BigPIC);
         std::optional<llvm::CodeModel::Model> code_model;
         if (options_.code_model) {
             code_model = *options_.code_model == CodeModel::Small
@@ -789,6 +816,7 @@ class Generator {
     llvm::IRBuilder<> builder_;
     TargetConfig config_;
     bool c_abi_supported_{};
+    bool shared_c_supported_{};
     EmissionOptions options_;
     std::unordered_map<mir::ValueId, llvm::Value*> values_;
     std::unordered_map<mir::ValueId, llvm::Type*> record_pointees_;

@@ -670,6 +670,16 @@ exclusive sibling temporary and renames only after emission/write success,
 rejecting an output that aliases the input. Linking remains an external
 Clang/GCC/LLD task. Library-style boundary modules omit synthetic `pagos_main`.
 
+`EmissionOptions::shared_library` selects PIC shared-library objects on the
+validated x86-64 Linux ELF/Windows MSVC COFF subset. Only C definitions are
+public library exports; COFF adds LLVM's DLL export storage class while ELF
+retains normal external visibility. Imports remain ordinary function symbols
+and can resolve through a linker-generated import thunk. Helpers and globals
+remain internal, and a synthetic program entry is rejected. The option never
+changes HIR/MIR flags or persistent Stage identity; linking, runtime loading
+and library lifetime remain external responsibilities. See the
+[shared-library contract](windows.md#shared-and-platform-libraries-w5).
+
 1. Emit and consume `u32/i32` and integer-pointer C ABI symbols (implemented).
 2. Exchange pointers to layout-compatible integer-field records (implemented);
    classify aggregate-by-value calls separately (deferred).

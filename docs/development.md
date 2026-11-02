@@ -294,6 +294,9 @@ and Cortex-M33 Thumb ARMv8-M Mainline base EABI with default CPU features.
 See the [ARM execution guide](arm-cortex-m33.md) for QEMU, target flags and
 the exact boundary scope. The [Windows guide](windows.md#native-c-interoperability-w4)
 provides MSVC link commands and the Windows target limits.
+For shared-library objects, pass `--shared-library` to `emit-llvm` or
+`emit-obj`; the [W5 contract](windows.md#shared-and-platform-libraries-w5)
+covers supported targets, PIC/export policy, external linking and loading.
 The C prototype and
 target flags must match; neither headers nor cross-language signature checks
 are generated. Boundary-only modules omit `pagos_main`, allowing separate

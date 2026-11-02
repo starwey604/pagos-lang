@@ -165,6 +165,14 @@ bool TargetLayout::supports_minimal_c_abi() const {
     return true;
 }
 
+bool TargetLayout::supports_shared_c_library() const {
+    const llvm::Triple triple(config_.triple);
+    return triple.getArch() == llvm::Triple::x86_64 &&
+           supports_minimal_c_abi() &&
+           (triple.isOSBinFormatELF() ||
+            triple.isKnownWindowsMSVCEnvironment());
+}
+
 std::expected<TypeLayout, std::string>
 TargetLayout::layout_of(const mir::Type& type) const {
     if (!type.valid())

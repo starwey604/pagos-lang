@@ -18,6 +18,7 @@ def main():
     parser.add_argument("--c-driver", choices=("clang", "msvc"), default="clang")
     parser.add_argument("--c-compiler")
     parser.add_argument("--archive-tool")
+    parser.add_argument("--link-library", action="append", default=[])
     parser.add_argument("source")
     parser.add_argument("extra", nargs="*")
     args = parser.parse_intermixed_args(arguments)
@@ -45,7 +46,7 @@ def main():
         program = executable_path(root / "program")
         link_c_program(args.c_compiler or clang, [linked_object], harness, program,
                        optimize=args.optimize or args.native_optimize,
-                       driver=args.c_driver)
+                       driver=args.c_driver, link_options=args.link_library)
         subprocess.run([str(program)], check=True, timeout=5)
         trap_cases = extra[1:] or (["trap", "store-trap", "discard-trap"] if extra else ["trap"])
         if args.no_traps:

@@ -1,0 +1,18 @@
+fn initial_state() -> u32 { 17 }
+static mut state: u32 = initial_state();
+extern fn peer_mix(a: u32, p: *mut u32, c: u32, q: *const u32,
+                    e: u32, f: u32) -> u32;
+extern fn peer_calls() -> u32;
+extern fn peer_pid() -> u32;
+fn signed_helper(value: i32) -> i32 { value - 1i32 }
+export fn shared_apply(a: u32, p: *mut u32, c: u32, q: *const u32,
+                        e: u32, f: u32) -> u32 {
+    let value = peer_mix(a, p, c, q, e, f);
+    *&state = state + value;
+    state
+}
+export fn shared_state() -> *mut u32 { &state }
+export fn shared_calls() -> u32 { peer_calls() }
+export fn shared_pid() -> u32 { peer_pid() }
+export fn shared_signed(value: i32) -> i32 { signed_helper(value) }
+export fn shared_trap(p: *const u32) -> u32 { *p }

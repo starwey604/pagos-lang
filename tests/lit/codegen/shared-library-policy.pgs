@@ -1,0 +1,29 @@
+// RUN: %pagosc --target=x86_64-pc-windows-msvc --shared-library emit-llvm %s | %FileCheck %s --check-prefix=WINDOWS
+// RUN: %pagosc --target=x86_64-pc-windows-msvc emit-llvm %s | %FileCheck %s --check-prefix=ORDINARY
+// RUN: %pagosc --target=x86_64-unknown-linux-gnu --shared-library emit-llvm %s | %FileCheck %s --check-prefix=ELF
+// RUN: %pagosc --target=x86_64-pc-windows-msvc --shared-library -O2 emit-obj %s -o %t.obj
+// RUN: llvm-readobj --coff-directives %t.obj | %FileCheck %s --check-prefix=DIRECTIVES
+// RUN: not %pagosc --shared-library --relocation-model=static emit-obj %s -o %t.bad 2>&1 | %FileCheck %s --check-prefix=STATIC
+// RUN: %assert_absent %t.bad
+// RUN: not %pagosc --target=riscv32-unknown-elf --shared-library emit-llvm %s 2>&1 | %FileCheck %s --check-prefix=TARGET
+// RUN: not %pagosc --shared-library check %s 2>&1 | %FileCheck %s --check-prefix=COMMAND
+static mut state: u32 = 17;
+extern fn foreign(value: u32) -> u32;
+fn helper(value: u32) -> u32 { value + 1 }
+export fn api(value: u32) -> u32 { foreign(helper(value)) }
+export fn address() -> *mut u32 { &state }
+// WINDOWS: @pagos.global.state = internal global i32 17
+// WINDOWS: declare i32 @foreign(i32)
+// WINDOWS-DAG: define dllexport i32 @api(i32
+// WINDOWS-DAG: define dllexport ptr @address()
+// WINDOWS-DAG: define internal i32 @pagos.helper.
+// ORDINARY-NOT: dllexport
+// ORDINARY: define i32 @api(i32
+// ELF-NOT: dllexport
+// ELF: define i32 @api(i32
+// ELF: !{i32 8, !"PIC Level", i32 2}
+// DIRECTIVES-DAG: /EXPORT:api
+// DIRECTIVES-DAG: /EXPORT:address
+// STATIC: shared library emission requires PIC relocation
+// TARGET: shared C libraries require x86-64 Linux ELF or Windows x64 MSVC COFF
+// COMMAND: emission options require emit-llvm or emit-obj

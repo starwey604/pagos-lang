@@ -1,0 +1,6 @@
+// REQUIRES: host-windows, minimal-c-abi
+// RUN: %run_c_abi --no-traps --link-library=kernel32.lib %s %S/../Inputs/windows_sdk.c
+// RUN: %run_c_abi --optimize --no-traps --link-library=kernel32.lib %s %S/../Inputs/windows_sdk.c
+// RUN: %run_c_abi --native-optimize --no-traps --link-library=kernel32.lib %s %S/../Inputs/windows_sdk.c
+extern fn GetCurrentProcessId() -> u32;
+export fn windows_process_id() -> u32 { GetCurrentProcessId() }

@@ -20,6 +20,8 @@ struct EmissionOptions {
     OptimizationLevel optimization{OptimizationLevel::Legacy};
     std::optional<RelocationModel> relocation; // Unspecified preserves PIC.
     std::optional<CodeModel> code_model; // Unspecified uses LLVM's default.
+    // Shared-library objects retain the same C ABI; linking remains external.
+    bool shared_library{};
 };
 
 class LLVMCodegen {

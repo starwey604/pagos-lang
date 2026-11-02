@@ -2,14 +2,16 @@
 
 ## Scope
 
-W1-W4 provide native Windows x64 development for the C++23 compiler.
+W1-W5 provide native Windows x64 development for the C++23 compiler.
 MSVC and clang-cl have Ninja Release and RelWithDebInfo configurations.
 Windows hosts can use the existing LLVM X86, RISCV, and ARM backends.
 
 Host unit, process, lit, and native execution regressions run on Windows.
 W4 admits the minimal `extern fn` / `export fn` C ABI on Windows x64 MSVC
 COFF, with actual MSVC and Clang C interoperability and static archives.
-DLLs, platform libraries, and Pagos source-level debugging are later work.
+W5 adds shared-library object emission, native DLL loading/interoperability,
+and a direct Windows SDK function-call regression. Automatic bindings and
+Pagos source-level debugging remain later work.
 Linux/QEMU remains the embedded execution baseline.
 
 ## Dependencies
@@ -152,8 +154,8 @@ cmake --preset windows-msvc-release `
 ```
 
 lit requires Python, lit, FileCheck, Clang, ld.lld, llvm-nm, and llvm-objdump.
-Process regressions require Python, Clang and `llvm-ar`; Windows also uses
-`cl` for its C interoperability matrix. These options never auto-disable
+Process regressions require Python, Clang, `llvm-ar` and `llvm-readobj`;
+Windows also uses `cl` for its C interoperability matrix. These options never auto-disable
 themselves when a tool is missing. Some Windows LLVM development archives omit
 FileCheck; the preparation step above supplies a matching binary.
 
@@ -245,8 +247,69 @@ from any compiler host. Generator replay now tests both explicit C effects
 and builtin input effects on both hosts with the same assertion paths.
 
 Explicit `section(...)` metadata remains ELF-only; ordinary globals and
-alignment work in COFF. DLL import/export annotations, Windows SDK bindings,
+alignment work in COFF. Shared-library function exports/imports are covered
+below. Per-declaration DLL attributes, automatic Windows SDK bindings,
 exceptions crossing Pagos frames and source-level debugging remain deferred.
+
+## Shared and Platform Libraries (W5)
+
+Use `--shared-library` with `emit-llvm` or `emit-obj` to emit a shared-library
+object. It is an emission policy, separate from C ABI semantics and Stage
+cache identity. The option is supported for the validated x86-64 Linux ELF
+and Windows x64 MSVC COFF targets. It requires PIC relocation and at least
+one `export fn` definition, and rejects a synthetic `pagos_main` entry.
+Use library-style modules containing declarations, helper functions and
+static storage; loading a library does not run a top-level Pagos program.
+
+Windows emits LLVM `dllexport` storage classes on the exported C definitions.
+On ELF, the same definitions retain their external visibility with PIC.
+Helpers and global storage stay private. Ordinary object emission keeps
+its existing symbol policy. No semantic/MIR Windows variant or new
+language-level import syntax is involved, and persistent cache formats do
+not change. A read-only cache shared with ordinary object mode must return
+the same Stage result without acquiring any DLL export policy.
+
+The driver still emits objects, not linked DLLs or import libraries. For
+the regression example, use the native Clang driver from the developer shell:
+
+```powershell
+clang -O2 -shared tests/lit/Inputs/shared_peer.c -Xlinker kernel32.lib `
+    -o build/pagos_shared_peer.dll `
+    -Xlinker /IMPLIB:build/pagos_shared_peer.lib
+./build/windows-msvc-release/pagosc.exe --shared-library -O2 emit-obj `
+    tests/lit/Inputs/shared_library.pgs -o build/shared.obj
+clang -shared build/shared.obj build/pagos_shared_peer.lib `
+    -o build/pagos_shared.dll -Xlinker /IMPLIB:build/pagos_shared.lib
+clang tests/lit/Inputs/shared_consumer.c build/pagos_shared.lib `
+    -Xlinker kernel32.lib -o build/shared-consumer.exe
+./build/shared-consumer.exe
+```
+
+Pass SDK library search names through the Clang driver's linker interface,
+as `-Xlinker kernel32.lib` above. Full existing paths to generated import libraries
+can be passed directly as in the next two commands. MSVC uses SDK library
+names after `/link`, as in the W4 example.
+
+`extern fn` function calls can bind through an import-library thunk; an
+additional Pagos `dllimport` declaration is not required for this subset.
+This follows the [MSVC function import contract](https://learn.microsoft.com/en-us/cpp/build/importing-into-an-application-using-declspec-dllimport).
+Public data exports, callbacks/function-pointer types and direct C++ ABI are
+outside this slice. Platform APIs requiring unsupported signatures still
+need a C shim. The direct SDK example declares `GetCurrentProcessId` as a
+Runtime `extern fn` returning `u32`, matching Windows `DWORD`, and links
+`kernel32.lib`; it does not infer arbitrary Windows headers or signatures.
+
+Native regressions run legacy emission, integrated O2 and external Clang O2
+against MSVC/Clang C DLL producers and consumers. They inspect actual export
+and dependency tables, exercise import libraries and explicit loading, check
+mutable state/pointers and signed results, and unload/reload twice to verify
+fresh storage. Exact traps and missing library/dependency/symbol failures
+are checked in separate child processes. Paths contain Unicode, spaces and
+apostrophes. Windows uses `LoadLibraryExW` with the library's directory in
+its dependency search; Linux runs the same checks with `dlopen` and `$ORIGIN`.
+Runtime loader setup and library-handle lifetime belong to the caller.
+Pointers and function addresses must not outlive the loaded library; no
+cross-CRT allocation ownership is introduced.
 
 ## Continuous Regression
 
@@ -279,6 +342,6 @@ non-UTF-8 wire names retain the baseline admission and round-trip behavior.
 The conservative compiler build identity includes CMake module content,
 C++ standard mode, frontend variant, and selected CRT, in addition to existing
 source/configuration inputs. Changing the host toolchain can invalidate cache
-reuse as intended. W1-W4 do not change C1-C4 wire formats, hash domains,
+reuse as intended. W1-W5 do not change C1-C4 wire formats, hash domains,
 versions, fixed fixtures, or old-format rejection rules; see the
 [protocol baseline](cache-protocol-baseline.md).

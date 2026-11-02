@@ -76,6 +76,7 @@ void print_usage() {
         "[--max-aggregate-members=N] [--max-aggregate-bytes=N] "
         "[--target=TRIPLE] [--cpu=CPU] [--features=FEATURES] "
         "[-O0|-O1|-O2|-O3|-Os|-Oz] "
+        "[--shared-library] "
         "[--relocation-model=pic|static] [--code-model=default|small|medium] "
         "[--stage-cache=off|read-write|read-only] "
         "[--cache-dir=PATH] [--cache-stats] "
@@ -211,6 +212,9 @@ std::expected<Options, std::string> parse_options(int argument_count,
             else
                 return std::unexpected("invalid optimization level: " +
                                        std::string(argument));
+        } else if (argument == "--shared-library") {
+            emission_options = true;
+            emission.shared_library = true;
         } else if (argument.starts_with("--relocation-model=")) {
             emission_options = true;
             const auto value = argument.substr(19);
