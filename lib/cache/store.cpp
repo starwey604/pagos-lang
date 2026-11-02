@@ -41,7 +41,8 @@ std::expected<void, StoreError> checkpoint(const StoreOptions& options,
 }
 bool valid_options(const StoreOptions& options, const fs::path& root) {
     return !root.empty() &&
-           root.native().find('\0') == fs::path::string_type::npos &&
+           root.native().find(fs::path::value_type{}) ==
+               fs::path::string_type::npos &&
            options.lock_timeout.count() >= 0 &&
            options.object_bytes <=
                std::numeric_limits<std::size_t>::max() - object_header_size;

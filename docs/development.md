@@ -75,6 +75,20 @@ retains the selected path in the build cache.
 Use `gcc-debug` for the second supported host compiler, `release` for optimized
 builds, and `asan` for AddressSanitizer plus UndefinedBehaviorSanitizer.
 
+### Windows host builds
+
+Native Windows x64 builds have MSVC and clang-cl Release/RelWithDebInfo
+presets. See [Windows host development](windows.md) for SDK dependencies,
+developer-shell setup, CRT compatibility, and current validation limits.
+The Windows presets explicitly select unit tests; the existing Linux presets
+continue to select all test suites.
+
+With `BUILD_TESTING=ON`, `PAGOS_ENABLE_PROCESS_TESTS` and
+`PAGOS_ENABLE_LIT_TESTS` independently select process and lit regressions.
+Both default to `ON`. Unit tests require GoogleTest but do not require Python,
+Clang, lit, or FileCheck. Enabling either other suite requires its tools;
+missing tools fail configuration instead of silently dropping that suite.
+
 ## Run the Compiler
 
 ### Experimental Stage cache

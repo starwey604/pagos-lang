@@ -179,6 +179,8 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
   evaluation failures
 - [Development guide](docs/development.md): C++23 toolchain, build presets,
   compiler commands, and tests
+- [Windows host development](docs/windows.md): native MSVC/clang-cl builds,
+  SDK dependencies, and current support boundaries
 - [Compiler architecture](docs/architecture.md): the LLVM-based implementation
   plan
 - [Roadmap](docs/roadmap.md): incremental milestones and acceptance criteria

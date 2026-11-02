@@ -23,6 +23,10 @@ Use `gcc-debug` for the GCC compatibility build and `asan` for AddressSanitizer
 plus UndefinedBehaviorSanitizer. See `docs/development.md` for prerequisites and
 individual CLI examples.
 
+For native Windows x64 hosts, use the `windows-msvc-release` or
+`windows-clang-cl-release` presets from an x64 Visual Studio developer shell.
+See `docs/windows.md` for dependencies and explicit test-suite selection.
+
 ## Coding Style & Naming Conventions
 
 The project requires C++23, four-space indentation, and no compiler extensions.

@@ -739,18 +739,18 @@ TEST_F(RecursiveCheckpointTest,
                 " + 1; ";
     text += "n511 } let aa = wide(external_input());";
     cache_test::Input input(text);
-    auto identity = input.identity();
-    ASSERT_TRUE(identity);
+    auto wide_identity = input.identity();
+    ASSERT_TRUE(wide_identity);
     StageAnalyzer analyzer(input.diagnostics, input.checker.types(), {},
                            cache_test::context());
     auto module = analyzer.analyze(*input.module);
     ASSERT_FALSE(input.diagnostics.has_error());
     const auto evidence_dir = directory / "wide-evidence";
     ASSERT_TRUE(FunctionEvidence::publish(cache::FileStore(evidence_dir),
-                                          *module->provenance, *identity,
+                                          *module->provenance, *wide_identity,
                                           cache_test::context()));
-    auto closure = FunctionEvidence::load(cache::FileStore(evidence_dir),
-                                          *identity, cache_test::context());
+    auto closure = FunctionEvidence::load(
+        cache::FileStore(evidence_dir), *wide_identity, cache_test::context());
     ASSERT_TRUE(closure);
     auto view = FunctionEvidenceView::open(std::move(*closure));
     ASSERT_TRUE(view);

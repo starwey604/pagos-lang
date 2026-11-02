@@ -287,7 +287,8 @@ EvidenceBuilder::EvidenceBuilder(EvidenceBuildConfig config) {
             std::numeric_limits<std::size_t>::max() - envelope_bytes ||
         (config.mode == EvidenceBuildMode::Spill &&
          (config.directory.empty() ||
-          config.directory.native().find('\0') != fs::path::string_type::npos)))
+          config.directory.native().find(fs::path::value_type{}) !=
+              fs::path::string_type::npos)))
         throw std::invalid_argument("invalid evidence build configuration");
     impl_ = std::make_unique<Impl>(std::move(config));
 }

@@ -276,7 +276,8 @@ std::expected<TaskStore, StoreError> TaskStore::open(const fs::path& parent,
                                                      TaskStoreOptions options) {
     try {
         require(!parent.empty() &&
-                    parent.native().find('\0') == fs::path::string_type::npos &&
+                    parent.native().find(fs::path::value_type{}) ==
+                        fs::path::string_type::npos &&
                     options.store.lock_timeout.count() >= 0 &&
                     (access == TaskAccess::ReadOnly ||
                      options.disk_bytes >= marker.size() + head_bytes),

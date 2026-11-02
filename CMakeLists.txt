@@ -10,57 +10,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(PAGOS_ENABLE_SANITIZERS "Enable AddressSanitizer and UBSanitizer" OFF)
 option(PAGOS_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
 option(PAGOS_USE_LLVM_DYLIB "Prefer the monolithic LLVM shared library" ON)
+option(PAGOS_ENABLE_PROCESS_TESTS "Enable cross-process CLI regression tests" ON)
+option(PAGOS_ENABLE_LIT_TESTS "Enable lit/FileCheck and native codegen tests" ON)
 
-find_package(LLVM REQUIRED CONFIG)
-if(NOT LLVM_VERSION_MAJOR EQUAL 22 AND NOT LLVM_VERSION_MAJOR EQUAL 23)
-    message(FATAL_ERROR
-        "Pagos currently requires LLVM 22.x or 23.x; found ${LLVM_PACKAGE_VERSION}")
-endif()
-
-message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION} in ${LLVM_DIR}")
-foreach(PAGOS_TARGET X86 RISCV ARM)
-    if(NOT PAGOS_TARGET IN_LIST LLVM_TARGETS_TO_BUILD)
-        message(FATAL_ERROR "Pagos preparation requires LLVM ${PAGOS_TARGET} backend")
-    endif()
-endforeach()
-
-separate_arguments(PAGOS_LLVM_DEFINITIONS
-    NATIVE_COMMAND "${LLVM_DEFINITIONS}")
-
-add_library(pagos_project_options INTERFACE)
-target_compile_features(pagos_project_options INTERFACE cxx_std_23)
-
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(pagos_project_options INTERFACE
-        -Wall
-        -Wextra
-        -Wconversion
-        -Wpedantic
-        $<$<BOOL:${PAGOS_WARNINGS_AS_ERRORS}>:-Werror>)
-endif()
-
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(pagos_project_options INTERFACE
-        -Wshadow
-        -Wno-missing-designated-field-initializers)
-endif()
-
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(pagos_project_options INTERFACE
-        -Wno-missing-field-initializers)
-endif()
-
-if(PAGOS_ENABLE_SANITIZERS)
-    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-        message(FATAL_ERROR "Sanitizers require Clang or GCC")
-    endif()
-    target_compile_options(pagos_project_options INTERFACE
-        -fsanitize=address,undefined
-        -fno-omit-frame-pointer)
-    target_link_options(pagos_project_options INTERFACE
-        -fsanitize=address,undefined
-        -fno-omit-frame-pointer)
-endif()
+include(cmake/llvm_setup.cmake)
+include(cmake/compiler_options.cmake)
 
 add_library(pagos_source
     lib/source/diagnostic.cpp
@@ -81,7 +35,7 @@ target_link_libraries(pagos_syntax PUBLIC Pagos::source pagos_project_options)
 add_library(pagos_values lib/integer.cpp lib/value.cpp lib/sema/type.cpp)
 add_library(Pagos::values ALIAS pagos_values)
 target_include_directories(pagos_values PUBLIC include)
-target_include_directories(pagos_values SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
+pagos_use_llvm_headers(pagos_values)
 target_compile_options(pagos_values PRIVATE ${PAGOS_LLVM_DEFINITIONS})
 target_link_libraries(pagos_values PUBLIC pagos_project_options)
 if(PAGOS_USE_LLVM_DYLIB AND TARGET LLVM AND LLVM_LINK_LLVM_DYLIB)
@@ -106,7 +60,7 @@ add_library(pagos_cache lib/cache/codec.cpp lib/cache/key.cpp lib/cache/store.cp
     lib/cache/task_store.cpp)
 add_library(Pagos::cache ALIAS pagos_cache)
 target_include_directories(pagos_cache PUBLIC include)
-target_include_directories(pagos_cache SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
+pagos_use_llvm_headers(pagos_cache)
 target_link_libraries(pagos_cache PUBLIC Pagos::values pagos_project_options)
 
 # Compact provenance storage; construction and immutable queries are separate.
@@ -121,7 +75,7 @@ add_library(pagos_provenance lib/stage/provenance_graph.cpp
     lib/stage/evidence_session.cpp)
 add_library(Pagos::provenance ALIAS pagos_provenance)
 target_include_directories(pagos_provenance PUBLIC include)
-target_include_directories(pagos_provenance SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
+pagos_use_llvm_headers(pagos_provenance)
 target_link_libraries(pagos_provenance
     PUBLIC pagos_project_options Pagos::cache PRIVATE Pagos::values)
 
@@ -158,7 +112,7 @@ add_library(Pagos::stage ALIAS pagos_stage)
 target_include_directories(pagos_stage PUBLIC include)
 target_link_libraries(pagos_stage
     PUBLIC Pagos::sema Pagos::hir Pagos::vm Pagos::provenance Pagos::cache pagos_project_options)
-target_include_directories(pagos_stage SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
+pagos_use_llvm_headers(pagos_stage)
 
 add_executable(pagos_snapshot_bench tools/snapshot_bench/main.cpp)
 target_link_libraries(pagos_snapshot_bench PRIVATE Pagos::stage pagos_project_options)
@@ -173,7 +127,7 @@ target_link_libraries(pagos_mir PUBLIC Pagos::hir pagos_project_options)
 add_library(pagos_codegen lib/codegen/llvm_codegen.cpp lib/codegen/target.cpp)
 add_library(Pagos::codegen ALIAS pagos_codegen)
 target_include_directories(pagos_codegen PUBLIC include)
-target_include_directories(pagos_codegen SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS})
+pagos_use_llvm_headers(pagos_codegen)
 target_compile_options(pagos_codegen PRIVATE ${PAGOS_LLVM_DEFINITIONS})
 target_link_libraries(pagos_codegen
     PUBLIC Pagos::mir pagos_project_options)
@@ -213,12 +167,13 @@ file(GLOB_RECURSE PAGOS_IDENTITY_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/lib/*.h" "${CMAKE_SOURCE_DIR}/lib/*.cpp"
     "${CMAKE_SOURCE_DIR}/tools/pagosc/*.cpp"
     "${CMAKE_SOURCE_DIR}/tools/pagosc/*.h"
-    "${CMAKE_SOURCE_DIR}/tools/pagosc/*.h.in")
+    "${CMAKE_SOURCE_DIR}/tools/pagosc/*.h.in"
+    "${CMAKE_SOURCE_DIR}/cmake/*.cmake")
 list(SORT PAGOS_IDENTITY_SOURCES)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     ${PAGOS_IDENTITY_SOURCES})
 set(PAGOS_IDENTITY_INPUT
-    "${PROJECT_VERSION}|${CMAKE_CXX_COMPILER_ID}|${CMAKE_CXX_COMPILER_VERSION}|${CMAKE_CXX_COMPILER_TARGET}|${CMAKE_SYSROOT}|${LLVM_PACKAGE_VERSION}|${CMAKE_BUILD_TYPE}|${CMAKE_CXX_FLAGS}|${PAGOS_ENABLE_SANITIZERS}|${PAGOS_USE_LLVM_DYLIB}")
+    "${PROJECT_VERSION}|${CMAKE_CXX_COMPILER_ID}|${CMAKE_CXX_COMPILER_VERSION}|${CMAKE_CXX_COMPILER_TARGET}|${CMAKE_SYSROOT}|${LLVM_PACKAGE_VERSION}|${CMAKE_BUILD_TYPE}|${CMAKE_CXX_FLAGS}|${PAGOS_ENABLE_SANITIZERS}|${PAGOS_USE_LLVM_DYLIB}|${CMAKE_CXX_STANDARD}|${CMAKE_CXX23_STANDARD_COMPILE_OPTION}|${CMAKE_CXX_COMPILER_FRONTEND_VARIANT}|${CMAKE_MSVC_RUNTIME_LIBRARY}")
 string(TOUPPER "${CMAKE_BUILD_TYPE}" PAGOS_IDENTITY_CONFIGURATION)
 string(APPEND PAGOS_IDENTITY_INPUT "|${CMAKE_CXX_FLAGS_${PAGOS_IDENTITY_CONFIGURATION}}")
 foreach(PAGOS_IDENTITY_SOURCE IN LISTS PAGOS_IDENTITY_SOURCES)

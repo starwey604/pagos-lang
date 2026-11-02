@@ -2,6 +2,7 @@
 /build/
 /cmake-build-*/
 /compile_commands.json
+/CMakeUserPresets.json
 
 # Local caches and Python bytecode
 /.cache/
