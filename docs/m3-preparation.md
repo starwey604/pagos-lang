@@ -111,7 +111,7 @@ RISC-V GCC 15.2.0 两条链路均通过成功、主动失败、BSS 初始化缺�
 
 - [x] 在现有文档 CI 之外增加编译器构建和测试，覆盖 Clang debug、GCC debug
   和 ASan/UBSan；增加 Release 构建与运行冒烟检查，按成本分层调度。
-- [x] 固定可复现的依赖安装方式或构建镜像，记录 LLVM 22、C++26 编译器、
+- [x] 固定可复现的依赖安装方式或构建镜像，记录 LLVM 22、C++23 编译器、
   CMake、GoogleTest、lit/FileCheck 的实际版本，不依赖 runner 默认工具链。
 - [x] 保留既有测试的语义覆盖，包括诊断、必要的 HIR/MIR/LLVM 结构、运行顺序、
   陷阱和 CRC 差分测试；不冻结所有内部文本输出。

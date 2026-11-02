@@ -26,7 +26,7 @@ Acceptance criteria:
 
 ## Milestone 1: First residual program
 
-Status: baseline complete. The C++26 compiler implements the vertical slice
+Status: baseline complete. The C++23 compiler implements the vertical slice
 below with typed HIR, explainable stage paths, pure Comptime evaluation, verified
 host LLVM IR, and GoogleTest plus `lit`/`FileCheck` coverage.
 

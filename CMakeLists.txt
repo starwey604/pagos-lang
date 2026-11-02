@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.30)
 
 project(Pagos VERSION 0.1.0 LANGUAGES C CXX)
 
-set(CMAKE_CXX_STANDARD 26)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -28,7 +28,7 @@ separate_arguments(PAGOS_LLVM_DEFINITIONS
     NATIVE_COMMAND "${LLVM_DEFINITIONS}")
 
 add_library(pagos_project_options INTERFACE)
-target_compile_features(pagos_project_options INTERFACE cxx_std_26)
+target_compile_features(pagos_project_options INTERFACE cxx_std_23)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(pagos_project_options INTERFACE

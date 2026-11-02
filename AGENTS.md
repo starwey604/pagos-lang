@@ -25,7 +25,7 @@ individual CLI examples.
 
 ## Coding Style & Naming Conventions
 
-The project requires C++26, four-space indentation, and no compiler extensions.
+The project requires C++23, four-space indentation, and no compiler extensions.
 Format C++ with `.clang-format` and check it with `clang-format --dry-run
 --Werror`. Use `snake_case` for files/functions, `PascalCase` for types, and
 parallel public/implementation paths. Keep syntax nodes free of inferred types

@@ -177,7 +177,7 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
   expected stages, residual work, and errors
 - [Diagnostic conventions](docs/diagnostics.md): stable structure for stage and
   evaluation failures
-- [Development guide](docs/development.md): C++26 toolchain, build presets,
+- [Development guide](docs/development.md): C++23 toolchain, build presets,
   compiler commands, and tests
 - [Compiler architecture](docs/architecture.md): the LLVM-based implementation
   plan
@@ -189,7 +189,7 @@ See [Compiler architecture](docs/architecture.md) for the complete design.
 
 ## Status
 
-Milestone 1 is complete. The C++26 reference compiler parses and type-checks the
+Milestone 1 is complete. The C++23 reference compiler parses and type-checks the
 core language, infers stages, evaluates Comptime expressions, explains Runtime
 dependency paths, and emits verified residual LLVM IR for the host target.
 The [Milestone 2 core baseline](docs/milestone-2.md) is complete, with total

@@ -926,7 +926,7 @@ TEST_F(FunctionEvidenceTest,
     EXPECT_EQ(view->view()->read_stats().objects_read, 0U);
     const auto binding = view->revision(input.source.text());
     ASSERT_TRUE(binding);
-    auto changed = view->revision(input.source.text() + std::string(" "));
+    auto changed = view->revision(std::string(input.source.text()) + " ");
     ASSERT_TRUE(changed);
     EXPECT_EQ(binding->closure, changed->closure);
     EXPECT_EQ(binding->positions, changed->positions);

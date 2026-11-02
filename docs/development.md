@@ -2,11 +2,12 @@
 
 ## Toolchain Contract
 
-The Milestone 1 reference compiler is built as C++26. The pinned CI baseline
+The reference compiler is built as C++23. The pinned CI baseline
 uses Clang 22 or GCC 16 with LLVM 22.1.8. Local development also supports
-Clang 23 with LLVM 23.x. Code may use C++26 features implemented by both
-compiler families; avoid relying on a single compiler's
-experimental extension.
+Clang 23 with LLVM 23.x. Code may use C++23 features implemented by both
+compiler families; avoid relying on C++26 features or a single compiler's
+experimental extension. The language-standard baseline does not lower the
+supported compiler or LLVM versions.
 
 Required tools and libraries are:
 

@@ -14,7 +14,7 @@ Pagos-specific semantics must be resolved before lowering to LLVM IR.
 
 ## Milestone 1 implementation baseline
 
-The reference compiler uses C++26, CMake, and LLVM 22. Its populated modules
+The reference compiler uses C++23, CMake, and LLVM 22. Its populated modules
 mirror the repository layout: source management, syntax, semantic typing, typed
 HIR, stage analysis, the compile-time evaluator, and LLVM code generation are
 separate libraries. The AST contains syntax and spans only; an independent type
