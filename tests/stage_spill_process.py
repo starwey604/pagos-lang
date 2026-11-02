@@ -48,7 +48,9 @@ with tempfile.TemporaryDirectory(prefix="pagos-spill-process-") as temporary:
                 assert time.monotonic() < deadline, "Stage readiness timeout"
                 time.sleep(0.005)
             session = pathlib.Path(ready.read_text())
-            assert session.parent == root / "spill"
+            # Canonical C++ paths may expand a short name or directory alias
+            # used by the runner's temporary directory. Compare file identity.
+            assert session.parent.samefile(root / "spill"), (session, root)
             assert not (root / "semantic").exists(), "pending semantic cache escaped before proof"
             counts = reclaim(root / "spill")
             assert counts["active"] == 1 and counts["reclaimed"] == counts["errors"] == 0, counts
