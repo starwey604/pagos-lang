@@ -1,4 +1,5 @@
 #include "evidence_session.h"
+#include "pagos/source/path.h"
 
 #include <llvm/ADT/ScopeExit.h>
 #include <llvm/ADT/SmallString.h>
@@ -38,7 +39,7 @@ struct Descriptor {
 EvidenceSession::~EvidenceSession() {
     const std::lock_guard lock(lifecycle);
     if (!directory.empty()) {
-        active.erase(directory.generic_string());
+        active.erase(source::path_to_utf8(directory));
         std::error_code ignored;
         (void)fs::remove_all(directory, ignored);
     }
@@ -63,16 +64,17 @@ EvidenceSession::create(const fs::path& parent_path) {
         return std::unexpected(io_error(ec));
     llvm::SmallString<256> name;
     if (auto error = sysfs::createUniqueDirectory(
-            (canonical / "pagos-evidence").string(), name))
+            source::path_to_utf8(canonical / "pagos-evidence"), name))
         return std::unexpected(io_error(error));
     llvm::scope_exit rollback([&] { (void)sysfs::remove_directories(name); });
     // Own immediately, including initialization failures. result is destroyed
     // after the local lock so its destructor cannot recursively lock lifecycle.
-    result->directory = std::string(name);
+    result->directory =
+        source::path_from_utf8(std::string_view(name.data(), name.size()));
     rollback.release();
     if (auto error = sysfs::openFileForWrite(
-            (result->directory / lock_name).string(), result->descriptor_,
-            sysfs::CD_CreateNew, sysfs::OF_None, 0600))
+            source::path_to_utf8(result->directory / lock_name),
+            result->descriptor_, sysfs::CD_CreateNew, sysfs::OF_None, 0600))
         return std::unexpected(io_error(error));
     if (auto error = sysfs::tryLockFile(result->descriptor_,
                                         std::chrono::milliseconds(0)))
@@ -84,7 +86,7 @@ EvidenceSession::create(const fs::path& parent_path) {
     output.clear_error();
     if (error)
         return std::unexpected(io_error(error));
-    active.insert(result->directory.generic_string());
+    active.insert(source::path_to_utf8(result->directory));
     return result;
 }
 std::expected<EvidenceCleanupStats, EvidenceError>
@@ -116,11 +118,12 @@ reclaim_evidence_sessions(const fs::path& parent_path) {
         entries.increment(ec);
         if (ec)
             return std::unexpected(io_error(ec));
-        if (!path.filename().string().starts_with("pagos-evidence-"))
+        if (!source::path_to_utf8(path.filename())
+                 .starts_with("pagos-evidence-"))
             continue;
         ++result.examined;
         const std::lock_guard lock(lifecycle);
-        if (active.contains(path.generic_string())) {
+        if (active.contains(source::path_to_utf8(path))) {
             ++result.active;
             continue;
         }
@@ -144,9 +147,9 @@ reclaim_evidence_sessions(const fs::path& parent_path) {
             continue;
         }
         Descriptor descriptor;
-        if (sysfs::openFileForReadWrite(owner_path.string(), descriptor.value,
-                                        sysfs::CD_OpenExisting,
-                                        sysfs::OF_None)) {
+        if (sysfs::openFileForReadWrite(
+                source::path_to_utf8(owner_path), descriptor.value,
+                sysfs::CD_OpenExisting, sysfs::OF_None)) {
             ++result.errors;
             continue;
         }

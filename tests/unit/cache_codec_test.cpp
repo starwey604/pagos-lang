@@ -2,6 +2,7 @@
 #include "cache_test_input.h"
 #include "protocol_fixture.h"
 
+#include <algorithm>
 #include <limits>
 
 namespace {
@@ -215,6 +216,26 @@ TEST(CacheCodec, InvalidContextsCannotProduceUsableKeys) {
     const auto bytes = encode_query_key(key);
     ASSERT_TRUE(bytes);
     EXPECT_EQ(decode_query_key(*bytes).error(), Error::IncompatibleVersion);
+}
+
+TEST(CacheCodec, InvalidWireModulePathsReturnTypedErrors) {
+    const auto key = cache_test::key();
+    const auto encoded = encode_query_key(key);
+    ASSERT_TRUE(encoded);
+    const auto& path = key.context.module.relative_path;
+    for (const auto* invalid :
+         {"/rc/input.pgs", "src//nput.pgs", "src/./put.pgs", "src/../ut.pgs",
+          "src\\input.pgs", "s:c/input.pgs"}) {
+        auto bytes = *encoded;
+        const auto position =
+            std::search(bytes.begin(), bytes.end(), path.begin(), path.end());
+        ASSERT_NE(position, bytes.end());
+        ASSERT_EQ(std::string_view(invalid).size(), path.size());
+        std::copy_n(invalid, path.size(), position);
+        const auto result = decode_query_key(bytes);
+        ASSERT_FALSE(result) << invalid;
+        EXPECT_EQ(result.error(), Error::InvalidContext);
+    }
 }
 
 TEST(CacheCodec, FrozenBaselineValuesAndKeysDecodeIndependently) {

@@ -186,6 +186,7 @@ string(APPEND PAGOS_IDENTITY_INPUT "|${PAGOS_CMAKE_DIGEST}")
 string(SHA256 PAGOS_CACHE_BUILD_ID "${PAGOS_IDENTITY_INPUT}")
 configure_file(tools/pagosc/build_identity.h.in generated/build_identity.h @ONLY)
 target_include_directories(pagosc PRIVATE "${CMAKE_BINARY_DIR}/generated")
+pagos_use_llvm_headers(pagosc)
 
 add_executable(pagos_function_evidence_bench tools/function_evidence_bench/main.cpp)
 target_include_directories(pagos_function_evidence_bench PRIVATE "${CMAKE_BINARY_DIR}/generated")

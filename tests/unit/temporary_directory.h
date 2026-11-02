@@ -1,5 +1,7 @@
 #pragma once
 
+#include "pagos/source/path.h"
+
 #include <llvm/ADT/SmallString.h>
 #include <llvm/Support/FileSystem.h>
 
@@ -12,7 +14,7 @@ inline std::filesystem::path temporary_directory(const char* prefix) {
     llvm::SmallString<128> path;
     if (const auto error = llvm::sys::fs::createUniqueDirectory(prefix, path))
         throw std::filesystem::filesystem_error("create test directory", error);
-    return std::filesystem::path(path.c_str());
+    return source::path_from_utf8(std::string_view(path.data(), path.size()));
 }
 
 class TemporaryDirectory {

@@ -1,5 +1,6 @@
 #include "cache_test_input.h"
 #include "pagos/cache/store.h"
+#include "symlink_support.h"
 #include "temporary_directory.h"
 
 #include <chrono>
@@ -452,23 +453,38 @@ TEST_F(CacheStore, NonRegularEntriesCannotBecomeCacheCandidates) {
     const auto candidate = store.lookup(key, named("inputs"));
     ASSERT_TRUE(candidate);
     const auto path = object(candidate->artifacts[0].object);
-    const auto outside = directory / "outside";
-    write(outside, read(path));
-    fs::remove(path);
-    fs::create_symlink(outside, path);
-    EXPECT_EQ(store.lookup(key, named("inputs")).error().code,
-              StoreErrorCode::CorruptObject);
-    EXPECT_FALSE(publish(store));
     fs::remove(path);
     fs::create_directory(path);
     EXPECT_EQ(store.lookup(key, named("inputs")).error().code,
               StoreErrorCode::CorruptObject);
+    EXPECT_FALSE(publish(store));
     const auto hash = query_fingerprint(key)->hex();
     const auto lock = root / "queries" / hash.substr(0, 2) / (hash + ".lock");
     fs::remove(lock);
     fs::create_directory(lock);
     EXPECT_EQ(store.lookup(key, named("inputs")).error().code,
               StoreErrorCode::IoFailure);
+}
+
+TEST_F(CacheStore, SymlinksCannotBecomeCacheCandidates) {
+    FileStore store(root);
+    ASSERT_TRUE(publish(store));
+    const auto candidate = store.lookup(key, named("inputs"));
+    ASSERT_TRUE(candidate);
+    const auto path = object(candidate->artifacts[0].object);
+    const auto outside = directory / "outside";
+    write(outside, read(path));
+    fs::remove(path);
+    std::error_code error;
+    fs::create_symlink(outside, path, error);
+    if (pagos::test::symlink_unavailable(error))
+        GTEST_SKIP() << "File symlink creation unavailable: "
+                     << error.message();
+    ASSERT_FALSE(error) << error.message();
+    EXPECT_EQ(store.lookup(key, named("inputs")).error().code,
+              StoreErrorCode::CorruptObject);
+    EXPECT_FALSE(publish(store));
+    EXPECT_TRUE(fs::is_regular_file(outside));
 }
 } // namespace
 

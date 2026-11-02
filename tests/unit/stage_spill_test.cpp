@@ -137,7 +137,11 @@ TEST_F(StageSpillTest, AnalyzerReleasesWorkingTablesAndCanAnalyzeAgain) {
     EXPECT_GT(before.before_release.arguments_bytes, 0U);
     EXPECT_GT(before.before_release.cache_bytes, 0U);
     EXPECT_GT(before.before_release.entries, 0U);
-    EXPECT_EQ(before.after_release.tables_bytes, 0U);
+    EXPECT_EQ(before.before_analysis.entries, 0U);
+    EXPECT_GT(before.before_release.tables_bytes,
+              before.before_analysis.tables_bytes);
+    EXPECT_EQ(before.after_release.tables_bytes,
+              before.before_analysis.tables_bytes);
     EXPECT_EQ(before.after_release.arguments_bytes, 0U);
     EXPECT_EQ(before.after_release.cache_bytes, 0U);
     EXPECT_EQ(before.after_release.entries, 0U);
@@ -150,6 +154,8 @@ TEST_F(StageSpillTest, AnalyzerReleasesWorkingTablesAndCanAnalyzeAgain) {
     EXPECT_EQ(solve(*first->provenance, root, QueryKind::Value, true).sources,
               source.sources);
     EXPECT_EQ(analyzer.memory_stats().after_release.entries, 0U);
+    EXPECT_EQ(analyzer.memory_stats().after_release.tables_bytes,
+              before.before_analysis.tables_bytes);
 }
 
 TEST_F(StageSpillTest,

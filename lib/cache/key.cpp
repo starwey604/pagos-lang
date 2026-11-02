@@ -2,7 +2,7 @@
 #include "wire.h"
 
 #include <algorithm>
-#include <filesystem>
+#include <string_view>
 
 namespace pagos::cache {
 bool valid_module_identity(const ModuleIdentity& module) {
@@ -12,13 +12,18 @@ bool valid_module_identity(const ModuleIdentity& module) {
         module.relative_path.find('\\') != std::string::npos ||
         module.relative_path.find(':') != std::string::npos)
         return false;
-    const std::filesystem::path path(module.relative_path);
-    if (path.is_absolute() ||
-        path.lexically_normal().generic_string() != module.relative_path)
-        return false;
-    for (const auto& part : path)
-        if (part == ".." || part == "." || part.empty())
+    // Protocol paths are byte strings with '/' separators, independent of
+    // host path roots, encodings, and lexical normalization rules.
+    auto remaining = std::string_view(module.relative_path);
+    while (true) {
+        const auto separator = remaining.find('/');
+        const auto part = remaining.substr(0, separator);
+        if (part.empty() || part == "." || part == "..")
             return false;
+        if (separator == std::string_view::npos)
+            break;
+        remaining.remove_prefix(separator + 1);
+    }
     return true;
 }
 bool valid_definition_id(const StableDefinitionId& definition) {

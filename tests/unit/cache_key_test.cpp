@@ -6,6 +6,55 @@ namespace {
 using namespace pagos;
 using namespace pagos::cache;
 
+TEST(CacheKey, ModulePathsUseHostIndependentProtocolComponents) {
+    for (const auto* path :
+         {"input.pgs", "src/input.pgs", ".hidden/file.pgs", ".../input.pgs",
+          "with spaces/file .pgs", "模块/文件.pgs"}) {
+        auto key = cache_test::key();
+        key.context.module.relative_path = path;
+        key.definition.module = key.context.module;
+        ASSERT_TRUE(valid_module_identity(key.context.module)) << path;
+        const auto bytes = encode_query_key(key);
+        ASSERT_TRUE(bytes) << path;
+        EXPECT_EQ(decode_query_key(*bytes), key);
+    }
+    for (const auto* path :
+         {"", "/input.pgs", "//host/input.pgs", "src/", "src//input.pgs", ".",
+          "..", "./input.pgs", "../input.pgs", "src/./input.pgs",
+          "src/../input.pgs", "src/.", "src/..", "src\\input.pgs",
+          "C:input.pgs", "C:/input.pgs"}) {
+        auto key = cache_test::key();
+        key.context.module.relative_path = path;
+        key.definition.module = key.context.module;
+        EXPECT_FALSE(valid_module_identity(key.context.module)) << path;
+        const auto encoded = encode_query_key(key);
+        ASSERT_FALSE(encoded) << path;
+        EXPECT_EQ(encoded.error(), Error::InvalidContext);
+    }
+}
+
+TEST(CacheKey, ModuleIdentityBytesNeverUseTheHostCodePage) {
+    // Preserve the baseline byte contract, including non-UTF-8 names. Native
+    // filesystem conversion belongs at the CLI boundary, not in the codec.
+    for (unsigned byte = 0; byte <= 255; ++byte) {
+        auto key = cache_test::key();
+        key.context.module.relative_path =
+            "src/" + std::string(1, static_cast<char>(byte)) + "/input.pgs";
+        key.definition.module = key.context.module;
+        const bool valid = byte != 0 && byte != '.' && byte != '/' &&
+                           byte != '\\' && byte != ':';
+        EXPECT_EQ(valid_module_identity(key.context.module), valid) << byte;
+        const auto encoded = encode_query_key(key);
+        ASSERT_EQ(encoded.has_value(), valid) << byte;
+        if (encoded)
+            EXPECT_EQ(decode_query_key(*encoded), key) << byte;
+        else
+            EXPECT_EQ(encoded.error(), Error::InvalidContext);
+    }
+    EXPECT_FALSE(valid_module_identity({"", "input.pgs"}));
+    EXPECT_FALSE(valid_module_identity({std::string("w\0s", 3), "input.pgs"}));
+}
+
 TEST(CacheKey, DefinitionCatalogMatchesFullIdentityAndValidation) {
     cache_test::Input input("record R { a: u32 } fn f(x: u32) -> u32 { let a = "
                             "[7, x]; a[0] + x } let a = f(3);");

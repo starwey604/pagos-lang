@@ -5,6 +5,7 @@
 #include "pagos/mir/mir.h"
 #include "pagos/sema/type_checker.h"
 #include "pagos/source/diagnostic.h"
+#include "pagos/source/path.h"
 #include "pagos/source/source_manager.h"
 #include "pagos/stage/function_evidence_view.h"
 #include "pagos/stage/provenance_analysis.h"
@@ -15,6 +16,8 @@
 #include "query_tasks.h"
 #include "recursive_summaries.h"
 #include "scalar_replay.h"
+
+#include <llvm/Support/InitLLVM.h>
 
 #include <algorithm>
 #include <charconv>
@@ -253,7 +256,7 @@ std::expected<Options, std::string> parse_options(int argument_count,
             if (value.empty())
                 return std::unexpected("spill directory must be non-empty");
             spill.mode = pagos::stage::provenance::EvidenceBuildMode::Spill;
-            spill.directory = value;
+            spill.directory = pagos::source::path_from_utf8(value);
         } else if (argument == "--spill-stats") {
             spill_options = spill_stats = true;
         } else if (argument.starts_with("--spill-on-error=")) {
@@ -360,7 +363,7 @@ std::expected<Options, std::string> parse_options(int argument_count,
             const auto value = argument.substr(12);
             if (value.empty())
                 return std::unexpected("--cache-dir requires a non-empty path");
-            cache.directory = value;
+            cache.directory = pagos::source::path_from_utf8(value);
         } else if (argument.starts_with("--cache-evidence=")) {
             const auto value = argument.substr(17);
             if (value == "value")
@@ -588,42 +591,43 @@ std::expected<void, std::string> write_object(const std::string& input,
                                               const std::string& output,
                                               const std::string& bytes) {
     std::error_code error;
-    if (std::filesystem::equivalent(input, output, error))
+    const auto input_path = pagos::source::path_from_utf8(input);
+    const auto output_path = pagos::source::path_from_utf8(output);
+    if (std::filesystem::equivalent(input_path, output_path, error))
         return std::unexpected(
             "object output must not replace the source file");
     // Exclusive sibling creation, then atomic replacement. Existing output
     // survives compilation/write failures; an existing .tmp is never touched.
-    const auto temporary = output + ".tmp";
+    const auto temporary = pagos::source::path_from_utf8(output + ".tmp");
     std::ofstream stream(temporary, std::ios::binary | std::ios::out |
                                         std::ios::noreplace);
     if (!stream)
-        return std::unexpected("cannot create object temporary file: " +
-                               temporary);
+        return std::unexpected(
+            "cannot create object temporary file: " + output + ".tmp");
     stream.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
     stream.close();
     if (!stream) {
         std::filesystem::remove(temporary, error);
         return std::unexpected("cannot write object file: " + output);
     }
-    std::filesystem::rename(temporary, output, error);
+    std::filesystem::rename(temporary, output_path, error);
     if (error) {
-        const auto message = error.message();
+        const auto code = error.value();
         std::filesystem::remove(temporary, error);
-        return std::unexpected("cannot replace object output: " + message);
+        return std::unexpected("cannot replace object output (system error " +
+                               std::to_string(code) + ")");
     }
     return {};
 }
 
-} // namespace
-
-int main(int argument_count, char** arguments) {
+int run_driver(int argument_count, char** arguments) {
     if (argument_count >= 2 &&
         std::string_view(arguments[1]) == "reclaim-queries")
         return pagos::driver::reclaim_query_tasks(argument_count, arguments);
     if (argument_count == 3 &&
         std::string_view(arguments[1]) == "reclaim-evidence") {
-        const auto result =
-            pagos::stage::provenance::reclaim_evidence_sessions(arguments[2]);
+        const auto result = pagos::stage::provenance::reclaim_evidence_sessions(
+            pagos::source::path_from_utf8(arguments[2]));
         if (!result) {
             std::println(stderr, "error: evidence cleanup failed ({})",
                          static_cast<int>(result.error().code));
@@ -642,7 +646,8 @@ int main(int argument_count, char** arguments) {
         return 2;
     }
 
-    auto source = pagos::source::SourceFile::load(options->source_path);
+    auto source = pagos::source::SourceFile::load(
+        pagos::source::path_from_utf8(options->source_path));
     if (!source) {
         std::println(stderr, "error: {}", source.error());
         return 1;
@@ -692,7 +697,8 @@ int main(int argument_count, char** arguments) {
     std::optional<pagos::cache::QueryContext> query_context;
     std::error_code path_error;
     const auto source_path =
-        std::filesystem::absolute(options->source_path, path_error)
+        std::filesystem::absolute(
+            pagos::source::path_from_utf8(options->source_path), path_error)
             .lexically_normal();
     if (!path_error) {
         auto workspace = std::filesystem::current_path(path_error);
@@ -704,8 +710,8 @@ int main(int argument_count, char** arguments) {
             }
             const auto& config = target->config();
             query_context = pagos::cache::QueryContext{
-                .module = {workspace.generic_string(),
-                           relative.generic_string()},
+                .module = {pagos::source::path_to_utf8(workspace),
+                           pagos::source::path_to_utf8(relative)},
                 .target = {config.triple, config.cpu, config.features,
                            target->data_layout(), target->pointer_bits(),
                            target->little_endian()},
@@ -739,7 +745,8 @@ int main(int argument_count, char** arguments) {
         snapshot_identity = std::move(*identity);
         if (options->evidence_read) {
             auto loaded = pagos::stage::FunctionEvidence::load(
-                pagos::cache::FileStore(*options->evidence_read),
+                pagos::cache::FileStore(
+                    pagos::source::path_from_utf8(*options->evidence_read)),
                 *snapshot_identity, *query_context);
             if (!loaded) {
                 std::println(stderr,
@@ -773,7 +780,8 @@ int main(int argument_count, char** arguments) {
                        : 1;
         }
         if (options->snapshot_read) {
-            const pagos::cache::FileStore store(*options->snapshot_read);
+            const pagos::cache::FileStore store(
+                pagos::source::path_from_utf8(*options->snapshot_read));
             const auto loaded = pagos::stage::load_snapshot(
                 store, *snapshot_identity, *query_context);
             if (!loaded) {
@@ -883,7 +891,8 @@ int main(int argument_count, char** arguments) {
     }
 
     if (options->evidence_write) {
-        const pagos::cache::FileStore store(*options->evidence_write);
+        const pagos::cache::FileStore store(
+            pagos::source::path_from_utf8(*options->evidence_write));
         auto published = pagos::stage::FunctionEvidence::publish(
             store, *hir_module->provenance, *snapshot_identity, *query_context);
         if (!published) {
@@ -925,7 +934,8 @@ int main(int argument_count, char** arguments) {
                          static_cast<int>(encoded.error()));
             return 1;
         }
-        const pagos::cache::FileStore store(*options->snapshot_write);
+        const pagos::cache::FileStore store(
+            pagos::source::path_from_utf8(*options->snapshot_write));
         const auto published = pagos::stage::publish_snapshot(store, *encoded);
         if (!published) {
             std::println(stderr, "error: snapshot publish failed ({})",
@@ -1005,4 +1015,18 @@ int main(int argument_count, char** arguments) {
     }
     std::cout << *llvm_ir;
     return 0;
+}
+
+} // namespace
+
+int main(int argument_count, char** arguments) {
+    // Recover the Unicode Windows command line before interpreting any paths.
+    llvm::InitLLVM initialization(argument_count, arguments);
+    try {
+        return run_driver(argument_count, arguments);
+    } catch (const std::filesystem::filesystem_error& error) {
+        std::println(stderr, "error: filesystem operation failed ({})",
+                     error.code().value());
+        return 1;
+    }
 }

@@ -1,6 +1,7 @@
 #include "pagos/stage/evidence_builder.h"
 #include "pagos/stage/provenance_query.h"
 #include "pagos/stage/provenance_topology.h"
+#include "symlink_support.h"
 #include "temporary_directory.h"
 
 #include <gtest/gtest.h>
@@ -75,13 +76,6 @@ TEST_F(EvidenceBuilderTest, ExplicitCleanupSkipsLiveViewsAndUnknownNamespaces) {
     auto frozen = std::move(builder).freeze();
     ASSERT_TRUE(frozen);
     EXPECT_EQ(reclaim_evidence_sessions(directory)->active, 1U);
-    // A symlink in an ancestor must not bypass the in-process registry on
-    // systems where opening another FD can release process-scoped locks.
-    fs::create_directory_symlink(directory.parent_path(), directory / "alias");
-    EXPECT_EQ(
-        reclaim_evidence_sessions(directory / "alias" / directory.filename())
-            ->active,
-        1U);
     const auto unknown = directory / "pagos-evidence-future";
     fs::create_directories(unknown);
     std::ofstream(unknown / "session.lock") << std::string(26, '?');
@@ -94,6 +88,27 @@ TEST_F(EvidenceBuilderTest, ExplicitCleanupSkipsLiveViewsAndUnknownNamespaces) {
     frozen->view.reset();
     EXPECT_FALSE(fs::exists(session));
     EXPECT_TRUE(fs::exists(unknown));
+}
+
+TEST_F(EvidenceBuilderTest, SymlinkAncestorCannotBypassLiveViewLease) {
+    EvidenceBuilder builder(config());
+    const auto root = add(builder, Rule::Origin, 1);
+    auto frozen = std::move(builder).freeze();
+    ASSERT_TRUE(frozen);
+    std::error_code error;
+    fs::create_directory_symlink(directory.parent_path(), directory / "alias",
+                                 error);
+    if (test::symlink_unavailable(error))
+        GTEST_SKIP() << "Directory symlink creation unavailable: "
+                     << error.message();
+    ASSERT_FALSE(error) << error.message();
+    // Opening another FD must not release process-scoped locks via an alias.
+    const auto result =
+        reclaim_evidence_sessions(directory / "alias" / directory.filename());
+    ASSERT_TRUE(result);
+    EXPECT_EQ(result->active, 1U);
+    EXPECT_EQ(result->reclaimed, 0U);
+    EXPECT_EQ(solve(frozen->view, root).sources.size(), 1U);
 }
 
 TEST_F(EvidenceBuilderTest, MemoryModeHasNoFilesystemSideEffects) {

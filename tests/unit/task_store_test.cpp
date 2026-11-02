@@ -1,5 +1,6 @@
 #include "../../lib/cache/wire.h"
 #include "pagos/cache/task_store.h"
+#include "symlink_support.h"
 #include "temporary_directory.h"
 
 #include <atomic>
@@ -185,14 +186,42 @@ TEST_F(TaskStoreTest,
     const auto unknown = parent / ("pagos-query-" + std::string(64, 'a'));
     fs::create_directory(unknown);
     std::ofstream(unknown / "session.lock") << "future marker\n";
-    const auto link = parent / ("pagos-query-" + std::string(64, 'b'));
-    fs::create_directory_symlink(unknown, link);
     const auto cleaned = reclaim_tasks(parent);
     ASSERT_TRUE(cleaned);
     EXPECT_EQ(cleaned->reclaimed, 1U);
-    EXPECT_EQ(cleaned->skipped, 2U);
+    EXPECT_EQ(cleaned->skipped, 1U);
     EXPECT_TRUE(fs::exists(unknown));
+}
+
+TEST_F(TaskStoreTest, CleanupDoesNotFollowDirectorySymlinks) {
+    fs::path outside;
+    {
+        auto store = TaskStore::open(temporary.path() / "outside", task_id,
+                                     TaskAccess::ReadWrite);
+        ASSERT_TRUE(store);
+        outside = store->directory();
+        (void)publish(*store, 0, TaskStatus::Completed);
+    }
+    fs::create_directories(parent);
+    const auto link = parent / ("pagos-query-" + std::string(64, 'b'));
+    std::error_code error;
+    fs::create_directory_symlink(outside, link, error);
+    if (pagos::test::symlink_unavailable(error))
+        GTEST_SKIP() << "Directory symlink creation unavailable: "
+                     << error.message();
+    ASSERT_FALSE(error) << error.message();
+    const auto cleaned = reclaim_tasks(parent, TaskCleanupPolicy::AllInactive);
+    ASSERT_TRUE(cleaned);
+    EXPECT_EQ(cleaned->reclaimed, 0U);
+    EXPECT_EQ(cleaned->skipped, 1U);
     EXPECT_TRUE(fs::is_symlink(link));
+    const auto reader = TaskStore::open(temporary.path() / "outside", task_id,
+                                        TaskAccess::ReadOnly);
+    ASSERT_TRUE(reader);
+    const auto head = reader->head();
+    ASSERT_TRUE(head);
+    ASSERT_TRUE(*head);
+    EXPECT_TRUE(reader->read((*head)->manifest));
 }
 TEST_F(TaskStoreTest,
        DefaultCleanupKeepsUnpublishedWorkAndAllInactiveCanDiscardIt) {

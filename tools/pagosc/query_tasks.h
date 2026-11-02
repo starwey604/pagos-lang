@@ -3,13 +3,15 @@
 #include "pagos/stage/function_evidence_view.h"
 
 #include <expected>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
 
 namespace pagos::driver {
 struct QueryTaskOptions {
-    std::string directory, action{"start"}, storage{"memory"};
+    std::filesystem::path directory;
+    std::string action{"start"}, storage{"memory"};
     std::optional<cache::Digest> id;
     std::optional<std::uint64_t> acknowledge;
     std::optional<std::size_t> max_slices{1};

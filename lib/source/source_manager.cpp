@@ -1,4 +1,5 @@
 #include "pagos/source/source_manager.h"
+#include "pagos/source/path.h"
 
 #include <algorithm>
 #include <fstream>
@@ -13,19 +14,20 @@ SourceFile::SourceFile(std::string path, std::string text)
 
 std::expected<SourceFile, std::string>
 SourceFile::load(const std::filesystem::path& path) {
+    const auto display_path = path_to_utf8(path);
     std::ifstream input(path, std::ios::binary);
     if (!input) {
-        return std::unexpected("could not open source file `" + path.string() +
+        return std::unexpected("could not open source file `" + display_path +
                                "`");
     }
 
     std::string text{std::istreambuf_iterator<char>(input),
                      std::istreambuf_iterator<char>()};
     if (!input.good() && !input.eof()) {
-        return std::unexpected("could not read source file `" + path.string() +
+        return std::unexpected("could not read source file `" + display_path +
                                "`");
     }
-    return SourceFile(path.string(), std::move(text));
+    return SourceFile(display_path, std::move(text));
 }
 
 SourceFile SourceFile::from_text(std::string path, std::string text) {

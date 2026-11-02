@@ -478,6 +478,8 @@ StageAnalyzer::analyze(const syntax::Module& module) {
         provenance_->identity(module, types_, *query_context_);
     stats_ = {};
     memory_stats_ = {};
+    if (evidence_config_.measure_memory)
+        memory_stats_.before_analysis = working_memory();
     cache_telemetry_ = {};
     scalar_cache_.reset();
     fuel_capture_ = nullptr;

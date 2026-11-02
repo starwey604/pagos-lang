@@ -22,6 +22,9 @@ struct StageWorkingMemory {
 };
 struct StageMemoryStats {
     bool measured{};
+    // Empty working containers can own bucket arrays on some standard
+    // libraries. Keep that capacity visible instead of subtracting it.
+    StageWorkingMemory before_analysis;
     // Sampled immediately before/after completion cleanup, not a peak census.
     StageWorkingMemory before_release, after_release;
 };

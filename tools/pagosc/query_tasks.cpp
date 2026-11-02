@@ -1,4 +1,5 @@
 #include "query_tasks.h"
+#include "pagos/source/path.h"
 #include "pagos/stage/provenance_topology.h"
 #include "query_task_support.h"
 
@@ -380,7 +381,7 @@ parse_query_task_option(std::string_view argument, QueryTaskOptions& options) {
         return std::unexpected("query option requires a non-empty value: " +
                                std::string(name));
     if (name == "--query-dir")
-        options.directory = value;
+        options.directory = source::path_from_utf8(value);
     else if (name == "--query-action") {
         if (value != "start" && value != "resume" && value != "cancel")
             return std::unexpected("invalid query action");
@@ -567,8 +568,9 @@ int reclaim_query_tasks(int argc, char** argv) {
         return 2;
     }
     const auto result = cache::reclaim_tasks(
-        argv[2], argc == 4 ? cache::TaskCleanupPolicy::AllInactive
-                           : cache::TaskCleanupPolicy::TerminalOnly);
+        source::path_from_utf8(argv[2]),
+        argc == 4 ? cache::TaskCleanupPolicy::AllInactive
+                  : cache::TaskCleanupPolicy::TerminalOnly);
     if (!result) {
         std::cerr << "error: " << error_text(result.error()) << '\n';
         return 1;

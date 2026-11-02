@@ -1,4 +1,5 @@
 #include "pagos/cache/store.h"
+#include "pagos/source/path.h"
 #include "storage_io.h"
 #include "wire.h"
 
@@ -106,7 +107,7 @@ std::timed_mutex process_mutex;
 std::unordered_set<std::string> disabled_inputs;
 std::string disabled_id(const fs::path& root, const Digest& key,
                         const Digest& inputs) {
-    return fs::absolute(root).lexically_normal().generic_string() + '\0' +
+    return source::path_to_utf8(fs::absolute(root).lexically_normal()) + '\0' +
            key.hex() + inputs.hex();
 }
 class QueryLock {
@@ -138,11 +139,11 @@ class QueryLock {
             return std::unexpected(
                 error(StoreErrorCode::IoFailure,
                       std::make_error_code(std::errc::invalid_argument)));
-        const auto ec = publish
-                            ? llvm_fs::openFileForWrite(path.string(), fd_,
-                                                        llvm_fs::CD_OpenAlways,
-                                                        llvm_fs::OF_None, 0600)
-                            : llvm_fs::openFileForRead(path.string(), fd_);
+        const auto ec =
+            publish ? llvm_fs::openFileForWrite(source::path_to_utf8(path), fd_,
+                                                llvm_fs::CD_OpenAlways,
+                                                llvm_fs::OF_None, 0600)
+                    : llvm_fs::openFileForRead(source::path_to_utf8(path), fd_);
         if (ec)
             return std::unexpected(
                 error(ec == std::errc::no_such_file_or_directory
@@ -187,7 +188,8 @@ std::expected<Bytes, StoreError> read_file(const StoreOptions& options,
     if (!fs::is_regular_file(status))
         return std::unexpected(error(corrupt));
     int fd = -1;
-    if (const auto open_error = llvm_fs::openFileForRead(path.string(), fd))
+    if (const auto open_error =
+            llvm_fs::openFileForRead(source::path_to_utf8(path), fd))
         return std::unexpected(
             error(open_error == std::errc::no_such_file_or_directory
                       ? StoreErrorCode::NotFound
@@ -437,8 +439,8 @@ std::expected<void, StoreError> atomic_file(const fs::path& root,
                                             bool object) {
     llvm::SmallString<128> temporary;
     int fd = -1;
-    const auto model =
-        (root / "tmp" / "publish-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%").string();
+    const auto model = source::path_to_utf8(
+        root / "tmp" / "publish-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
     if (const auto ec = llvm_fs::createUniqueFile(model, fd, temporary,
                                                   llvm_fs::OF_None, 0600))
         return std::unexpected(error(StoreErrorCode::IoFailure, ec));
@@ -500,8 +502,9 @@ std::expected<void, StoreError> atomic_file(const fs::path& root,
         !result)
         return result;
     const auto ec =
-        object ? llvm_fs::create_hard_link(temporary, destination.string())
-               : llvm_fs::rename(temporary, destination.string());
+        object ? llvm_fs::create_hard_link(temporary,
+                                           source::path_to_utf8(destination))
+               : llvm_fs::rename(temporary, source::path_to_utf8(destination));
     if (ec && !(object && ec == std::errc::file_exists))
         return std::unexpected(error(StoreErrorCode::IoFailure, ec));
     return checkpoint(options,

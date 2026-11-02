@@ -64,6 +64,9 @@ it manually, use the installed Visual Studio tools script, for example:
 
 ```powershell
 & 'C:/Program Files/Microsoft Visual Studio/18/Community/Common7/Tools/Launch-VsDevShell.ps1' -Arch amd64 -HostArch amd64
+$utf8 = [System.Text.UTF8Encoding]::new($false)
+[Console]::InputEncoding = $utf8
+[Console]::OutputEncoding = $utf8
 ```
 
 Set the paths to your already installed SDK and matching host dependencies:
@@ -91,6 +94,14 @@ which is ignored by Git. There are no project-injection helpers or copied
 source trees in this workflow. Use a new build directory after updating the
 toolset or switching compilers, architectures, or dependency configurations.
 
+Set both console encodings before the first configure and keep them set for
+builds. CMake and MSVC can otherwise disagree about localized `/showIncludes`
+bytes, causing Ninja to miss header changes. Configuration checks the prefix
+and a Unicode header name. After changing encodings in an existing build,
+configure with `--fresh` and rebuild with `--clean-first` to replace stale
+objects and dependency records. An English Visual Studio language pack is
+not required.
+
 ## Test Selection and Current Limits
 
 The Windows presets set `BUILD_TESTING=ON`, `PAGOS_ENABLE_PROCESS_TESTS=OFF`,
@@ -112,17 +123,37 @@ FileCheck; supply compatible test tools before enabling lit. Tool availability
 alone does not establish that the existing Unix shell, signal, ELF, and shared
 library assumptions have been ported.
 
-The preceding investigation found seven Windows unit failures involving
-logical path validation/code-page conversion, symbolic-link privileges,
-deleting an open test file, and implementation-dependent empty-container
-memory accounting. W1 keeps those cases enabled and visible. W2 addresses
-them without weakening protocol fixtures or logical resource budgets.
+W2 resolves the seven original Windows unit failures. Ordinary cleanup,
+unknown namespaces, and non-regular directory rejection always run. Three
+separate symlink cases skip only for unavailable permissions/capabilities;
+unexpected fixture errors still fail. The working-memory census retains
+allocated empty-map buckets and compares release against the pre-analysis
+baseline, rather than assuming every standard library releases to zero.
+
+The process suite includes `pagos-host-paths-process`, covering Unicode and
+spaces in executable, current directory, source, object output, semantic
+cache, snapshots, spill, and query tasks. It also checks cache fallback,
+explicit load failure, read-only behavior, and failed output preservation.
+Full Windows process/lit portability and CI remain later work.
+
+## Native Paths and Logical Module Names
+
+The driver obtains the Unicode Windows command line through LLVM and uses
+UTF-8 at CLI/LLVM boundaries, with native UTF-16 filesystem paths internally.
+Source names in diagnostics and JSON use UTF-8. Libraries accept native
+`std::filesystem::path` values; callers passing UTF-8 bytes can use the
+helpers in `pagos/source/path.h`.
+
+Protocol module names remain byte strings. They require nonempty components
+separated by `/`, reject `.`, `..`, NUL, backslash, colon, and absolute or
+noncanonical paths, and never use native code-page conversion. Existing
+non-UTF-8 wire names retain the baseline admission and round-trip behavior.
 
 ## Compiler Identity and Protocols
 
 The conservative compiler build identity includes CMake module content,
 C++ standard mode, frontend variant, and selected CRT, in addition to existing
 source/configuration inputs. Changing the host toolchain can invalidate cache
-reuse as intended. W1 does not change C1-C4 wire formats, hash domains,
+reuse as intended. W1/W2 do not change C1-C4 wire formats, hash domains,
 versions, fixed fixtures, or old-format rejection rules; see the
 [protocol baseline](cache-protocol-baseline.md).

@@ -630,6 +630,7 @@ TEST_F(QueryCheckpointTest,
         std::ifstream input(entry.path(), std::ios::binary);
         std::array<char, 9> bytes{};
         input.read(bytes.data(), bytes.size());
+        input.close();
         if (static_cast<unsigned char>(bytes[8]) ==
             static_cast<unsigned>(cache::ObjectKind::QueryStateSegment))
             fs::remove(entry.path());

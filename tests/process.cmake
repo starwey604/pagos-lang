@@ -16,6 +16,10 @@ add_executable(pagos_generator_replay_cli_fixture generator_replay_cli_fixture.c
 target_link_libraries(pagos_generator_replay_cli_fixture PRIVATE Pagos::stage pagos_project_options)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME pagos-host-paths-process
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/host_paths_process.py
+            $<TARGET_FILE:pagosc>)
+set_tests_properties(pagos-host-paths-process PROPERTIES TIMEOUT 120)
 add_test(NAME pagos-cache-identity-process
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/cache_identity_process.py
             $<TARGET_FILE:pagos_cache_identity_probe>)

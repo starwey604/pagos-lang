@@ -48,6 +48,29 @@ if(NOT PAGOS_HAS_CXX23_LIBRARY)
 endif()
 message(STATUS "Pagos C++23 mode: ${CMAKE_CXX23_STANDARD_COMPILE_OPTION}; frontend: ${CMAKE_CXX_COMPILER_FRONTEND_VARIANT}")
 
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND CMAKE_GENERATOR MATCHES "Ninja")
+    # Ninja compares /showIncludes bytes with CMake's detected prefix. Mixed
+    # console input/output encodings can silently discard every header edge.
+    set(PAGOS_DEPENDENCY_PROBE "${CMAKE_BINARY_DIR}/CMakeFiles/pagos-dependencies")
+    file(MAKE_DIRECTORY "${PAGOS_DEPENDENCY_PROBE}")
+    file(WRITE "${PAGOS_DEPENDENCY_PROBE}/依赖 检查.h" "// UTF-8 dependency probe\n")
+    file(WRITE "${PAGOS_DEPENDENCY_PROBE}/probe.cpp" "#include \"依赖 检查.h\"\n")
+    execute_process(
+        COMMAND "${CMAKE_CXX_COMPILER}" /nologo /utf-8 /showIncludes /c probe.cpp /Foprobe.obj
+        WORKING_DIRECTORY "${PAGOS_DEPENDENCY_PROBE}"
+        RESULT_VARIABLE PAGOS_DEPENDENCY_RESULT
+        OUTPUT_VARIABLE PAGOS_DEPENDENCY_OUTPUT
+        ERROR_VARIABLE PAGOS_DEPENDENCY_ERROR
+        ENCODING UTF-8)
+    string(FIND "${PAGOS_DEPENDENCY_OUTPUT}" "${CMAKE_CL_SHOWINCLUDES_PREFIX}" PAGOS_PREFIX_POSITION)
+    string(FIND "${PAGOS_DEPENDENCY_OUTPUT}" "依赖 检查.h" PAGOS_HEADER_POSITION)
+    if(NOT PAGOS_DEPENDENCY_RESULT EQUAL 0 OR NOT CMAKE_CL_SHOWINCLUDES_PREFIX OR
+       PAGOS_PREFIX_POSITION LESS 0 OR PAGOS_HEADER_POSITION LESS 0)
+        message(FATAL_ERROR
+            "MSVC/Ninja header dependency output is not consistent UTF-8. Set both console InputEncoding and OutputEncoding to UTF-8, then configure with --fresh; see docs/windows.md")
+    endif()
+endif()
+
 add_library(pagos_project_options INTERFACE)
 target_compile_features(pagos_project_options INTERFACE cxx_std_23)
 if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")

@@ -1,4 +1,5 @@
 #include "pagos/cache/task_store.h"
+#include "pagos/source/path.h"
 #include "storage_io.h"
 #include "wire.h"
 
@@ -60,7 +61,7 @@ struct Lease : Descriptor {
     ~Lease() {
         {
             const std::lock_guard guard(lifecycle);
-            const auto found = live.find(path.generic_string());
+            const auto found = live.find(source::path_to_utf8(path));
             if (found != live.end() && found->second.owner == this)
                 live.erase(found);
             if (fd != -1) {
@@ -84,7 +85,7 @@ void lock_descriptor(int fd, const StoreOptions& options,
 void validate_marker(int fd, const fs::path& path) {
     sysfs::file_status opened, named;
     checked(sysfs::status(fd, opened));
-    checked(sysfs::status(path.string(), named));
+    checked(sysfs::status(source::path_to_utf8(path), named));
     require(opened.getUniqueID() == named.getUniqueID() &&
             sysfs::is_regular_file(opened) &&
             opened.getSize() == marker.size());
@@ -116,7 +117,7 @@ std::shared_ptr<Lease> acquire(const fs::path& parent, Digest task,
                           : StoreErrorCode::IoFailure,
                       ec);
     lease->path = canonical / (std::string(prefix) + task.hex());
-    const auto key = lease->path.generic_string();
+    const auto key = source::path_to_utf8(lease->path);
     while (true) {
         const auto found = live.find(key);
         if (found == live.end())
@@ -158,9 +159,9 @@ std::shared_ptr<Lease> acquire(const fs::path& parent, Digest task,
     require(fs::is_directory(status), StoreErrorCode::InvalidRequest);
     const auto lock_path = lease->path / "session.lock";
     if (created) {
-        checked(sysfs::openFileForReadWrite(lock_path.string(), lease->fd,
-                                            sysfs::CD_CreateNew, sysfs::OF_None,
-                                            0600));
+        checked(sysfs::openFileForReadWrite(source::path_to_utf8(lock_path),
+                                            lease->fd, sysfs::CD_CreateNew,
+                                            sysfs::OF_None, 0600));
         lock_descriptor(lease->fd, options.store, sysfs::LockKind::Exclusive);
         llvm::raw_fd_ostream output(lease->fd, false);
         output << marker;
@@ -175,7 +176,8 @@ std::shared_ptr<Lease> acquire(const fs::path& parent, Digest task,
                 StoreErrorCode::LockBusy);
         require(fs::file_size(lock_path, ec) == marker.size() && !ec,
                 StoreErrorCode::LockBusy);
-        checked(sysfs::openFileForRead(lock_path.string(), lease->fd));
+        checked(
+            sysfs::openFileForRead(source::path_to_utf8(lock_path), lease->fd));
         lock_descriptor(lease->fd, options.store, sysfs::LockKind::Shared);
         validate_marker(lease->fd, lock_path);
     }
@@ -328,7 +330,7 @@ TaskStore::begin(std::uint64_t expected) const {
                 StoreErrorCode::LockBusy);
         const auto path = directory() / "writer.lock";
         inject(impl_->options.store, IoOperation::LockFile, path);
-        checked(sysfs::openFileForWrite(path.string(), writer->fd,
+        checked(sysfs::openFileForWrite(source::path_to_utf8(path), writer->fd,
                                         sysfs::CD_OpenAlways, sysfs::OF_None,
                                         0600));
         lock_descriptor(writer->fd, impl_->options.store,
@@ -422,12 +424,13 @@ reclaim_tasks(const fs::path& parent, TaskCleanupPolicy policy) {
         const auto canonical = fs::canonical(parent);
         TaskCleanupStats stats;
         for (const auto& entry : fs::directory_iterator(canonical)) {
-            const auto name = entry.path().filename().string();
+            const auto name = source::path_to_utf8(entry.path().filename());
             if (!name.starts_with(prefix))
                 continue;
             ++stats.examined;
             const std::lock_guard guard(lifecycle);
-            if (const auto found = live.find(entry.path().generic_string());
+            if (const auto found =
+                    live.find(source::path_to_utf8(entry.path()));
                 found != live.end()) {
                 // An expired weak_ptr may have a destructor still waiting
                 // for this guard. It remains active until its fd is closed.
@@ -463,8 +466,8 @@ reclaim_tasks(const fs::path& parent, TaskCleanupPolicy policy) {
                 continue;
             }
             Descriptor owner;
-            if (sysfs::openFileForReadWrite(marker_path.string(), owner.fd,
-                                            sysfs::CD_OpenExisting,
+            if (sysfs::openFileForReadWrite(source::path_to_utf8(marker_path),
+                                            owner.fd, sysfs::CD_OpenExisting,
                                             sysfs::OF_None)) {
                 ++stats.errors;
                 continue;
