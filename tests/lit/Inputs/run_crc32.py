@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from test_runtime import executable_path
 import zlib
 
 
@@ -48,9 +49,9 @@ def main():
     with tempfile.TemporaryDirectory(prefix="pagos-crc32-") as directory:
         root = pathlib.Path(directory)
         ir = root / "program.ll"
-        ir.write_text(emitted)
+        ir.write_text(emitted, encoding="utf-8", newline="\n")
         for optimization in ("-O0", "-O2"):
-            executable = root / "program"
+            executable = executable_path(root / "program")
             subprocess.run(
                 [clang, optimization, str(ir),
                  str(pathlib.Path(__file__).with_name("runtime.c")),

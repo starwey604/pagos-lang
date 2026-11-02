@@ -48,7 +48,7 @@ def decoded(result):
 with tempfile.TemporaryDirectory(prefix="pagos-recursive-cli-") as temporary:
     root = Path(temporary)
     source, store = root / "input.pgs", root / "evidence"
-    source.write_text(PROGRAM)
+    source.write_text(PROGRAM, encoding="utf-8", newline="\n")
 
     def run(*options, mode="recursive-summary", name=None, write=False, codes=(0,)):
         args = [BINARY, "--target=riscv32-unknown-elf", f"--evidence-mode={mode}",
@@ -148,7 +148,7 @@ with tempfile.TemporaryDirectory(prefix="pagos-recursive-cli-") as temporary:
 
     # Whitespace reuses semantic evidence and keys, with fresh position/revision identity.
     shift = "// revised source positions\n\n"
-    source.write_text(shift + PROGRAM)
+    source.write_text(shift + PROGRAM, encoding="utf-8", newline="\n")
     revised = decoded(run(mode="summaries"))
     assert revised["evidence"]["closure"] == catalog["evidence"]["closure"]
     assert revised["evidence"]["positions"] != catalog["evidence"]["positions"]
@@ -160,9 +160,9 @@ with tempfile.TemporaryDirectory(prefix="pagos-recursive-cli-") as temporary:
         assert all(b["site"]["begin"] == a["site"]["begin"] + len(shift)
                    for a, b in zip(old["nodes"], new["nodes"]))
     assert files(store) == before
-    source.write_text(PROGRAM.replace("scale(5, b)", "scale(6, b)"))
+    source.write_text(PROGRAM.replace("scale(5, b)", "scale(6, b)"), encoding="utf-8", newline="\n")
     run(mode="summaries", codes=(1,))
-    source.write_text(PROGRAM)
+    source.write_text(PROGRAM, encoding="utf-8", newline="\n")
     run("--target=x86_64-unknown-linux-gnu", mode="summaries", codes=(1,))
 
     # An unreadable sibling is not loaded by a selected summary. Hot metadata
@@ -193,12 +193,12 @@ with tempfile.TemporaryDirectory(prefix="pagos-recursive-cli-") as temporary:
     run(mode="summaries", codes=(1,))
 
     # Failed Stage publication must not emit ordinary provenance text as JSON.
-    source.write_text("comptime let bad = external_input();")
+    source.write_text("comptime let bad = external_input();", encoding="utf-8", newline="\n")
     before_failed = files(store)
     failed = run(mode="summaries", write=True, codes=(1,))
     assert "E2001" in failed.stderr
     assert files(store) == before_failed
-    source.write_text("let plain = 7;")
+    source.write_text("let plain = 7;", encoding="utf-8", newline="\n")
     assert decoded(run(mode="summaries", write=True))["summaries"] == []
     assert decoded(run(mode="summaries"))["summaries"] == []
     run(name="absent", codes=(1,))

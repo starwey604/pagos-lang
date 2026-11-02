@@ -9,11 +9,22 @@ from pathlib import Path
 import platform
 import shutil
 import subprocess
+import sys
 import tempfile
 from benchmark_provenance_queries import sample
 from benchmark_function_evidence import distribution
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def smoke_sample(command, directory):
+    result = subprocess.run(command, cwd=ROOT, capture_output=True, timeout=60,
+                            text=True, encoding="utf-8")
+    if result.returncode:
+        raise RuntimeError(result.stderr)
+    record = json.loads(result.stdout)
+    record["host_counters_available"] = False
+    return record
 
 
 def program(case, size):
@@ -35,6 +46,9 @@ def main():
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--date", default=datetime.date.today().isoformat())
     args = parser.parse_args()
+    if not args.smoke and not hasattr(os, "wait4"):
+        parser.error("performance measurements require Linux wait4; use --smoke for portable correctness")
+    run_sample = sample if hasattr(os, "wait4") else smoke_sample
     binary = args.binary.resolve()
     cache = (binary.parent / "CMakeCache.txt").read_bytes()
     if not args.smoke and (b"CMAKE_BUILD_TYPE:STRING=Release" not in cache or args.repeats < 3 or args.warmups < 1):
@@ -51,9 +65,9 @@ def main():
         dirty=bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT)),
         binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(), cmake_cache_sha256=hashlib.sha256(cache).hexdigest(),
         source_sha256={name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in sources},
-        machine=platform.platform(), cpu=next(line.split(":", 1)[1].strip() for line in Path("/proc/cpuinfo").read_text().splitlines() if line.startswith("model name")),
+        machine=platform.platform(), cpu=next((line.split(":", 1)[1].strip() for line in Path("/proc/cpuinfo").read_text().splitlines() if line.startswith("model name")), "unknown") if Path("/proc/cpuinfo").exists() else platform.processor(),
         filesystem=dict(path=str(work), device=os.stat(work).st_dev, type=subprocess.check_output(["findmnt", "-n", "-o", "FSTYPE", "-T", str(work)], text=True).strip() if shutil.which("findmnt") else "unavailable"),
-        versions={name: subprocess.check_output([name, "--version"], text=True).splitlines()[0] for name in ("clang", "llvm-config", "python3")},
+        versions={name: subprocess.check_output([sys.executable if name == "python3" else name, "--version"], text=True).splitlines()[0] for name in ("clang", "llvm-config", "python3")},
         warmups=warmups, repeats=repeats, smoke=args.smoke,
         config=dict(segment_bytes=16384, paging_resident_bytes=262144, paging_cache_bytes=65536, evidence_cache_bytes=4194304),
         measurement="Sequential fresh children after builds/tests stop. One separate Stage/Recorder publisher per real .pgs; all query children only parse/typecheck and load that evidence (Stage=0). Native cuts one 64-state/512-edge/64-binding slice with no output. Topology frontier cuts one 64/512/64/256 slice; formula cuts after half the physical-node count in formula states. Save clocks exclude prefix work; original task/view destroyed before a fresh view opens, and restore clocks exclude fresh-view metadata loading. Restore must preserve all logical counters; continuation uses 64/512/64/256 slices. Memory mode retains state after v1 native/v3 topology save; paged native and v4 topology offload drop task-owned buffers before destruction. Owned capacity is sampled at advance boundaries, not continuous allocation peak; native directory is separate, topology hash accounting includes values/buckets but excludes links. Codec buffer high-water is retained vector capacity observed in segmented topology IO, excluding CAS envelope scratch and directory metadata. Task read requests include missing probes, head and dedup verification; they are not physical device IO. Disk includes CAS envelopes, old/unpublished objects, head and marker; native paging may append leaves after the last saved head. Topology save_cas_added counts new CAS bytes, excluding head replacement; amplification ratios use its fixed-record logical_table_bytes, excluding control/directories. Native paging read/write telemetry covers the restored backend only. wait4 whole-child RSS includes front end, graph cache, saved/restored state, result digest/compatibility copies and destruction; no RSS or constant-time restore claim. Warm OS page cache, no cache flushing, pinning or fixed frequency. Smoke is correctness only.", results=[])
@@ -65,13 +79,15 @@ def main():
             text = program(case, size)
             source.write_text(text)
             evidence = directory / f"evidence-{case}-{size}"
-            assert sample([str(binary), "publish", str(source), str(evidence), str(directory / "unused"), "frontier"], directory)["stage_runs"] == 1
+            assert run_sample([str(binary), "publish", str(source), str(evidence), str(directory / "unused"), "frontier"], directory)["stage_runs"] == 1
             signatures = {}
             for mode, phase in [(mode, "frontier") for mode in ("native-memory", "native-paged", "topology-resident", "topology-segmented")] + [(mode, "formula") for mode in ("topology-resident", "topology-segmented")]:
                 records = []
                 for iteration in range(warmups + repeats):
-                    parent = directory / f"task-{case}-{size}-{mode}-{phase}-{iteration}"
-                    record = sample([str(binary), mode, str(source), str(evidence), str(parent), phase], directory)
+                    # TaskStore appends a digest namespace and CAS paths.
+                    # Keep this disposable prefix short on Windows hosts.
+                    parent = directory / f"t{len(report['results'])}-{iteration}"
+                    record = run_sample([str(binary), mode, str(source), str(evidence), str(parent), phase], directory)
                     assert record["stage_runs"] == 0 and record["files"] > 0
                     if mode in ("native-paged", "topology-segmented"):
                         assert record["after_save_bytes"] == 0

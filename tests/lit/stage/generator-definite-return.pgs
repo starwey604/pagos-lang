@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %run_residual %s 7
 // RUN: %pagosc explain-stage %s | %FileCheck %s
 fn choose() -> u32 { [for i in 0..4 { return 7; }]; }

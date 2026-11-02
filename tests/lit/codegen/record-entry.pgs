@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %run_residual %s 0 5
 record Config { value: u32 }
 let result = Config(value: external_input());

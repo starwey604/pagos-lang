@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %pagosc emit-hir %s | %FileCheck %s
 // RUN: %pagosc explain-stage %s | %FileCheck %s --check-prefix=CACHE
 // RUN: %run_residual %s 22

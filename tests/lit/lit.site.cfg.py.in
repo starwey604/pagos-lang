@@ -1,4 +1,4 @@
-config.pagosc = r"@CMAKE_BINARY_DIR@/pagosc"
+config.pagosc = r"@PAGOS_TEST_COMPILER@"
 config.filecheck = r"@PAGOS_FILECHECK@"
 config.test_clang = r"@PAGOS_TEST_CLANG@"
 config.test_lld = r"@PAGOS_TEST_LLD@"
@@ -7,7 +7,7 @@ config.test_objdump = r"@PAGOS_TEST_OBJDUMP@"
 config.python = r"@Python3_EXECUTABLE@"
 config.llvm_tools_dir = r"@LLVM_TOOLS_BINARY_DIR@"
 config.pagos_test_source_root = r"@CMAKE_CURRENT_SOURCE_DIR@/lit"
-config.pagos_test_exec_root = r"@CMAKE_CURRENT_BINARY_DIR@/lit"
+config.pagos_test_exec_root = r"@PAGOS_LIT_EXEC_ROOT@"
 
 lit_config.load_config(
     config, r"@CMAKE_CURRENT_SOURCE_DIR@/lit/lit.cfg.py")

@@ -2,10 +2,10 @@
 import hashlib
 import json
 from pathlib import Path
-import signal
 import subprocess
 import sys
 import tempfile
+from process_support import failing_stdout, interruptible_process, interrupt_process
 
 BINARY, FIXTURE = sys.argv[1:3]
 PROGRAM = (
@@ -53,8 +53,9 @@ def decoded(p, status="verified"):
 
 with tempfile.TemporaryDirectory(prefix="pagos-replay-cli-") as tmp:
     root = Path(tmp)
-    source, store = root / 'quoted "输入.pgs', root / "cache"
-    source.write_text(PROGRAM)
+    filename = "quoted '输入.pgs" if sys.platform == "win32" else 'quoted "输入.pgs'
+    source, store = root / filename, root / "cache"
+    source.write_text(PROGRAM, encoding="utf-8", newline="\n")
     target = "riscv32-unknown-elf"
 
     def publish():
@@ -80,7 +81,7 @@ with tempfile.TemporaryDirectory(prefix="pagos-replay-cli-") as tmp:
     assert first["details"][-1]["operands"] == [0, 1]
     assert first["details"][0]["input_slot"] == first["details"][1]["input_slot"] == 0
     assert first["selection"] == {"first": 0, "count": 3, "total": 3, "complete": True}
-    assert first["source"]["path"] == str(source)
+    assert first["source"]["path"] == source.as_posix()
     for step in first["details"]:
         span = step["site"]
         assert 0 <= span["begin"] <= span["end"] <= len(PROGRAM)
@@ -130,7 +131,7 @@ with tempfile.TemporaryDirectory(prefix="pagos-replay-cli-") as tmp:
 
     # Position rebinding preserves the mathematical record and specialization.
     shift = "// moved\n\n"
-    source.write_text(shift + PROGRAM)
+    source.write_text(shift + PROGRAM, encoding="utf-8", newline="\n")
     moved = decoded(replay())
     assert moved["descriptor"] == first["descriptor"]
     assert moved["specialization"] == first["specialization"]
@@ -138,13 +139,13 @@ with tempfile.TemporaryDirectory(prefix="pagos-replay-cli-") as tmp:
     for a, b in zip(first["details"], moved["details"]):
         assert b["site"]["begin"] == a["site"]["begin"] + len(shift)
         assert b["site"]["line"] == a["site"]["line"] + 2
-    source.write_text(PROGRAM.replace("x * x", "x + x"))
+    source.write_text(PROGRAM.replace("x * x", "x + x"), encoding="utf-8", newline="\n")
     assert decoded(replay(codes=(3,)), "unavailable")["reason"] == "missing-descriptor"
-    source.write_text(PROGRAM + "comptime let bad = external_input();")
+    source.write_text(PROGRAM + "comptime let bad = external_input();", encoding="utf-8", newline="\n")
     fail = replay(codes=(3,))
     decoded(fail, "unavailable")
     assert "E2001" not in fail.stderr and "E4004" not in fail.stderr
-    source.write_text(PROGRAM)
+    source.write_text(PROGRAM, encoding="utf-8", newline="\n")
     target = "riscv64-unknown-elf"
     assert decoded(replay(codes=(3,)), "unavailable")["reason"] == "missing-descriptor"
     target = "riscv32-unknown-elf"
@@ -196,7 +197,7 @@ with tempfile.TemporaryDirectory(prefix="pagos-replay-cli-") as tmp:
     execute(["explain-replay", source], (2,))
 
     output_snapshot = files(store)
-    with open("/dev/full", "wb") as full:
+    with failing_stdout() as full:
         failed_output = subprocess.run([BINARY, *map(str, arguments("pure", ()))],
                                        stdout=full, stderr=subprocess.PIPE, text=True, timeout=30)
     assert failed_output.returncode == 1 and "output failed" in failed_output.stderr
@@ -214,16 +215,16 @@ with tempfile.TemporaryDirectory(prefix="pagos-replay-cli-") as tmp:
     # A balanced expression makes admission long enough without deep ASTs.
     def expression(depth):
         return "x" if not depth else f"({expression(depth - 1)} + {expression(depth - 1)})"
-    source.write_text(f"fn square(x: u32) -> u32 {{ {expression(11)} }} let a = square(7);")
+    source.write_text(f"fn square(x: u32) -> u32 {{ {expression(11)} }} let a = square(7);", encoding="utf-8", newline="\n")
     target = "riscv32-unknown-elf"
     store = root / "cancel"
     publish()
     cancel_snapshot = files(store)
-    process = subprocess.Popen([BINARY, *map(str, arguments(extra=["--replay-stats"]))],
+    process = interruptible_process([BINARY, *map(str, arguments(extra=["--replay-stats"]))],
                                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     ready = process.stderr.readline()
     assert "stage-runs=0 ready" in ready, ready
-    process.send_signal(signal.SIGINT)
+    interrupt_process(process)
     stdout, stderr = process.communicate(timeout=30)
     assert process.returncode == 130, (process.returncode, stdout, ready + stderr)
     if stdout:

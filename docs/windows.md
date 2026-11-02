@@ -2,12 +2,12 @@
 
 ## Scope
 
-W1 provides native Windows x64 build entry points for the C++23 compiler.
+W1-W3 provide native Windows x64 development for the C++23 compiler.
 MSVC and clang-cl have Ninja Release and RelWithDebInfo configurations.
 Windows hosts can use the existing LLVM X86, RISCV, and ARM backends.
 
-This is host build support, not a validated Windows C ABI or complete Windows
-regression support. Explicit Windows `extern fn` / `export fn` remain rejected.
+Host unit, process, lit, and builtin-entry execution regressions run on Windows.
+Explicit Windows `extern fn` / `export fn` remain rejected pending ABI validation.
 Target admission, DLLs, platform libraries, and Pagos source-level debugging
 are later work. Linux/QEMU remains the embedded execution baseline.
 
@@ -59,6 +59,39 @@ dependency fallbacks.
 
 ## Configure, Build, and Test
 
+For the pinned Windows test environment, run this explicit preparation step:
+
+```powershell
+./scripts/prepare_windows.ps1
+$tools = Get-Content -Raw build/windows-tools/toolchain.json | ConvertFrom-Json
+. ./ci/windows_environment.ps1
+Enter-PagosWindowsEnvironment $tools.llvm
+cmake --preset windows-msvc-release `
+    "-DLLVM_DIR=$($tools.llvm)/lib/cmake/llvm" `
+    "-DCMAKE_PREFIX_PATH=$($tools.dependencies)" `
+    "-DPython3_EXECUTABLE=$($tools.python)" `
+    "-DPAGOS_LIT=$($tools.lit)" `
+    "-DPAGOS_FILECHECK=$($tools.filecheck)"
+cmake --build --preset windows-msvc-release --parallel 4
+ctest --preset windows-msvc-release
+```
+
+Preparation downloads the complete LLVM 23.1.4 x64 SDK, installs three host
+dependencies from a fixed vcpkg commit, and creates a Python environment with
+hash-pinned lit. It builds upstream FileCheck's matching command-line source
+against the SDK's existing `LLVMFileCheck` library. SDK/source checksums and
+versions are in [the lock file](../ci/windows-toolchain.json), using the
+[official LLVM release](https://github.com/llvm/llvm-project/releases/tag/llvmorg-23.1.4).
+The source retains its upstream license notice. These are explicit test-tool
+preparation operations; ordinary project configuration still only discovers
+installed packages. The script never updates Visual Studio or system settings.
+
+To reuse matching installed packages, pass `-LLVMRoot C:/SDK/llvm-23.1.4`
+and `-DependencyPrefix C:/SDK/pagos-host-x64-mt` to the preparation script.
+`-WorkDirectory` selects its download/build cache. Existing cached downloads
+are checksum-checked, and existing vcpkg checkouts must match the lock file.
+
+For manually prepared dependencies, use the following environment setup.
 Open **Developer PowerShell for VS 2026** configured for x64. When initializing
 it manually, use the installed Visual Studio tools script, for example:
 
@@ -74,11 +107,13 @@ Set the paths to your already installed SDK and matching host dependencies:
 ```powershell
 $llvmRoot = 'C:/SDK/llvm-23.1.4'
 $hostDependencies = 'C:/SDK/pagos-host-x64-mt'
+$testTools = 'C:/SDK/pagos-test-tools'
 $env:PATH = "$llvmRoot/bin;$env:PATH"
 
 cmake --preset windows-msvc-release `
     "-DLLVM_DIR=$llvmRoot/lib/cmake/llvm" `
-    "-DCMAKE_PREFIX_PATH=$hostDependencies"
+    "-DCMAKE_PREFIX_PATH=$hostDependencies" `
+    "-DPAGOS_FILECHECK=$testTools/FileCheck.exe"
 cmake --build --preset windows-msvc-release --parallel 4
 ctest --preset windows-msvc-release
 ```
@@ -104,24 +139,41 @@ not required.
 
 ## Test Selection and Current Limits
 
-The Windows presets set `BUILD_TESTING=ON`, `PAGOS_ENABLE_PROCESS_TESTS=OFF`,
-and `PAGOS_ENABLE_LIT_TESTS=OFF`. They build and discover all three GoogleTest
-suites. The process and lit suites are explicitly separate because their
-Windows adapters are later work; Linux presets retain both suites by default.
+The Windows presets enable all three GoogleTest suites plus process and lit
+regressions. Linux presets retain their full regression suites as well.
 `BUILD_TESTING=OFF` omits all testing dependencies and targets.
 
-To request a wider suite, configure with the corresponding option enabled:
+For a unit-only development build, explicitly deselect the other suites:
 
 ```powershell
-cmake --preset windows-msvc-release -DPAGOS_ENABLE_LIT_TESTS=ON
+cmake --preset windows-msvc-release `
+    -DPAGOS_ENABLE_PROCESS_TESTS=OFF -DPAGOS_ENABLE_LIT_TESTS=OFF
 ```
 
 lit requires Python, lit, FileCheck, Clang, ld.lld, llvm-nm, and llvm-objdump.
 Process regressions require Python and Clang. These options never auto-disable
 themselves when a tool is missing. Some Windows LLVM development archives omit
-FileCheck; supply compatible test tools before enabling lit. Tool availability
-alone does not establish that the existing Unix shell, signal, ELF, and shared
-library assumptions have been ported.
+FileCheck; the preparation step above supplies a matching binary.
+
+lit uses its internal shell on both hosts and the actual `pagosc` target file,
+including `.exe`. Source/tmp substitutions are already shell-quoted; write
+RUN lines using `%s` and `%t.suffix` without adding another layer of quotes.
+Use `%FileCheck`, `%diff_text`, and `%assert_absent` for portable assertions.
+Use `%pagosc_host` for maintenance commands or tests of the real default target.
+Text comparisons normalize LF/CRLF only; protocol fixtures remain byte-exact.
+Per-case temporary stems are short hashes, leaving room for the nested
+CAS/task digest namespaces within Windows path limits.
+Python source fixtures explicitly write UTF-8/LF so source-span shifts have
+the same byte meaning on both hosts.
+
+Frontend/MIR/IR goldens use an explicit x86-64 Linux semantic target.
+Runtime helpers use the real host target and assert its exact trap status
+(POSIX SIGILL or Windows illegal-instruction exception). Features distinguish
+`native-entry`, `minimal-c-abi`, `elf-native`, and `symlinks`. Windows C ABI,
+ELF native libraries/sections, and unavailable symlink cases are reported as
+unsupported; ordinary frontend, cache, and builtin-entry execution still run.
+`tests/lit-results.json` in each build directory records individual outcomes
+and unsupported reasons; CI preserves it alongside CTest's JUnit report.
 
 W2 resolves the seven original Windows unit failures. Ordinary cleanup,
 unknown namespaces, and non-regular directory rejection always run. Three
@@ -134,7 +186,29 @@ The process suite includes `pagos-host-paths-process`, covering Unicode and
 spaces in executable, current directory, source, object output, semantic
 cache, snapshots, spill, and query tasks. It also checks cache fallback,
 explicit load failure, read-only behavior, and failed output preservation.
-Full Windows process/lit portability and CI remain later work.
+Other process regressions cover real checkpoint/replay restoration, writer
+races, killed owners, spill reclamation, failed output, and cancellation.
+Windows output failure uses a closed pipe; Linux retains `/dev/full`.
+Replay cancellation accepts Windows console break as well as Ctrl+C, using
+the existing exit 130/unavailable contract. The separate POSIX stop/continue
+query test returns CTest skip code 77 on Windows. Ordinary query control and
+blocked-output lease checks still run there.
+
+Benchmark smoke checks run on both hosts. Windows omits unavailable wait4/RSS
+counters explicitly; performance measurements still require the Linux path.
+
+## Continuous Regression
+
+[Windows CI](../.github/workflows/windows.yml) runs MSVC Release for PRs and
+both MSVC/clang-cl Release on pushes, manual runs, and the weekly schedule.
+It uses the Windows Server 2025 / VS 2026 runner image, prepares the locked
+tools, builds before running CTest, and saves configuration, test, and tool
+metadata. The runner image/toolset itself can roll forward; its actual image
+and VC tool versions are recorded. Remote CI runs require pushing the change.
+
+The existing Linux Clang/GCC, sanitizer, and QEMU jobs remain in place.
+CI also uses a lit working directory containing Unicode/spaces, and a separate
+process regression covers executable/source paths with apostrophes as well.
 
 ## Native Paths and Logical Module Names
 
@@ -154,6 +228,6 @@ non-UTF-8 wire names retain the baseline admission and round-trip behavior.
 The conservative compiler build identity includes CMake module content,
 C++ standard mode, frontend variant, and selected CRT, in addition to existing
 source/configuration inputs. Changing the host toolchain can invalidate cache
-reuse as intended. W1/W2 do not change C1-C4 wire formats, hash domains,
+reuse as intended. W1-W3 do not change C1-C4 wire formats, hash domains,
 versions, fixed fixtures, or old-format rejection rules; see the
 [protocol baseline](cache-protocol-baseline.md).

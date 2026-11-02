@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %run_residual %s 1 2147483648 31
 // RUN: %run_residual %s 2147483647 4294967295 1
 // RUN: %run_residual %s 4294967295 4294967295 0

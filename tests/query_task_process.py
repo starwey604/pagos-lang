@@ -41,7 +41,7 @@ with tempfile.TemporaryDirectory(prefix="pagos-query-task-process-") as temporar
         "fn outer(x: u32) -> u32 { inner(x) } "
         "let a = external_input(); let b = external_input(); let aa = [" +
         ", ".join("outer(a)" if i % 2 else "outer(b)" for i in range(32)) + "];"
-    )
+    , encoding="utf-8", newline="\n")
     run("prepare", directory, source)
     semantic_files = files(directory / "evidence")
     for mode in ("sources", "witness"):

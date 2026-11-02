@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %run_cache %s %t.cache 64 5 7 9
 fn scale(k: u32, x: u32) -> u32 { k * x }
 fn known() -> u32 { external_input(); 4 }

@@ -4,6 +4,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+from test_runtime import executable_path, assert_trap
 
 
 def main():
@@ -20,8 +21,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix="pagos-residual-") as directory:
         root = pathlib.Path(directory)
         ir = root / "program.ll"
-        ir.write_text(emitted.stdout)
-        executable = root / "program"
+        ir.write_text(emitted.stdout, encoding="utf-8", newline="\n")
+        executable = executable_path(root / "program")
         subprocess.run(
             [clang, *optimization, str(ir),
              str(pathlib.Path(__file__).with_name("runtime.c")),
@@ -33,7 +34,7 @@ def main():
         )
     lines = [f"input={value}" for value in inputs]
     if expected == "trap":
-        assert executed.returncode < 0, executed
+        assert_trap(executed)
     else:
         assert executed.returncode == 0, executed
         lines.append(f"result={expected}")

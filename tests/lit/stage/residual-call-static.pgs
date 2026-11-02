@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %pagosc emit-hir %s | %FileCheck %s
 // RUN: %run_residual %s 42 7 9
 // RUN: %run_optimized %s 42 7 9

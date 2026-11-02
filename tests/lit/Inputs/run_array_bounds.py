@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import sys
+from test_runtime import executable_path, assert_trap
 
 
 def main():
@@ -25,8 +26,8 @@ def main():
             assert int(re.search(r"hits=(\d+)", compiled.stderr)[1]) == 1
         outputs.append(compiled.stdout)
         ir = root / f"{mode}.ll"
-        ir.write_text(compiled.stdout)
-        executable = root / mode
+        ir.write_text(compiled.stdout, encoding="utf-8", newline="\n")
+        executable = executable_path(root / mode)
         subprocess.run([clang, str(ir), str(pathlib.Path(__file__).with_name(
             "runtime.c")), "-o", str(executable)], check=True)
         programs.append(executable)
@@ -42,7 +43,7 @@ def main():
                 assert result.stdout.splitlines() == [
                     f"input={index}", f"result={(index + 1) ** 2 + 1}"]
             else:
-                assert result.returncode < 0, "out-of-bounds read did not trap"
+                assert_trap(result)
                 assert result.stdout.splitlines() == [f"input={index}"]
         assert len(set(outcomes)) == 1
 

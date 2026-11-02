@@ -1,3 +1,4 @@
+// REQUIRES: elf-native
 // RUN: %run_native_opt %s
 // S4's CRC shape, kept independent of the external board repository.
 fn crc_entry(value: u32, polynomial: u32, bits: u32) -> u32 {

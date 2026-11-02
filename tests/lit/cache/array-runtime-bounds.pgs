@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %run_array_bounds %s %t
 fn table() -> [u32; 4] { [for i in 1..5 { i * i }] }
 let a = table();

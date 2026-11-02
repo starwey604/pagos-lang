@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from process_support import failing_stdout
 
 BINARY = sys.argv[1]
 PROGRAM = (
@@ -60,7 +61,7 @@ def decode(process):
 with tempfile.TemporaryDirectory(prefix="pagos-recursive-task-cli-") as temporary:
     root = Path(temporary)
     source, evidence, tasks = root / "input.pgs", root / "evidence", root / "tasks"
-    source.write_text(PROGRAM)
+    source.write_text(PROGRAM, encoding="utf-8", newline="\n")
     base = ["--target=riscv32-unknown-elf"]
 
     def run(args, codes=(0, 3)):
@@ -181,9 +182,9 @@ with tempfile.TemporaryDirectory(prefix="pagos-recursive-task-cli-") as temporar
     # Wrong source/positions, actual specialization, channel or target must not write.
     query(task=task, action="resume", channel="effects", codes=(1,))
     query(name="input", task=task, action="resume", codes=(1,))
-    source.write_text("// changed revision\n" + PROGRAM)
+    source.write_text("// changed revision\n" + PROGRAM, encoding="utf-8", newline="\n")
     query(task=task, action="resume", codes=(1,))
-    source.write_text(PROGRAM)
+    source.write_text(PROGRAM, encoding="utf-8", newline="\n")
     query(task=task, action="resume", extra=["--target=x86_64-unknown-linux-gnu"], codes=(1,))
     assert files(tasks) == before
     assert cleanup()["skipped"] == 1
@@ -220,7 +221,7 @@ with tempfile.TemporaryDirectory(prefix="pagos-recursive-task-cli-") as temporar
 
     # Output failure happens after publication, so a new process replays it.
     full_id = "f" * 64
-    with open("/dev/full", "wb") as full:
+    with failing_stdout() as full:
         failed = subprocess.run([BINARY, *map(str, arguments(task=full_id))],
                                 stdout=full, stderr=subprocess.PIPE, text=True, timeout=40)
     assert failed.returncode == 1 and "saved result can be replayed" in failed.stderr

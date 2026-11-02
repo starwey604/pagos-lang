@@ -1,4 +1,5 @@
 #include "scalar_replay.h"
+#include "pagos/source/path.h"
 #include "pagos/stage/generator_replay_execution.h"
 
 #include <array>
@@ -29,6 +30,14 @@ class Cancellation {
         previous_ = std::signal(SIGINT, interrupt);
         if (previous_ == SIG_ERR)
             throw std::runtime_error("cannot install replay interrupt handler");
+#ifdef SIGBREAK
+        previous_break_ = std::signal(SIGBREAK, interrupt);
+        if (previous_break_ == SIG_ERR) {
+            std::signal(SIGINT, previous_);
+            throw std::runtime_error(
+                "cannot install replay console break handler");
+        }
+#endif
         try {
             watcher_ = std::jthread([this](const std::stop_token& stop) {
                 while (!stop.stop_requested()) {
@@ -41,6 +50,9 @@ class Cancellation {
             });
         } catch (...) {
             std::signal(SIGINT, previous_);
+#ifdef SIGBREAK
+            std::signal(SIGBREAK, previous_break_);
+#endif
             throw;
         }
     }
@@ -48,6 +60,9 @@ class Cancellation {
         watcher_.request_stop();
         watcher_.join();
         std::signal(SIGINT, previous_);
+#ifdef SIGBREAK
+        std::signal(SIGBREAK, previous_break_);
+#endif
     }
     std::stop_token token() const { return source_.get_token(); }
     bool requested() const {
@@ -57,6 +72,9 @@ class Cancellation {
 
   private:
     void (*previous_)(int){};
+#ifdef SIGBREAK
+    void (*previous_break_)(int){};
+#endif
     std::stop_source source_;
     std::jthread watcher_;
 };
@@ -496,7 +514,7 @@ parse_scalar_replay_option(std::string_view argument,
     const auto name = argument.substr(0, split),
                text = argument.substr(split + 1);
     if (name == "--replay-read")
-        options.directory = text;
+        options.directory = source::path_from_utf8(text);
     else if (name == "--replay-function")
         options.function = text;
     else if (name == "--replay-arg")

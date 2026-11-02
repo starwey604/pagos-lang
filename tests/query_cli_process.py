@@ -1,7 +1,7 @@
 """Main pagosc task CLI: durable-before-output pages and explicit receipts."""
 import collections
 import hashlib
-import fcntl
+import os
 import json
 from pathlib import Path
 import re
@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from process_support import require_posix_stop_continue
 
 BINARY = sys.argv[1]
 
@@ -39,7 +40,7 @@ class Fixture:
     def __init__(self, parent, text):
         self.source = parent / "input.pgs"
         parent.mkdir(parents=True)
-        self.source.write_text(text)
+        self.source.write_text(text, encoding="utf-8", newline="\n")
         self.evidence = parent / "evidence"
         self.tasks = parent / "tasks"
         self.base = ["--target=riscv32-unknown-elf"]
@@ -124,6 +125,42 @@ PROGRAM = (
     "let a = external_input(); let b = external_input(); "
     "let aa = [outer(a), outer(b), outer(a), outer(b)]; let rr = recur(a); let known = 7;"
 )
+if "--stop-continue" in sys.argv:
+    require_posix_stop_continue()
+    with tempfile.TemporaryDirectory(prefix="pagos-query-control-") as temporary:
+        parent = Path(temporary)
+        # A concurrent cancel is observed between slices by a running --all worker.
+        large_text = " ".join(f"let a{i} = external_input();" for i in range(4097))
+        large_text += " let aa = [" + ", ".join(f"a{i}" for i in range(4097)) + "];"
+        running = Fixture(parent / "running", large_text)
+        identifier = "3" * 64
+        _, saved = decode(running.query(task=identifier, slices=0))
+        with tempfile.TemporaryFile() as out:
+            args = [BINARY, *running.base, "--max-fuel=0", f"--evidence-read={running.evidence}",
+                    "--evidence-root=aa", f"--query-dir={running.tasks}", f"--query-id={identifier}",
+                    "--query-action=resume", "--query-max-slices=all", "--provenance-slice=1",
+                    "explain-provenance", str(running.source)]
+            process = subprocess.Popen(args, stdout=out, stderr=subprocess.PIPE, text=True)
+            try:
+                ready = process.stderr.readline()
+                assert "loaded id=" in ready, ready
+                process.send_signal(signal.SIGSTOP)
+                _, cancelled = decode(running.query(task=identifier, action="cancel"))
+                assert cancelled["state"] == "cancelled"
+                process.send_signal(signal.SIGCONT)
+                _, diagnostic = process.communicate(timeout=30)
+                assert process.returncode == 1 and "cancelled by another writer" in diagnostic
+                out.seek(0)
+                assert not out.read(), "superseded worker emitted an uncommitted page"
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.communicate(timeout=10)
+        assert running.cleanup()["reclaimed"] == 1
+        assert files(running.evidence) == running.semantic_files
+    raise SystemExit(0)
+
+
 with tempfile.TemporaryDirectory(prefix="pagos-query-cli-") as temporary:
     parent = Path(temporary)
     f = Fixture(parent / "small", PROGRAM)
@@ -179,11 +216,11 @@ with tempfile.TemporaryDirectory(prefix="pagos-query-cli-") as temporary:
                                         ("sources", "memory", "value", "aa")):
         f.query(mode, storage, channel, paused["task"], "resume", root=root, codes=(1,))
         assert files(f.tasks) == before
-    f.source.write_text(PROGRAM + " ")
+    f.source.write_text(PROGRAM + " ", encoding="utf-8", newline="\n")
     result = f.query(storage="paged", task=paused["task"], action="resume", codes=(1,))
     assert "binding mismatch" in result.stderr and not result.stdout
     assert files(f.tasks) == before
-    f.source.write_text(PROGRAM)
+    f.source.write_text(PROGRAM, encoding="utf-8", newline="\n")
     f.query(storage="paged", task=paused["task"], action="resume", extra=("--query-ack=999",), codes=(1,))
     assert files(f.tasks) == before
     f.query(storage="paged", task=paused["task"], codes=(1,))
@@ -244,7 +281,9 @@ with tempfile.TemporaryDirectory(prefix="pagos-query-cli-") as temporary:
                 "--provenance-slice=100000", "explain-provenance", str(wide.source)]
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=stderr)
         try:
-            fcntl.fcntl(process.stdout.fileno(), fcntl.F_SETPIPE_SZ, 4096)
+            if os.name != "nt":
+                import fcntl
+                fcntl.fcntl(process.stdout.fileno(), fcntl.F_SETPIPE_SZ, 4096)
             deadline = time.monotonic() + 30
             while not list(wide.tasks.glob("pagos-query-*/head")):
                 assert process.poll() is None
@@ -260,40 +299,11 @@ with tempfile.TemporaryDirectory(prefix="pagos-query-cli-") as temporary:
                 process.communicate(timeout=10)
         assert wide.cleanup()["skipped"] == 1
         assert wide.cleanup(True)["reclaimed"] == 1
-    # A concurrent cancel is observed between slices by a running --all worker.
-    large_text = " ".join(f"let a{i} = external_input();" for i in range(4097))
-    large_text += " let aa = [" + ", ".join(f"a{i}" for i in range(4097)) + "];"
-    running = Fixture(parent / "running", large_text)
-    identifier = "3" * 64
-    _, saved = decode(running.query(task=identifier, slices=0))
-    with tempfile.TemporaryFile() as out:
-        args = [BINARY, *running.base, "--max-fuel=0", f"--evidence-read={running.evidence}",
-                "--evidence-root=aa", f"--query-dir={running.tasks}", f"--query-id={identifier}",
-                "--query-action=resume", "--query-max-slices=all", "--provenance-slice=1",
-                "explain-provenance", str(running.source)]
-        process = subprocess.Popen(args, stdout=out, stderr=subprocess.PIPE, text=True)
-        try:
-            ready = process.stderr.readline()
-            assert "loaded id=" in ready, ready
-            process.send_signal(signal.SIGSTOP)
-            _, cancelled = decode(running.query(task=identifier, action="cancel"))
-            assert cancelled["state"] == "cancelled"
-            process.send_signal(signal.SIGCONT)
-            _, diagnostic = process.communicate(timeout=30)
-            assert process.returncode == 1 and "cancelled by another writer" in diagnostic
-            out.seek(0)
-            assert not out.read(), "superseded worker emitted an uncommitted page"
-        finally:
-            if process.poll() is None:
-                process.kill()
-                process.communicate(timeout=10)
-    assert running.cleanup()["reclaimed"] == 1
-    assert files(running.evidence) == running.semantic_files
     # Starting during an explicit evidence publication runs Stage once; resume never does.
     fresh = parent / "write-start"
     fresh.mkdir()
     src = fresh / "input.pgs"
-    src.write_text(PROGRAM)
+    src.write_text(PROGRAM, encoding="utf-8", newline="\n")
     ev, tasks = fresh / "evidence", fresh / "tasks"
     result = run([*f.base, f"--evidence-write={ev}", "--evidence-root=aa",
                   f"--query-dir={tasks}", "--query-max-slices=0", "explain-provenance", src])
@@ -305,7 +315,7 @@ with tempfile.TemporaryDirectory(prefix="pagos-query-cli-") as temporary:
     assert decode(result)[1]["stage_runs"] == 0
     # A failed Stage run cannot mix ordinary text into JSON or create task files.
     bad = parent / "bad.pgs"
-    bad.write_text("comptime let aa = external_input();")
+    bad.write_text("comptime let aa = external_input();", encoding="utf-8", newline="\n")
     bad_evidence, bad_tasks = parent / "bad-evidence", parent / "bad-tasks"
     failed = run([*f.base, f"--evidence-write={bad_evidence}", "--evidence-root=aa",
                   f"--query-dir={bad_tasks}", "explain-provenance", bad], (1,))

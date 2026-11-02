@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %pagosc explain-stage %s | %FileCheck %s
 // RUN: %run_residual %s 40 10 20
 fn read(a: [u32; 2]) -> u32 { let alias = a; alias[1] }

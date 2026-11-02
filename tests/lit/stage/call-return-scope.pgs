@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %run_residual %s 13 3 1 2 0 7
 
 fn inner(end: u32) -> u32 {

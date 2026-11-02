@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %run_residual %s 3 20
 fn caller() -> u32 {
     [external_input(), if true { return 3; } else { 0 }, 10 / 0];

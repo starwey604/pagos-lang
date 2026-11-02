@@ -4,6 +4,7 @@ import re
 import shutil
 import subprocess
 import sys
+from test_runtime import executable_path
 
 binary, clang = str(pathlib.Path(sys.argv[1]).resolve()), sys.argv[2]
 root = pathlib.Path(sys.argv[3]).resolve()
@@ -14,7 +15,7 @@ body = "let n0 = x + 1; " + " ".join(f"let n{i} = n{i-1} + 1;" for i in range(1,
 source.write_text("fn square(x: u32) -> u32 { x * x } "
     "comptime let known = square(7); fn big(x: u32) -> u32 { " + body + " } "
     "let x = external_input(); let y = external_input(); let arr = [7, x]; "
-    "comptime let fixed = arr[0]; let a = big(x); let b = big(y); a + b + fixed + known;")
+    "comptime let fixed = arr[0]; let a = big(x); let b = big(y); a + b + fixed + known;", encoding="utf-8", newline="\n")
 spill = ["--evidence-spill=spill", "--spill-block-bytes=128", "--spill-resident-bytes=8192", "--spill-cache-bytes=512", "--spill-stats"]
 
 def run(command, *flags, ok=True):
@@ -49,15 +50,15 @@ assert stats(run("explain-provenance", *spill, "--provenance-query=compressed"))
 runtime = pathlib.Path(__file__).with_name("runtime.c").resolve()
 for index, flags in enumerate(([], spill, [*spill, "--spill-resident-bytes=0"])):
     emitted = run("emit-llvm", *flags)
-    ir, exe = root / f"case{index}.ll", root / f"case{index}"
-    ir.write_text(emitted.stdout)
+    ir, exe = root / f"case{index}.ll", executable_path(root / f"case{index}")
+    ir.write_text(emitted.stdout, encoding="utf-8", newline="\n")
     subprocess.run([clang, str(ir), str(runtime), "-o", str(exe)], check=True, capture_output=True)
     actual = subprocess.run([str(exe), "3", "5"], check=True, text=True, capture_output=True)
     assert actual.stdout == "input=3\ninput=5\nresult=192\n", actual.stdout
 # An explicitly supplied relative path must spill, not silently fall back.
 assert stats(run("check", *spill))["written"] > 0
 blocker = root / "not-a-directory"
-blocker.write_text("keep")
+blocker.write_text("keep", encoding="utf-8", newline="\n")
 base = run("emit-hir")
 fallback = run("emit-hir", f"--evidence-spill={blocker}", "--spill-block-bytes=128", "--spill-stats")
 assert fallback.stdout == base.stdout

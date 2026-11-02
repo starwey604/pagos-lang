@@ -1,39 +1,70 @@
-import inspect
+import errno
 import os
-import shlex
+import platform
+import tempfile
 
 import lit.formats
 
 
+import sys
+sys.path.insert(0, config.pagos_test_source_root)
+from pagos_test_format import PagosShTest, shell_quote
+
+
 config.name = "Pagos"
-shell_options = {"execute_external": True}
-if "force_execute_external" in inspect.signature(lit.formats.ShTest).parameters:
-    shell_options["force_execute_external"] = True
-config.test_format = lit.formats.ShTest(**shell_options)
+config.test_format = PagosShTest()
 config.suffixes = [".pgs"]
 config.excludes = ["Inputs"]
 config.test_source_root = config.pagos_test_source_root
 config.test_exec_root = config.pagos_test_exec_root
-config.substitutions.append(("%pagosc", config.pagosc))
-config.substitutions.append(("%FileCheck", config.filecheck))
+# Frontend/IR goldens specify a stable semantic target. Runtime helpers receive
+# the raw executable and select their real host or an explicit cross target.
+config.substitutions.append(("%pagosc_host", shell_quote(config.pagosc)))
+config.substitutions.append(("%pagosc", shell_quote(config.pagosc) +
+                              " --target=x86_64-unknown-linux-gnu"))
+config.substitutions.append(("%FileCheck", shell_quote(config.filecheck)))
+for token, mode in (("%assert_absent", "--absent"), ("%diff_text", "--equal")):
+    config.substitutions.append((token, " ".join(map(shell_quote, (
+        config.python, os.path.join(config.pagos_test_source_root, "Inputs", "check_host_files.py"), mode)))))
+config.environment["PYTHONUTF8"] = "1"
+config.environment["PYTHONIOENCODING"] = "utf-8"
+config.available_features.add("host-" + platform.system().lower())
+if platform.machine().lower() in ("amd64", "x86_64"):
+    if platform.system() in ("Windows", "Linux"):
+        config.available_features.add("native-entry")
+    if platform.system() == "Linux":
+        config.available_features.add("minimal-c-abi")
+        config.available_features.add("elf-native")
+os.makedirs(config.test_exec_root, exist_ok=True)
+with tempfile.TemporaryDirectory(dir=config.test_exec_root) as directory:
+    target = os.path.join(directory, "target")
+    with open(target, "w"):
+        pass
+    try:
+        os.symlink(target, os.path.join(directory, "link"))
+    except OSError as error:
+        if error.errno not in (errno.EPERM, errno.EACCES, errno.ENOTSUP, errno.ENOSYS) and getattr(error, "winerror", None) != 1314:
+            raise
+    else:
+        config.available_features.add("symlinks")
 config.substitutions.append((
     "%run_stage_spill",
-    " ".join(shlex.quote(value) for value in [config.python,
+    " ".join(shell_quote(value) for value in [config.python,
         os.path.join(config.pagos_test_source_root, "Inputs", "run_stage_spill.py"), config.pagosc, config.test_clang]),
 ))
 config.substitutions.append((
     "%run_function_evidence",
-    " ".join(shlex.quote(value) for value in [config.python,
+    " ".join(shell_quote(value) for value in [config.python,
         os.path.join(config.pagos_test_source_root, "Inputs", "run_function_evidence.py"), config.pagosc]),
 ))
 config.substitutions.append((
     "%run_snapshot",
-    " ".join(shlex.quote(value) for value in [config.python,
+    " ".join(shell_quote(value) for value in [config.python,
         os.path.join(config.pagos_test_source_root, "Inputs", "run_snapshot.py"), config.pagosc]),
 ))
 config.substitutions.append((
     "%run_array_bounds",
-    " ".join(shlex.quote(value) for value in [
+    " ".join(shell_quote(value) for value in [
         config.python,
         os.path.join(config.pagos_test_source_root, "Inputs", "run_array_bounds.py"),
         config.pagosc, config.test_clang,
@@ -41,7 +72,7 @@ config.substitutions.append((
 ))
 config.substitutions.append((
     "%run_cache",
-    " ".join(shlex.quote(value) for value in [
+    " ".join(shell_quote(value) for value in [
         config.python,
         os.path.join(config.pagos_test_source_root, "Inputs", "run_cache.py"),
         config.pagosc, config.test_clang,
@@ -49,21 +80,21 @@ config.substitutions.append((
 ))
 config.substitutions.append((
     "%run_sections",
-    " ".join(shlex.quote(value) for value in [
+    " ".join(shell_quote(value) for value in [
         config.python, os.path.join(config.pagos_test_source_root, "Inputs", "run_sections.py"),
         config.pagosc, config.test_clang,
     ]),
 ))
 config.substitutions.append((
     "%run_globals",
-    " ".join(shlex.quote(value) for value in [
+    " ".join(shell_quote(value) for value in [
         config.python, os.path.join(config.pagos_test_source_root, "Inputs", "run_globals.py"),
         config.pagosc, config.test_clang,
     ]),
 ))
 config.substitutions.append((
     "%run_residual",
-    " ".join(shlex.quote(value) for value in [
+    " ".join(shell_quote(value) for value in [
         config.python,
         os.path.join(config.pagos_test_source_root, "Inputs", "run_residual.py"),
         config.pagosc,
@@ -75,7 +106,7 @@ config.environment["PATH"] = os.pathsep.join(
 )
 config.substitutions.append((
     "%check_object",
-    " ".join(shlex.quote(value) for value in [
+    " ".join(shell_quote(value) for value in [
         config.python,
         os.path.join(config.pagos_test_source_root, "Inputs", "check_object.py"),
         config.pagosc,
@@ -84,7 +115,7 @@ config.substitutions.append((
 ))
 config.substitutions.append((
     "%run_native_opt",
-    " ".join(shlex.quote(value) for value in [
+    " ".join(shell_quote(value) for value in [
         config.python,
         os.path.join(config.pagos_test_source_root, "Inputs", "run_native_opt.py"),
         config.pagosc,
@@ -96,7 +127,7 @@ config.substitutions.append((
 ))
 config.substitutions.append((
     "%run_c_abi",
-    " ".join(shlex.quote(value) for value in [
+    " ".join(shell_quote(value) for value in [
         config.python,
         os.path.join(config.pagos_test_source_root, "Inputs", "run_c_abi.py"),
         config.pagosc,
@@ -105,7 +136,7 @@ config.substitutions.append((
 ))
 config.substitutions.append((
     "%run_crc32",
-    " ".join(shlex.quote(value) for value in [
+    " ".join(shell_quote(value) for value in [
         config.python,
         os.path.join(config.pagos_test_source_root, "Inputs", "run_crc32.py"),
         config.pagosc,
@@ -114,7 +145,7 @@ config.substitutions.append((
 ))
 config.substitutions.append((
     "%run_optimized",
-    " ".join(shlex.quote(value) for value in [
+    " ".join(shell_quote(value) for value in [
         config.python,
         os.path.join(config.pagos_test_source_root, "Inputs", "run_residual.py"),
         "--optimize",

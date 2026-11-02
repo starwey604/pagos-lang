@@ -66,13 +66,13 @@
       "cacheVariables": {
         "PAGOS_USE_LLVM_DYLIB": "OFF",
         "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded",
-        "PAGOS_ENABLE_PROCESS_TESTS": "OFF",
-        "PAGOS_ENABLE_LIT_TESTS": "OFF"
+        "PAGOS_ENABLE_PROCESS_TESTS": "ON",
+        "PAGOS_ENABLE_LIT_TESTS": "ON"
       }
     },
     {
       "name": "windows-msvc-release",
-      "displayName": "Windows msvc Release (unit tests)",
+      "displayName": "Windows MSVC Release (host tests)",
       "inherits": "windows-base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
@@ -82,7 +82,7 @@
     },
     {
       "name": "windows-msvc-relwithdebinfo",
-      "displayName": "Windows msvc RelWithDebInfo (unit tests)",
+      "displayName": "Windows MSVC RelWithDebInfo (host tests)",
       "inherits": "windows-base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
@@ -92,7 +92,7 @@
     },
     {
       "name": "windows-clang-cl-release",
-      "displayName": "Windows clang-cl Release (unit tests)",
+      "displayName": "Windows clang-cl Release (host tests)",
       "inherits": "windows-base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
@@ -102,7 +102,7 @@
     },
     {
       "name": "windows-clang-cl-relwithdebinfo",
-      "displayName": "Windows clang-cl RelWithDebInfo (unit tests)",
+      "displayName": "Windows clang-cl RelWithDebInfo (host tests)",
       "inherits": "windows-base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",

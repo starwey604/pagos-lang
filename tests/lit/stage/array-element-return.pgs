@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %run_residual %s 103 1 20
 // RUN: %run_residual %s 150 0 20 30
 fn caller(flag: bool) -> u32 {

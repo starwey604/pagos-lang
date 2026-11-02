@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %run_residual %s 11 7
 // RUN: %pagosc explain-stage %s | %FileCheck %s
 record Pair { known: u32, other: u32 }

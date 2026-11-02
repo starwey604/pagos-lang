@@ -14,7 +14,7 @@ source, store = root / "module.pgs", root / "evidence"
 body = "let n0 = x + 1; " + " ".join(f"let n{i} = n{i-1} + 1;" for i in range(1, 256)) + " n255"
 source.write_text("fn a(x: u32) -> u32 { if x == 0 { 1 } else { x + 2 } } "
                   + "fn b(x: u32) -> u32 { " + body + " } "
-                  + "let x = external_input(); let y = external_input(); let aa = a(x); let bb = b(y);")
+                  + "let x = external_input(); let y = external_input(); let aa = a(x); let bb = b(y);", encoding="utf-8", newline="\n")
 
 def run(*args, ok=True):
     result = subprocess.run([binary, *args, "explain-provenance", str(source)], cwd=root, text=True, capture_output=True)
@@ -45,7 +45,7 @@ for mode in ("sources", "witness", "topology"):
 assert files() == before, "read changed storage"
 assert "decision rule=" in read("decisions", "a").stdout
 assert stats(read("decisions", "a"))["cold-objects"] == 0
-source.write_text("// revised positions\n\n" + source.read_text())
+source.write_text("// revised positions\n\n" + source.read_text(), encoding="utf-8", newline="\n")
 shifted = read()
 assert shifted.stdout != exported.stdout
 assert int(re.search(r"external_input @(\d+)", shifted.stdout)[1]) == int(re.search(r"external_input @(\d+)", exported.stdout)[1]) + len("// revised positions\n\n")

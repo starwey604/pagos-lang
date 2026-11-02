@@ -1,13 +1,15 @@
 """Check object output safety, the legacy entry, and separate-module linking."""
 
 from pathlib import Path
+import os
 import subprocess
 import sys
 import tempfile
+from test_runtime import executable_path
 
 
 def main():
-    pagosc, clang, fixture = sys.argv[1:]
+    pagosc, clang, fixture, *mode = sys.argv[1:]
 
     def invoke(*arguments, error=None):
         result = subprocess.run([pagosc, *map(str, arguments)],
@@ -22,7 +24,7 @@ def main():
         root = Path(directory)
         source = root / "source.pgs"
         text = Path(fixture).read_text()
-        source.write_text(text)
+        source.write_text(text, encoding="utf-8", newline="\n")
         obj = root / "program.o"
         marker = b"previous output\n"
         obj.write_bytes(marker)
@@ -33,7 +35,10 @@ def main():
                error="exactly one output path")
         invoke("emit-obj", source, "-o", "--target=oops",
                error="invalid object output path")
-        for alias in (source, root / "hardlink.pgs", root / "symlink.pgs"):
+        aliases = [source, root / "hardlink.pgs"]
+        if mode == ["--symlink"]:
+            aliases.append(root / "symlink.pgs")
+        for alias in aliases:
             if alias.name == "hardlink.pgs":
                 alias.hardlink_to(source)
             elif alias.name == "symlink.pgs":
@@ -48,7 +53,7 @@ def main():
         assert obj.read_bytes() == marker
         temporary.unlink()
         invalid = root / "invalid.pgs"
-        invalid.write_text("comptime let x = external_input();")
+        invalid.write_text("comptime let x = external_input();", encoding="utf-8", newline="\n")
         invoke("emit-obj", invalid, "-o", obj, error="E2001")
         assert obj.read_bytes() == marker and not temporary.exists()
         invoke("emit-obj", source, "-o", root, error="cannot replace object output")
@@ -56,25 +61,28 @@ def main():
         invoke("emit-obj", source, "-o", root / "missing/file.o",
                error="cannot create object temporary")
         invoke("emit-obj", source, "-o", obj)
-        assert obj.read_bytes().startswith(b"\x7fELF") and not temporary.exists()
+        magic = b"\x64\x86" if os.name == "nt" else b"\x7fELF"
+        assert obj.read_bytes().startswith(magic) and not temporary.exists()
         caller = root / "caller.c"
         caller.write_text("extern unsigned pagos_main(void); "
-                          "int main(void) { return pagos_main() != 42; }")
-        program = root / "program"
+                          "int main(void) { return pagos_main() != 42; }", encoding="utf-8", newline="\n")
+        program = executable_path(root / "program")
         subprocess.run([clang, str(obj), str(caller), "-o", str(program)],
                        check=True, timeout=20)
         subprocess.run([str(program)], check=True, timeout=5)
+        if mode != ["--modules"]:
+            return
         # Separately compiled Pagos modules export exactly their source names,
         # without duplicate synthetic entry symbols or implicit initialization.
-        source.write_text("export fn first(x: u32) -> u32 { x + 1 }")
+        source.write_text("export fn first(x: u32) -> u32 { x + 1 }", encoding="utf-8", newline="\n")
         second = root / "second.pgs"
         second.write_text("extern fn first(x: u32) -> u32; "
-                          "export fn second(x: u32) -> u32 { first(x) + 1 }")
+                          "export fn second(x: u32) -> u32 { first(x) + 1 }", encoding="utf-8", newline="\n")
         second_obj = root / "second.o"
         invoke("emit-obj", source, "-o", obj)
         invoke("emit-obj", second, "-o", second_obj)
         caller.write_text("extern unsigned second(unsigned); "
-                          "int main(void) { return second(40) != 42; }")
+                          "int main(void) { return second(40) != 42; }", encoding="utf-8", newline="\n")
         subprocess.run([clang, str(obj), str(second_obj), str(caller),
                         "-o", str(program)], check=True, timeout=20)
         subprocess.run([str(program)], check=True, timeout=5)

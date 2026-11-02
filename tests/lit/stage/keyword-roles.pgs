@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
 // RUN: %pagosc explain-stage %s | %FileCheck %s --check-prefix=STAGE
 // RUN: %run_residual %s 107

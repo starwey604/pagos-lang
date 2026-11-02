@@ -9,6 +9,7 @@
 #include <array>
 #include <chrono>
 #include <iostream>
+#include <source_location>
 #include <stdexcept>
 
 using namespace pagos;
@@ -41,9 +42,11 @@ std::size_t owned(QueryStateMemory s) {
     return s.queue + s.visited + s.contexts + s.context_index + s.sources +
            s.witness + s.cached;
 }
-void require(bool value) {
+void require(bool value,
+             std::source_location location = std::source_location::current()) {
     if (!value)
-        throw std::runtime_error("benchmark invariant failed");
+        throw std::runtime_error("benchmark invariant failed at line " +
+                                 std::to_string(location.line()));
 }
 cache::Digest hash(std::string_view value) {
     return cache::fingerprint(

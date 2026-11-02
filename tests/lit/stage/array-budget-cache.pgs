@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %pagosc --max-array-elements=4 --max-array-bytes=16 explain-stage %s | %FileCheck %s
 // RUN: %run_residual %s 6
 fn table() -> [u32; 4] { [for i in 0..4 { i }] }

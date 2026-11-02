@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %pagosc emit-hir %s | %FileCheck %s
 // RUN: %run_residual %s 4294967294
 comptime let table = [for i in 4294967293..4294967295 { i }];

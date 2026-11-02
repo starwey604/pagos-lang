@@ -1,0 +1,79 @@
+name: Windows compiler
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 4 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: ${{ fromJSON(github.event_name == 'pull_request' && '["windows-msvc-release"]' || '["windows-msvc-release", "windows-clang-cl-release"]') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: '3.14.0'
+          architecture: x64
+      - name: Prepare pinned SDK, dependencies and test tools
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/ci-logs | Out-Null
+          ./scripts/prepare_windows.ps1 -WorkDirectory "$env:RUNNER_TEMP/pagos-tools" 2>&1 | Tee-Object build/ci-logs/prepare.log
+      - name: Build and run host regressions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tools = Get-Content -Raw "$env:RUNNER_TEMP/pagos-tools/toolchain.json" | ConvertFrom-Json
+          . ./ci/windows_environment.ps1
+          Enter-PagosWindowsEnvironment $tools.llvm
+          New-Item -ItemType Directory -Force build/ci-logs | Out-Null
+          Copy-Item -LiteralPath "$env:RUNNER_TEMP/pagos-tools/toolchain.json" -Destination build/ci-logs/toolchain.json
+          cmake --version | Out-File build/ci-logs/versions.log
+          ninja --version | Out-File build/ci-logs/versions.log -Append
+          & "$($tools.llvm)/bin/clang-cl.exe" --version | Out-File build/ci-logs/versions.log -Append
+          cmake --preset '${{ matrix.preset }}' `
+            "-DLLVM_DIR=$($tools.llvm)/lib/cmake/llvm" `
+            "-DCMAKE_PREFIX_PATH=$($tools.dependencies)" `
+            "-DPython3_EXECUTABLE=$($tools.python)" `
+            "-DPAGOS_LIT=$($tools.lit)" `
+            "-DPAGOS_FILECHECK=$($tools.filecheck)" `
+            "-DPAGOS_LIT_EXEC_ROOT=$pwd/build/lit work 中文" `
+            -DPAGOS_ENABLE_PROCESS_TESTS=ON -DPAGOS_ENABLE_LIT_TESTS=ON 2>&1 | Tee-Object build/ci-logs/configure.log
+          if ($LASTEXITCODE) { throw 'Configuration failed' }
+          cmake --build --preset '${{ matrix.preset }}' --parallel 4 2>&1 | Tee-Object build/ci-logs/build.log
+          if ($LASTEXITCODE) { throw 'Build failed' }
+          ctest --preset '${{ matrix.preset }}' --output-junit "$pwd/build/ci-logs/ctest.xml" 2>&1 | Tee-Object build/ci-logs/tests.log
+          if ($LASTEXITCODE) { throw 'Tests failed' }
+          & $tools.python scripts/check_docs.py
+          if ($LASTEXITCODE) { throw 'Documentation check failed' }
+          git diff --check
+          if ($LASTEXITCODE) { throw 'Whitespace check failed' }
+      - name: Preserve diagnostics
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ${{ matrix.preset }}
+          path: |
+            build/ci-logs/
+            build/${{ matrix.preset }}/CMakeCache.txt
+            build/${{ matrix.preset }}/CMakeFiles/CMakeConfigureLog.yaml
+            build/${{ matrix.preset }}/Testing/Temporary/
+            build/${{ matrix.preset }}/tests/lit-results.json
+            ${{ runner.temp }}/pagos-tools/toolchain.json
+          if-no-files-found: warn

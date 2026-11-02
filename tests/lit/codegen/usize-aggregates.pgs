@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %pagosc --target=riscv32-unknown-elf emit-llvm %s | %FileCheck %s --check-prefix=RV32
 // RUN: %pagosc --target=riscv64-unknown-elf emit-llvm %s | %FileCheck %s --check-prefix=RV64
 // RUN: %run_residual %s 1 1 9

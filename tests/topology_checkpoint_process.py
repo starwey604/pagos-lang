@@ -36,7 +36,7 @@ with tempfile.TemporaryDirectory(prefix="pagos-topology-checkpoint-") as tempora
         "fn outer(x: u32) -> u32 { inner(x) } "
         "let a = external_input(); let b = external_input(); let aa = [" +
         ", ".join("outer(a)" if i % 2 else "outer(b)" for i in range(32)) + "];"
-    )
+    , encoding="utf-8", newline="\n")
     assert run("prepare", directory, source)["stage_runs"] == 1
     evidence = files(directory / "evidence")
     oracle = run("topo-oracle", directory, source, "topology")
@@ -71,9 +71,9 @@ with tempfile.TemporaryDirectory(prefix="pagos-topology-checkpoint-") as tempora
     # Source-only edits invalidate the saved task even if semantic IDs still fit.
     run("topo-save-formula", directory, source, 3, "ack")
     original = source.read_text()
-    source.write_text(original + " ")
+    source.write_text(original + " ", encoding="utf-8", newline="\n")
     assert "cannot resume" in run("topo-resume", directory, source, "topology", ok=False).stderr
-    source.write_text(original)
+    source.write_text(original, encoding="utf-8", newline="\n")
     assert run("seg-cleanup-all", directory, source)["reclaimed"] == 1
     run("topo-seg-save-formula", directory, source, 7, "ack")
     leaves = [path for path in (directory / "sessions").rglob("objects/*/*")

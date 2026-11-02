@@ -1,0 +1,3 @@
+// REQUIRES: native-entry, symlinks
+// RUN: %check_object %s --symlink
+let result = 42;

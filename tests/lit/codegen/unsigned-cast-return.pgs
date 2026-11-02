@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %run_residual %s 255 1
 // RUN: %run_residual %s 2 0 258
 // RUN: %run_optimized %s 255 1

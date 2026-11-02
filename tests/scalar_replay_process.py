@@ -18,7 +18,7 @@ def files(root):
 with tempfile.TemporaryDirectory(prefix="pagos-scalar-replay-process-") as temporary:
     root = Path(temporary)
     source, store = root / "input.pgs", root / "store"
-    source.write_text(PROGRAM)
+    source.write_text(PROGRAM, encoding="utf-8", newline="\n")
 
     def probe(action, bits="32", build="probe-build-v1", codes=(0,), fuel=None):
         args = [PROBE, action, str(store), str(source), bits, build]
@@ -55,7 +55,7 @@ with tempfile.TemporaryDirectory(prefix="pagos-scalar-replay-process-") as tempo
     assert files(store) == snapshot
 
     shift = "// moved source\n\n"
-    source.write_text(shift + PROGRAM)
+    source.write_text(shift + PROGRAM, encoding="utf-8", newline="\n")
     moved = probe("read")
     assert moved["object"] == first["object"] and moved["descriptor"] == first["descriptor"]
     assert moved["begin"] == first["begin"] + len(shift)
@@ -63,13 +63,13 @@ with tempfile.TemporaryDirectory(prefix="pagos-scalar-replay-process-") as tempo
     assert files(store) == snapshot
     probe("read", bits="64", codes=(3,))
     probe("read", build="different-compiler", codes=(3,))
-    source.write_text(PROGRAM.replace("x * x", "x + x"))
+    source.write_text(PROGRAM.replace("x * x", "x + x"), encoding="utf-8", newline="\n")
     probe("read", codes=(3,))
-    source.write_text(PROGRAM.replace("7usize", "8usize"))
+    source.write_text(PROGRAM.replace("7usize", "8usize"), encoding="utf-8", newline="\n")
     probe("read", codes=(3,))
-    source.write_text(PROGRAM + "fn unrelated() -> u32 { 9 }\n")
+    source.write_text(PROGRAM + "fn unrelated() -> u32 { 9 }\n", encoding="utf-8", newline="\n")
     probe("read", codes=(3,))
-    source.write_text(PROGRAM)
+    source.write_text(PROGRAM, encoding="utf-8", newline="\n")
     assert files(store) == snapshot
 
     # A corrupt/missing required replay object cannot become a P1 hit, while
@@ -108,7 +108,7 @@ with tempfile.TemporaryDirectory(prefix="pagos-scalar-replay-process-") as tempo
     # The compiler's explicit requirement recomputes a real body and upgrades.
     # Probe action publish uses the default; use a fresh source generation for
     # the independent reader's positive post-loss record.
-    source.write_text(PROGRAM.replace("x * x", "x * (x + 0usize)"))
+    source.write_text(PROGRAM.replace("x * x", "x * (x + 0usize)"), encoding="utf-8", newline="\n")
     assert probe("publish")["replay_writes"] == 1
     assert probe("read")["stage_runs"] == 0
 

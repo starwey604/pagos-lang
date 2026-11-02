@@ -35,7 +35,7 @@ def main():
         source.parent.mkdir()
         text = ("fn square(x: u32) -> u32 { x * x } "
                 "let known = square(7); let aa = external_input() + known;\n")
-        source.write_text(text, encoding="utf-8")
+        source.write_text(text, encoding="utf-8", newline="\n")
 
         def run(*args, expected=(0,)):
             result = subprocess.run([str(executable), *map(str, args)], cwd=root,
@@ -86,6 +86,25 @@ def main():
             damaged.write_bytes(b"corrupt")
         fallback = compile("emit-hir", *cache_options, "--stage-cache=read-only")
         assert fallback.stdout == baseline and counts(fallback.stderr)["hits"] == 0
+
+        replay_source = root / "重放 源码.pgs"
+        replay_source.write_text(
+            "fn square(x: u32) -> u32 { x * x } "
+            "fn table(x: u32) -> [u32; 4] { [for i in 2..6 { i * x + 1 }] } "
+            "let a = square(7); let b = table(7);", encoding="utf-8", newline="\n")
+        for kind, function, result, selection in (
+                ("scalar-replay", "square", "49", []),
+                ("generator-replay", "table", "22", ["--replay-element=1"])):
+            replay_cache = root / ("重放 缓存 " + kind)
+            run(*target, "--stage-cache=read-write", f"--cache-dir={replay_cache}",
+                f"--cache-evidence={kind}", "emit-hir", replay_source)
+            before = inventory(replay_cache)
+            replay = run(*target, f"--replay-read={replay_cache}",
+                         f"--replay-function={function}", "--replay-arg=7",
+                         "--max-fuel=0", *selection, "explain-replay", replay_source)
+            record = json.loads(replay.stdout)
+            assert record["stage_runs"] == 0 and record["result"]["value"] == result
+            assert inventory(replay_cache) == before
 
         snapshot = root / "模块 快照"
         saved = compile("explain-provenance", f"--snapshot-write={snapshot}")
@@ -144,7 +163,7 @@ def main():
         # File-as-directory failures are portable; they must be diagnostics,
         # cache fallback, or explicit-query failure rather than a crash.
         blocker = root / "错误 路径"
-        blocker.write_text("keep", encoding="utf-8")
+        blocker.write_text("keep", encoding="utf-8", newline="\n")
         invalid = blocker / "不存在.pgs"
         missing = run(*target, "check", invalid, expected=(1,))
         assert "could not open source file" in missing.stderr

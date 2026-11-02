@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %run_residual %s 1 255 255 65535 1
 // RUN: %run_optimized %s 1 255 255 65535 1
 fn signed_byte(x: i8) -> i8 { x / 1i8 }

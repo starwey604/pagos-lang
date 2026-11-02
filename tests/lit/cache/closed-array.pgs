@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %run_cache %s %t 71 3
 fn table() -> [u32; 4] { [for i in (1 + 1)..(2 + 4) { i * 7 }] }
 fn flags() -> [bool; 3] { [true, false, true] }

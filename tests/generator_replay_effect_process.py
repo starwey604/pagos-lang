@@ -41,6 +41,20 @@ int main(void) {
 }
 """
 
+if os.name == "nt":
+    # Windows C ABI admission is a later milestone. Exercise actual Runtime
+    # effects through the existing synthetic entry/builtin input boundary.
+    PROGRAM = """
+fn table(x: u32) -> [u32; 4] { [for i in 2..6 { i * x + 1 }] }
+fn effects(x: u32) -> [u32; 4] { [for i in 2..6 { external_input() + i + x }] }
+let data = table(7); let work = effects(7); data[2] + work[0];
+"""
+    RUNTIME = RUNTIME.replace("extern uint32_t entry(void);",
+                              "extern uint32_t pagos_main(void);\nstatic unsigned calls;")
+    RUNTIME = RUNTIME.replace("uint32_t observe(uint32_t x) {",
+                              "uint32_t pagos_external_input(void) { unsigned x = ++calls;")
+    RUNTIME = RUNTIME.replace("return x;", "return 0;").replace("entry();", "pagos_main();")
+
 
 def files(root):
     return {str(p.relative_to(root)): (hashlib.sha256(p.read_bytes()).hexdigest(), p.stat().st_mtime_ns)
@@ -51,13 +65,13 @@ with tempfile.TemporaryDirectory(prefix="pagos-generator-effects-") as tmp:
     root = Path(tmp)
     source, store, log, runtime = root / "effects.pgs", root / "cache", root / "effects.log", root / "runtime.c"
     input_file = root / "input.txt"
-    source.write_text(PROGRAM)
-    runtime.write_text(RUNTIME)
-    log.write_text("")
-    input_file.write_text("17\n")
+    source.write_text(PROGRAM, encoding="utf-8", newline="\n")
+    runtime.write_text(RUNTIME, encoding="utf-8", newline="\n")
+    log.write_text("", encoding="utf-8", newline="\n")
+    input_file.write_text("17\n", encoding="utf-8", newline="\n")
     input_snapshot = (input_file.read_bytes(), input_file.stat().st_mtime_ns)
     environment = dict(os.environ, PAGOS_EFFECT_LOG=str(log), PAGOS_EFFECT_INPUT=str(input_file))
-    target = "--target=x86_64-unknown-linux-gnu"
+    target = "--target=" + ("x86_64-pc-windows-msvc" if os.name == "nt" else "x86_64-unknown-linux-gnu")
 
     def execute(args, codes=(0,)):
         result = subprocess.run([BINARY, *map(str, args)], text=True, capture_output=True, env=environment, timeout=60)
@@ -74,7 +88,7 @@ with tempfile.TemporaryDirectory(prefix="pagos-generator-effects-") as tmp:
         if mode != "off":
             options += [f"--cache-dir={store}", f"--cache-evidence={evidence}"]
         llvm = execute([*options, "emit-llvm", source]).stdout
-        obj, exe = root / f"{name}.o", root / name
+        obj, exe = root / f"{name}.o", root / (name + (".exe" if os.name == "nt" else ""))
         execute([*options, "emit-obj", source, "-o", obj])
         linked = subprocess.run([CLANG, str(obj), str(runtime), "-o", str(exe)], capture_output=True, text=True, timeout=60)
         assert linked.returncode == 0, linked.stderr
@@ -86,10 +100,11 @@ with tempfile.TemporaryDirectory(prefix="pagos-generator-effects-") as tmp:
 
     # A real host executable demonstrates the expected dynamic call sequence.
     def runtime_check(exe):
-        log.write_text("")
+        log.write_text("", encoding="utf-8", newline="\n")
         result = subprocess.run([str(exe)], capture_output=True, text=True, env=environment, timeout=30)
         assert result.returncode == 0 and result.stdout == "38\n", (result.returncode, result.stdout, result.stderr)
-        assert log.read_text() == "9\n10\n11\n12\n38\n", log.read_text()
+        expected_trace = "1\n2\n3\n4\n" if os.name == "nt" else "9\n10\n11\n12\n38\n"
+        assert log.read_text() == expected_trace, log.read_text()
 
     runtime_check(off)
     runtime_check(cold)
@@ -112,4 +127,4 @@ with tempfile.TemporaryDirectory(prefix="pagos-generator-effects-") as tmp:
     assert hot_ir == off_ir and files(store) == snapshot
     assert (log.read_bytes(), log.stat().st_mtime_ns) == log_snapshot
     runtime_check(hot)
-print("generator effects: native trace 9,10,11,12,38 and residual LLVM unchanged; CLI success/failure/unsupported paths have no effects or cache writes")
+print("generator effects: native external-call/builtin-input trace and residual LLVM unchanged; CLI success/failure/unsupported paths have no effects or cache writes")

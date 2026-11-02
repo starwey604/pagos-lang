@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %pagosc --max-aggregate-members=4 explain-stage %s | %FileCheck %s --check-prefix=OK
 // RUN: not %pagosc --max-aggregate-members=3 check %s 2>&1 | %FileCheck %s --check-prefix=FAIL
 // RUN: %run_residual %s 1 1

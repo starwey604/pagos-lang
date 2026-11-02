@@ -1,3 +1,4 @@
+// REQUIRES: minimal-c-abi
 // RUN: %run_c_abi --native-optimize %s %S/../Inputs/volatile32.c null
 // RUN: %pagosc --target=thumbv8m.main-none-eabi --cpu=cortex-m33 -O2 emit-llvm %s | %FileCheck %s
 export fn sequence(p: *mut u32, byte: *mut u8, half: *mut i16) -> u32 {

@@ -13,7 +13,7 @@ def main():
         directory = Path(temporary)
         source = directory / "input.pgs"
         plain = "fn square(x: u32) -> u32 { x * x } let result = square(7);\n"
-        source.write_text(plain)
+        source.write_text(plain, encoding="utf-8", newline="\n")
 
         def run(bits="32", cwd=None):
             output = subprocess.check_output([probe, str(source), bits], text=True, cwd=cwd)
@@ -24,14 +24,14 @@ def main():
         baseline = run()
         assert run() == baseline, "fresh process changed stable hashes"
         assert run(cwd=directory) == baseline, "explicit module identity depends on cwd"
-        source.write_text("// offset changes\n\nfn square( x: u32 ) -> u32 {\n x * x\n}\nlet result = square(7);\n")
+        source.write_text("// offset changes\n\nfn square( x: u32 ) -> u32 {\n x * x\n}\nlet result = square(7);\n", encoding="utf-8", newline="\n")
         assert run() == baseline, "whitespace/comments changed semantic hashes"
-        source.write_text(plain.replace("x * x", "x + x"))
+        source.write_text(plain.replace("x * x", "x + x"), encoding="utf-8", newline="\n")
         assert all(a != b for a, b in zip(run(), baseline)), "body edit reused identity"
-        source.write_text(plain + "fn unrelated() -> u32 { 9 }\n")
+        source.write_text(plain + "fn unrelated() -> u32 { 9 }\n", encoding="utf-8", newline="\n")
         edited = run()
         assert edited[0] != baseline[0] and edited[1] == baseline[1]
-        source.write_text(plain)
+        source.write_text(plain, encoding="utf-8", newline="\n")
         assert run("64") != baseline, "target change reused query key"
         print("Cross-process identity, source edits, explicit module and target checks passed.")
 

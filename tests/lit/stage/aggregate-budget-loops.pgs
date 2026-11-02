@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %pagosc --max-aggregate-members=8 --max-aggregate-bytes=20 explain-stage %s | %FileCheck %s
 // RUN: %run_residual %s 7 4
 record R { value: u32, flag: bool }

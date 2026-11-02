@@ -14,7 +14,7 @@ Required tools and libraries are:
 - CMake 3.30 or newer and Ninja;
 - LLVM 22 or 23 development headers, libraries, tools, and CMake configuration;
 - GoogleTest for C++ unit tests;
-- Python 3, LLVM `lit`, and `FileCheck` for language-level golden tests;
+- Python 3.10 or newer, LLVM `lit`, and `FileCheck` for golden tests;
 - Clang 22 or 23 and a host C linker/runtime for executing generated LLVM IR;
 - LLD (`ld.lld`), `llvm-nm`, and `llvm-objdump` for RV32 loop-shape regressions;
 - `clang-format` and `clang-tidy` for local quality checks.
@@ -80,8 +80,9 @@ builds, and `asan` for AddressSanitizer plus UndefinedBehaviorSanitizer.
 Native Windows x64 builds have MSVC and clang-cl Release/RelWithDebInfo
 presets. See [Windows host development](windows.md) for SDK dependencies,
 developer-shell setup, CRT compatibility, and current validation limits.
-The Windows presets explicitly select unit tests; the existing Linux presets
-continue to select all test suites.
+The Windows and Linux presets select all host regression suites. Windows has
+an explicit, pinned test-tool preparation script; configuration never silently
+downloads tools or drops a requested suite.
 
 With `BUILD_TESTING=ON`, `PAGOS_ENABLE_PROCESS_TESTS` and
 `PAGOS_ENABLE_LIT_TESTS` independently select process and lit regressions.

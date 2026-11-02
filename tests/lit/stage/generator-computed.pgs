@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
 // RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=LLVM
 // RUN: %pagosc --max-aggregate-members=6 --max-aggregate-bytes=24 explain-stage %s | %FileCheck %s --check-prefix=STAGE

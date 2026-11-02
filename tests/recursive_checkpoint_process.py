@@ -30,7 +30,7 @@ with tempfile.TemporaryDirectory(prefix="pagos-recursive-process-") as temporary
         "fn read(x: u32) -> u32 { if x == 0 { external_input() } else { read(x - 1) } } "
         "let a = external_input(); let b = external_input(); let aa = [rotate(a, b), read(a)];"
     )
-    source.write_text(text)
+    source.write_text(text, encoding="utf-8", newline="\n")
     assert run("prepare", directory, source)["stage_runs"] == 1
     evidence = files(directory / "evidence")
     for name in ("rotate", "read"):
@@ -67,10 +67,10 @@ with tempfile.TemporaryDirectory(prefix="pagos-recursive-process-") as temporary
         saved["digest"], saved["size"], ok=False).stderr
     assert "cannot resume" in run("rec-resume", directory, source, "read", "value",
         saved["digest"], saved["size"], ok=False).stderr
-    source.write_text(text + " ")
+    source.write_text(text + " ", encoding="utf-8", newline="\n")
     assert "cannot resume" in run("rec-resume", directory, source, "rotate", "value",
         saved["digest"], saved["size"], ok=False).stderr
-    source.write_text(text)
+    source.write_text(text, encoding="utf-8", newline="\n")
     obj = directory / "recursive-state" / "objects" / saved["digest"][:2] / saved["digest"]
     data = obj.read_bytes()
     obj.write_bytes(data[:-1] + bytes([data[-1] ^ 1]))

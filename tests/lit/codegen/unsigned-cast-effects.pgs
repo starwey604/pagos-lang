@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %run_residual %s 259 41 99
 // RUN: %run_optimized %s 259 41 99
 fn value(x: u32) -> u64 { 258u64 }

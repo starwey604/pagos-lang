@@ -1,0 +1,10 @@
+{
+  "llvm_version": "23.1.4",
+  "llvm_archive": "clang+llvm-23.1.4-x86_64-pc-windows-msvc.tar.xz",
+  "llvm_url": "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.4/clang%2Bllvm-23.1.4-x86_64-pc-windows-msvc.tar.xz",
+  "llvm_sha256": "854bffcfc84528e0ee92490ff5c178920abd358a79c3e98f053e41e3e8e4c6d2",
+  "llvm_directory": "clang+llvm-23.1.4-x86_64-pc-windows-msvc",
+  "filecheck_url": "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-23.1.4/llvm/utils/FileCheck/FileCheck.cpp",
+  "filecheck_sha256": "3c6568b68c5c6d6ec8b9a2acb378a6949c9f5004ae009d2597b7f760f944f320",
+  "vcpkg_commit": "cd61e1e26a038e82d6550a3ebbe0fbbfe7da78e3"
+}

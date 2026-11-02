@@ -1,2 +1,3 @@
+// REQUIRES: native-entry
 // RUN: %run_residual %s 0 11 22
 let a = [external_input(), external_input()];

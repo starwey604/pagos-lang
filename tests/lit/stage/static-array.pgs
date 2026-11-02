@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %pagosc emit-hir %s | %FileCheck %s --check-prefix=HIR
 // RUN: %pagosc emit-mir %s | %FileCheck %s --check-prefix=MIR
 // RUN: %pagosc emit-llvm %s | %FileCheck %s --check-prefix=LLVM

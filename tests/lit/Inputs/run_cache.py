@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from test_runtime import executable_path
 
 
 def main():
@@ -85,8 +86,8 @@ def main():
             # The compiled hot output must execute every caller-side effect
             # once, even when a callee ignores the known argument value.
             ir = root / "program.ll"
-            ir.write_text(hot.stdout)
-            executable = root / "program"
+            ir.write_text(hot.stdout, encoding="utf-8", newline="\n")
+            executable = executable_path(root / "program")
             subprocess.run([clang, str(ir), str(pathlib.Path(__file__).with_name(
                 "runtime.c")), "-o", str(executable)], check=True)
             executed = subprocess.run([str(executable), *inputs],
@@ -100,17 +101,17 @@ def main():
     original = pathlib.Path(source).read_text()
     with tempfile.TemporaryDirectory(prefix="pagos-cache-source-") as work:
         changed = pathlib.Path(work) / "current.pgs"
-        changed.write_text(original)
+        changed.write_text(original, encoding="utf-8", newline="\n")
         source = str(changed)
         cache = root / "locations"
         compile("read-write", "explain-provenance", cache)
-        changed.write_text("// shifted source\n\n" + original.replace("{", "{\n"))
+        changed.write_text("// shifted source\n\n" + original.replace("{", "{\n"), encoding="utf-8", newline="\n")
         off, _, errors = compile("off", "explain-provenance", cache)
         hot, stats, hot_errors = compile("read-only", "explain-provenance", cache)
         assert stats["hits"] > 0, stats
         assert (off.returncode, off.stdout, errors) == (
             hot.returncode, hot.stdout, hot_errors)
-        changed.write_text(changed.read_text() + "\nlet dependency = 123;\n")
+        changed.write_text(changed.read_text() + "\nlet dependency = 123;\n", encoding="utf-8", newline="\n")
         _, stats, _ = compile("read-only", "check", cache)
         assert stats["hits"] == 0, stats
 

@@ -2,10 +2,10 @@
 import hashlib
 import json
 from pathlib import Path
-import signal
 import subprocess
 import sys
 import tempfile
+from process_support import failing_stdout, interruptible_process, interrupt_process
 
 BINARY, FIXTURE = sys.argv[1:3]
 PROGRAM = (
@@ -57,8 +57,9 @@ def decoded(p, status="verified"):
 
 with tempfile.TemporaryDirectory(prefix="pagos-generator-cli-") as tmp:
     root = Path(tmp)
-    source, store = root / 'quoted "生成.pgs', root / "cache"
-    source.write_text(PROGRAM)
+    filename = "quoted '生成.pgs" if sys.platform == "win32" else 'quoted "生成.pgs'
+    source, store = root / filename, root / "cache"
+    source.write_text(PROGRAM, encoding="utf-8", newline="\n")
     target = "riscv32-unknown-elf"
 
     def publish():
@@ -153,7 +154,7 @@ with tempfile.TemporaryDirectory(prefix="pagos-generator-cli-") as tmp:
 
     # All locations resolve against the current byte-based source map.
     shift = "// 移動\n\n"
-    source.write_text(shift + PROGRAM)
+    source.write_text(shift + PROGRAM, encoding="utf-8", newline="\n")
     moved = decoded(replay())
     assert moved["descriptor"] == first["descriptor"] and moved["recorded_result"] == first["recorded_result"]
     assert moved["source"]["revision"] != first["source"]["revision"]
@@ -161,13 +162,13 @@ with tempfile.TemporaryDirectory(prefix="pagos-generator-cli-") as tmp:
         assert b["site"]["begin"] == a["site"]["begin"] + len(shift.encode())
         assert b["site"]["line"] == a["site"]["line"] + 2
     assert (shift + PROGRAM).encode()[moved["iterator_site"]["begin"]:moved["iterator_site"]["end"]] == b"i"
-    source.write_text(PROGRAM.replace("i * x + 1", "i * x - 1"))
+    source.write_text(PROGRAM.replace("i * x + 1", "i * x - 1"), encoding="utf-8", newline="\n")
     assert decoded(replay(codes=(3,)), "unavailable")["reason"] == "missing-descriptor"
-    source.write_text(PROGRAM + "comptime let bad = external_input();")
+    source.write_text(PROGRAM + "comptime let bad = external_input();", encoding="utf-8", newline="\n")
     fail = replay(codes=(3,))
     decoded(fail, "unavailable")
     assert "E2001" not in fail.stderr and "E4004" not in fail.stderr
-    source.write_text(PROGRAM)
+    source.write_text(PROGRAM, encoding="utf-8", newline="\n")
     target = "riscv64-unknown-elf"
     assert decoded(replay(codes=(3,)), "unavailable")["reason"] == "missing-descriptor"
     target = "riscv32-unknown-elf"
@@ -211,7 +212,7 @@ with tempfile.TemporaryDirectory(prefix="pagos-generator-cli-") as tmp:
     assert publish().stdout == baseline_hir
     assert decoded(replay())["result"] == first["result"]
     snapshot = files(store)
-    with open("/dev/full", "wb") as full:
+    with failing_stdout() as full:
         fail = subprocess.run([BINARY, *map(str, arguments())], stdout=full, stderr=subprocess.PIPE, text=True, timeout=30)
     assert fail.returncode == 1 and "output failed" in fail.stderr
     assert files(store) == snapshot
@@ -221,7 +222,7 @@ with tempfile.TemporaryDirectory(prefix="pagos-generator-cli-") as tmp:
     assert decoded(replay("width"))["result"] == {"type": "usize", "value": "8"}
     assert decoded(replay("width"))["specialization"]["key"] != first["specialization"]["key"]
 
-    source.write_text("fn table(x: u32) -> [u32; 4096] { [for i in 100..4196 { i + x }] } let a = table(7);")
+    source.write_text("fn table(x: u32) -> [u32; 4096] { [for i in 100..4196 { i + x }] } let a = table(7);", encoding="utf-8", newline="\n")
     target, store = "riscv32-unknown-elf", root / "large"
     publish()
     lo, hi = decoded(replay(element="0")), decoded(replay(element="4095"))
@@ -232,15 +233,15 @@ with tempfile.TemporaryDirectory(prefix="pagos-generator-cli-") as tmp:
     def expression(depth):
         return "x" if not depth else f"({expression(depth - 1)} + {expression(depth - 1)})"
 
-    source.write_text(f"fn table(x: u32) -> [u32; 2] {{ [for i in 2..4 {{ {expression(11)} }}] }} let a = table(7);")
+    source.write_text(f"fn table(x: u32) -> [u32; 2] {{ [for i in 2..4 {{ {expression(11)} }}] }} let a = table(7);", encoding="utf-8", newline="\n")
     store = root / "cancel"
     publish()
     snapshot = files(store)
-    process = subprocess.Popen([BINARY, *map(str, arguments(extra=["--replay-stats"]))],
+    process = interruptible_process([BINARY, *map(str, arguments(extra=["--replay-stats"]))],
                                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     ready = process.stderr.readline()
     assert "generator-replay: stage-runs=0 ready" in ready, ready
-    process.send_signal(signal.SIGINT)
+    interrupt_process(process)
     stdout, stderr = process.communicate(timeout=30)
     assert process.returncode == 130, (process.returncode, stdout, ready + stderr)
     if stdout:

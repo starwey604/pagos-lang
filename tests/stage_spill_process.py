@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Kill real Stage before/after sealing; reclaim only dead task namespaces."""
 import json
+import os
+import signal
 import pathlib
 import subprocess
 import sys
@@ -60,7 +62,7 @@ with tempfile.TemporaryDirectory(prefix="pagos-spill-process-") as temporary:
                 assert all(path.read_bytes() == objects[0].read_bytes() for path in (session / "tmp").iterdir())
             child.kill()
             child.communicate(timeout=5)
-            assert child.returncode < 0
+            assert child.returncode == (1 if os.name == "nt" else -signal.SIGKILL)
             assert session.is_dir(), "SIGKILL unexpectedly ran RAII cleanup"
             # A new successful task must not adopt or delete the dead session.
             orphan = {str(path.relative_to(session)): path.read_bytes() for path in session.rglob("*") if path.is_file()}
@@ -70,7 +72,7 @@ with tempfile.TemporaryDirectory(prefix="pagos-spill-process-") as temporary:
             assert not list(session.glob("queries/**/*.manifest"))
             unknown = root / "spill" / "pagos-evidence-unknown"
             unknown.mkdir()
-            (unknown / "session.lock").write_text("unknown protocol")
+            (unknown / "session.lock").write_text("unknown protocol", encoding="utf-8", newline="\n")
             counts = reclaim(root / "spill")
             assert counts["reclaimed"] == 1 and counts["skipped"] == 1 and counts["errors"] == 0, counts
             assert not session.exists() and unknown.exists()

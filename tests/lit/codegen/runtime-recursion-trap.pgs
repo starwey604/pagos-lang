@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %run_residual %s trap 2 9
 // RUN: %run_optimized %s trap 2 9
 fn descend(n: u32, value: u32) -> u32 {

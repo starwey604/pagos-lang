@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %run_residual %s 203 3 2
 // RUN: %run_optimized %s 203 3 2
 record Pair { left: u32, right: u32 }

@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory(prefix="pagos-checkpoint-process-") as temporar
         "fn inner(x: u32) -> u32 { x + external_input() } "
         "fn outer(x: u32) -> u32 { inner(x) } "
         "let a = external_input(); let b = external_input(); let aa = [" + calls + "];"
-    )
+    , encoding="utf-8", newline="\n")
     assert run("prepare", directory, source)["stage_runs"] == 1
     modes = ("sources", "witness") if options.mode == "all" else (options.mode,)
     for mode in modes:
@@ -73,10 +73,10 @@ with tempfile.TemporaryDirectory(prefix="pagos-checkpoint-process-") as temporar
         print(f"{mode}: 14 cross-process checkpoint cases passed", flush=True)
     saved = run("save", directory, source, "sources", 7, "ack")
     original = source.read_text()
-    source.write_text(original + " ")
+    source.write_text(original + " ", encoding="utf-8", newline="\n")
     incompatible = run("resume", directory, source, "sources", saved["digest"], saved["size"], ok=False)
     assert "cannot resume" in incompatible.stderr
-    source.write_text(original)
+    source.write_text(original, encoding="utf-8", newline="\n")
     object_file = directory / "tasks" / "objects" / saved["digest"][:2] / saved["digest"]
     content = object_file.read_bytes()
     object_file.write_bytes(content[:-1])

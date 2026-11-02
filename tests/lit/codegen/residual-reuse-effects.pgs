@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %pagosc --max-residual-specializations=1 explain-stage %s | %FileCheck %s
 // RUN: %run_residual %s 24 3 2 7 9 4 8 5 10
 // RUN: %run_optimized %s 24 3 2 7 9 4 8 5 10

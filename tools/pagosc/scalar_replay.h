@@ -3,9 +3,12 @@
 #include "pagos/source/source_manager.h"
 #include "pagos/stage/scalar_replay_execution.h"
 
+#include <filesystem>
+
 namespace pagos::driver {
 struct ScalarReplayOptions {
-    std::string directory, function;
+    std::filesystem::path directory;
+    std::string function;
     std::vector<std::string> arguments;
     stage::ScalarReplayExecutionLimits limits;
     stage::ScalarReplayDetailRange range;

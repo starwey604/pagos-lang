@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %run_residual %s trap
 // RUN: %run_optimized %s trap
 runtime let count = 32;

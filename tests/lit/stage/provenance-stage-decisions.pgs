@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %pagosc explain-provenance %s | %FileCheck %s
 // RUN: %run_residual %s 19 0 10 20
 // RUN: %run_residual %s 18 1 10 20

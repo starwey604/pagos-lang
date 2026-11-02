@@ -15,7 +15,7 @@ target_link_libraries(pagos_scalar_replay_cli_fixture PRIVATE Pagos::stage pagos
 add_executable(pagos_generator_replay_cli_fixture generator_replay_cli_fixture.cpp)
 target_link_libraries(pagos_generator_replay_cli_fixture PRIVATE Pagos::stage pagos_project_options)
 
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
+find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
 add_test(NAME pagos-host-paths-process
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/host_paths_process.py
             $<TARGET_FILE:pagosc>)
@@ -81,6 +81,11 @@ add_test(NAME pagos-query-cli-process
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/query_cli_process.py
             $<TARGET_FILE:pagosc>)
 set_tests_properties(pagos-query-cli-process PROPERTIES TIMEOUT 240)
+add_test(NAME pagos-query-cli-stop-continue-process
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/query_cli_process.py
+            $<TARGET_FILE:pagosc> --stop-continue)
+set_tests_properties(pagos-query-cli-stop-continue-process PROPERTIES
+    TIMEOUT 180 SKIP_RETURN_CODE 77)
 add_test(NAME pagos-recursive-cli-process
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/recursive_cli_process.py
             $<TARGET_FILE:pagosc>)

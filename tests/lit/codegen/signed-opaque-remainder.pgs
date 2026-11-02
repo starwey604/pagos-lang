@@ -1,3 +1,4 @@
+// REQUIRES: native-entry
 // RUN: %run_residual %s trap 7
 // RUN: %run_optimized %s trap 7
 runtime let minimum = -9223372036854775808i64;
